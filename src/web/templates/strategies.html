@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}策略管理 - {{ app_name }}{% endblock %}
+{% block content %}
+
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-layers"></i> 策略管理</h2>
+        <p class="text-muted">查看和管理已注册的量化交易策略 | 配置: <code>config/strategies.yaml</code></p>
+    </div>
+</div>
+
+<div class="row g-3">
+    {% if strategies %}
+    {% for s in strategies %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">{{ s.name }}</h5>
+                <p class="card-text text-muted small">{{ s.description or '无描述' }}</p>
+                
+                <hr>
+                
+                <h6>参数配置</h6>
+                <table class="table table-sm small">
+                    <tbody>
+                        {% if s.params %}
+                        {% set params = s.params | tojson | from_json if s.params is string else s.params %}
+                        {% for k, v in params.items() %}
+                        <tr><td><code>{{ k }}</code></td><td>{{ v }}</td></tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr><td colspan="2" class="text-muted">使用默认参数</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+
+                {% if s.source %}
+                <div class="small text-muted">
+                    <strong>来源:</strong> {{ s.source }}
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-footer bg-transparent">
+                <small class="text-muted">类路径: <code>{{ s.class_path }}</code></small>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="col-12">
+        <div class="card p-5 text-center text-muted">
+            <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+            <p class="mt-3">暂无已注册策略</p>
+            <p class="small">在 <code>config/strategies.yaml</code> 中注册策略，在 <code>src/strategies/</code> 中编写策略代码</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card p-4 mt-4">
+    <h5 class="section-title"><i class="bi bi-question-circle"></i> 如何添加新策略？</h5>
+    <ol>
+        <li>在 <code>src/strategies/</code> 目录创建新的 Python 文件</li>
+        <li>继承 <code>src/backtest/base_strategy.py</code> 中的 <code>BaseStrategy</code></li>
+        <li>实现 <code>init()</code> 和 <code>next()</code> 方法</li>
+        <li>在 <code>config/strategies.yaml</code> 注册策略</li>
+        <li>重启 Web 服务即可在回测页面看到新策略</li>
+    </ol>
+</div>
+
+{% endblock %}

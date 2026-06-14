@@ -1,0 +1,195 @@
+"""
+SQLAlchemy 数据模型定义
+所有表结构在此定义，通过 alembic 或 create_all 创建
+"""
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Optional
+
+from sqlalchemy import (
+    Column, Integer, String, Date, DateTime, Float,
+    BigInteger, Text, UniqueConstraint, Index, ForeignKey,
+    create_engine
+)
+from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    """模型基类"""
+    pass
+
+
+class StockBasic(Base):
+    """
+    股票基本信息表
+    数据来源: AKShare stock_info_a_code_name() → 东方财富/交易所公开数据
+    """
+    __tablename__ = "stock_basic"
+
+    code: Mapped[str] = mapped_column(String(10), primary_key=True, comment="股票代码")
+    name: Mapped[str] = mapped_column(String(50), nullable=False, comment="股票名称")
+    market: Mapped[str] = mapped_column(String(2), nullable=False, comment="市场: SH/SZ/BJ")
+    list_date: Mapped[Optional[date]] = mapped_column(Date, comment="上市日期")
+    delist_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, comment="退市日期")
+    industry: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="所属行业")
+
+    # 关系
+    daily_prices = relationship("DailyPrice", back_populates="stock", lazy="dynamic")
+
+    def __repr__(self):
+        return f"<StockBasic(code={self.code}, name={self.name})>"
+
+
+class DailyPrice(Base):
+    """
+    日线行情表
+    数据来源: AKShare stock_zh_a_hist() → 东方财富历史行情接口
+    所有数值为交易所原始数据，未经任何修改。
+    """
+    __tablename__ = "daily_price"
+    __table_args__ = (
+        UniqueConstraint("code", "trade_date", name="uq_code_date"),
+        Index("idx_daily_date", "trade_date"),
+        Index("idx_daily_code_date", "code", "trade_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(
+        String(10), ForeignKey("stock_basic.code"), nullable=False, comment="股票代码"
+    )
+    trade_date: Mapped[date] = mapped_column(Date, nullable=False, comment="交易日期")
+    open: Mapped[float] = mapped_column(Float, nullable=False, comment="开盘价")
+    high: Mapped[float] = mapped_column(Float, nullable=False, comment="最高价")
+    low: Mapped[float] = mapped_column(Float, nullable=False, comment="最低价")
+    close: Mapped[float] = mapped_column(Float, nullable=False, comment="收盘价")
+    volume: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="成交量(股)")
+    amount: Mapped[float] = mapped_column(Float, nullable=False, comment="成交额(元)")
+    pct_change: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="涨跌幅(%)")
+    turnover: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="换手率(%)")
+
+    # 关系
+    stock = relationship("StockBasic", back_populates="daily_prices")
+
+    def __repr__(self):
+        return f"<DailyPrice(code={self.code}, date={self.trade_date}, close={self.close})>"
+
+
+class BenchmarkData(Base):
+    """
+    基准指数数据（沪深300）
+    数据来源: AKShare stock_zh_index_daily(symbol="sh000300")
+    """
+    __tablename__ = "benchmark_data"
+    __table_args__ = (
+        UniqueConstraint("index_code", "trade_date", name="uq_benchmark_date"),
+        Index("idx_benchmark_date", "trade_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    index_code: Mapped[str] = mapped_column(String(10), nullable=False, comment="指数代码")
+    trade_date: Mapped[date] = mapped_column(Date, nullable=False, comment="交易日期")
+    close: Mapped[float] = mapped_column(Float, nullable=False, comment="收盘价")
+    pct_change: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="涨跌幅(%)")
+
+
+class StrategyConfig(Base):
+    """
+    策略配置表
+    存储已注册策略的配置快照
+    """
+    __tablename__ = "strategy_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, comment="策略名称")
+    class_path: Mapped[str] = mapped_column(String(200), nullable=False, comment="Python类路径")
+    params: Mapped[str] = mapped_column(Text, nullable=False, comment="JSON格式参数")
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="策略描述")
+    source: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="策略来源文献")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, comment="创建时间"
+    )
+
+    # 关系
+    backtest_results = relationship("BacktestResult", back_populates="strategy")
+
+
+class BacktestResult(Base):
+    """
+    回测结果表
+    每次回测的结果持久化存储
+    """
+    __tablename__ = "backtest_result"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    strategy_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("strategy_config.id"), nullable=False, comment="策略ID"
+    )
+    stock_code: Mapped[str] = mapped_column(String(10), nullable=False, comment="回测标的")
+    stock_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="标的名称")
+    start_date: Mapped[date] = mapped_column(Date, nullable=False, comment="回测开始日期")
+    end_date: Mapped[date] = mapped_column(Date, nullable=False, comment="回测结束日期")
+    initial_capital: Mapped[float] = mapped_column(Float, nullable=False, comment="初始资金")
+    final_equity: Mapped[float] = mapped_column(Float, nullable=False, comment="最终权益")
+
+    # 核心指标
+    total_return: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="总收益率(%)")
+    annual_return: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="年化收益率(%)")
+    sharpe_ratio: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="夏普比率")
+    max_drawdown: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="最大回撤(%)")
+    win_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="胜率(%)")
+    profit_factor: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="盈亏比")
+    total_trades: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="总交易次数")
+    annual_volatility: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="年化波动率(%)")
+    calmar_ratio: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="卡玛比率")
+
+    # 基准对比
+    benchmark_return: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="基准收益率(%)")
+    excess_return: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="超额收益(%)")
+
+    # 序列化数据
+    equity_curve: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, comment="净值曲线 JSON: [{date, equity}, ...]"
+    )
+    trades_detail: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, comment="交易明细 JSON: [{entry_date, exit_date, ...}, ...]"
+    )
+    monthly_returns: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, comment="月度收益率 JSON"
+    )
+
+    # 回测配置快照
+    cost_config: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, comment="交易成本配置 JSON"
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, comment="回测时间"
+    )
+
+    # 关系
+    strategy = relationship("StrategyConfig", back_populates="backtest_results")
+
+    def __repr__(self):
+        return f"<BacktestResult(id={self.id}, strategy={self.stock_code}, return={self.total_return})>"
+
+
+class DataSourceMeta(Base):
+    """
+    数据源元信息表
+    记录每次数据下载的来源和时间
+    """
+    __tablename__ = "data_source_meta"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_name: Mapped[str] = mapped_column(String(50), nullable=False, comment="数据源名称")
+    download_time: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, comment="下载时间"
+    )
+    date_start: Mapped[Optional[date]] = mapped_column(Date, comment="数据起始日期")
+    date_end: Mapped[Optional[date]] = mapped_column(Date, comment="数据结束日期")
+    stock_count: Mapped[Optional[int]] = mapped_column(Integer, comment="股票数量")
+    record_count: Mapped[Optional[int]] = mapped_column(Integer, comment="记录总数")
+    status: Mapped[str] = mapped_column(
+        String(20), default="completed", comment="状态: downloading/completed/failed"
+    )
+    error_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="错误日志")

@@ -1,0 +1,224 @@
+"""
+API 路由 (JSON 响应)
+"""
+import json
+import threading
+from datetime import date, datetime
+from typing import Optional, List
+
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
+
+from ...models.repository import DataRepository
+from ...data.downloader import DataDownloader
+from ...backtest.engine import BacktestEngine
+
+router = APIRouter()
+
+
+# ===== 请求模型 =====
+
+class BacktestRequest(BaseModel):
+    strategy_name: str
+    stock_code: str
+    start_date: str          # YYYY-MM-DD
+    end_date: str
+    initial_capital: float = 100000
+    commission: Optional[float] = None
+    stamp_duty: Optional[float] = None
+    slippage: Optional[float] = None
+
+
+class BatchBacktestRequest(BaseModel):
+    strategy_names: List[str]
+    stock_codes: List[str]
+    start_date: str
+    end_date: str
+    initial_capital: float = 100000
+
+
+# ===== 数据 API =====
+
+@router.get("/data/coverage")
+async def get_data_coverage():
+    """获取数据覆盖概览"""
+    repo = DataRepository()
+    try:
+        return {"success": True, "data": repo.get_data_coverage()}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@router.get("/data/search")
+async def search_stocks(q: str = Query(..., min_length=1)):
+    """搜索股票"""
+    repo = DataRepository()
+    try:
+        df = repo.get_stock_list()
+        mask = df["name"].str.contains(q) | df["code"].str.contains(q)
+        results = df[mask].head(20).to_dict("records")
+        return {"success": True, "data": results}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ===== 下载 API =====
+
+@router.post("/data/download")
+async def trigger_download(mode: str = "incremental"):
+    """
+    触发数据下载
+    mode: "full" (全量) 或 "incremental" (增量)
+    
+    🔵 下载状态和进度通过 /api/data/download/status 查询
+    """
+    download_status = {"running": True, "progress": 0, "total": 0, "current": ""}
+
+    def _run():
+        try:
+            downloader = DataDownloader()
+            if mode == "full":
+                result = downloader.download_full(
+                    progress_callback=lambda c, t, code, name: download_status.update(
+                        {"progress": c, "total": t, "current": f"{code} {name}"}
+                    )
+                )
+            else:
+                result = downloader.download_incremental(
+                    progress_callback=lambda c, t, code, name: download_status.update(
+                        {"progress": c, "total": t, "current": f"{code} {name}"}
+                    )
+                )
+            download_status["running"] = False
+            download_status["result"] = result
+        except Exception as e:
+            download_status["running"] = False
+            download_status["error"] = str(e)
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+
+    return {"success": True, "message": "下载已启动", "mode": mode}
+
+
+@router.get("/data/download/status")
+async def get_download_status():
+    """查询下载进度"""
+    # 需要全局状态管理，此处简化实现
+    return {"success": True, "note": "🔵 AI生成: 下载状态功能需要全局状态管理器"}
+
+
+# ===== 回测 API =====
+
+@router.post("/backtest/run")
+async def run_backtest(req: BacktestRequest):
+    """执行单次回测"""
+    try:
+        # 动态加载策略
+        from ...config import load_strategies
+        strategies_config = load_strategies()
+        strategy_class = None
+
+        for s in strategies_config.get("strategies", []):
+            if s["name"] == req.strategy_name:
+                import importlib
+                module_path, class_name = s["class_path"].rsplit(".", 1)
+                module = importlib.import_module(module_path)
+                strategy_class = getattr(module, class_name)
+                break
+
+        if strategy_class is None:
+            raise ValueError(f"未找到策略: {req.strategy_name}")
+
+        engine = BacktestEngine()
+        report = engine.run(
+            strategy_class=strategy_class,
+            stock_code=req.stock_code,
+            start_date=date.fromisoformat(req.start_date),
+            end_date=date.fromisoformat(req.end_date),
+            initial_capital=req.initial_capital,
+            commission=req.commission,
+            stamp_duty=req.stamp_duty,
+            slippage=req.slippage,
+        )
+
+        # 持久化
+        repo = DataRepository()
+        session = repo.get_session()
+        try:
+            # 先保存策略配置
+            for s in strategies_config.get("strategies", []):
+                if s["name"] == req.strategy_name:
+                    repo.save_strategy_config(
+                        session, s["name"], s["class_path"],
+                        json.dumps(s.get("params", {})),
+                        s.get("description", ""),
+                        s.get("source", "")
+                    )
+                    break
+
+            # 查找策略ID
+            from ...models.database import StrategyConfig
+            strategy_record = session.query(StrategyConfig).filter_by(name=req.strategy_name).first()
+            strategy_id = strategy_record.id if strategy_record else None
+
+            result_dict = report.to_dict()
+            result_dict["strategy_id"] = strategy_id
+            result_dict["stock_name"] = report.stock_name
+            result_id = repo.save_backtest_result(session, result_dict)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+
+        return {
+            "success": True,
+            "result_id": result_id,
+            "report": {
+                "total_return": report.total_return,
+                "annual_return": report.annual_return,
+                "sharpe_ratio": report.sharpe_ratio,
+                "max_drawdown": report.max_drawdown,
+                "win_rate": report.win_rate,
+                "total_trades": report.total_trades,
+                "benchmark_return": report.benchmark_return,
+                "excess_return": report.excess_return,
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== 策略 API =====
+
+@router.get("/strategies")
+async def get_strategies():
+    """获取所有已注册策略"""
+    from ...config import load_strategies
+    config = load_strategies()
+    return {"success": True, "data": config.get("strategies", [])}
+
+
+# ===== 回测结果 API =====
+
+@router.get("/backtest/results")
+async def get_backtest_results(limit: int = 20):
+    """获取最近的回测结果"""
+    repo = DataRepository()
+    results = repo.get_recent_backtests(limit)
+    data = []
+    for r in results:
+        data.append({
+            "id": r.id,
+            "strategy_name": r.strategy.name if r.strategy else "未知",
+            "stock_code": r.stock_code,
+            "stock_name": r.stock_name,
+            "total_return": r.total_return,
+            "sharpe_ratio": r.sharpe_ratio,
+            "max_drawdown": r.max_drawdown,
+            "created_at": str(r.created_at),
+        })
+    return {"success": True, "data": data}

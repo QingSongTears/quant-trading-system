@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}多模型对比 - {{ app_name }}{% endblock %}
+{% block content %}
+
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-bar-chart"></i> 多模型对比</h2>
+        <p class="text-muted">横向对比多个策略在同一标的上的回测表现</p>
+    </div>
+</div>
+
+{% if results %}
+<!-- 净值叠加图 -->
+<div class="card p-4 mb-4">
+    <h5 class="section-title">净值曲线对比</h5>
+    <div id="compare-equity-chart" class="chart-container" style="height: 500px;"></div>
+</div>
+
+<!-- 指标对比表 -->
+<div class="card p-4 mb-4">
+    <h5 class="section-title">核心指标对比</h5>
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>指标</th>
+                    {% for r in results %}
+                    <th>{{ r.strategy.name if r.strategy else '未知' }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>总收益率</td>
+                    {% for r in results %}<td class="{% if r.total_return and r.total_return > 0 %}profit{% else %}loss{% endif %}">{{ "%.2f%%"|format(r.total_return) if r.total_return else '-' }}</td>{% endfor %}
+                </tr>
+                <tr><td>年化收益率</td>
+                    {% for r in results %}<td>{{ "%.2f%%"|format(r.annual_return) if r.annual_return else '-' }}</td>{% endfor %}
+                </tr>
+                <tr><td>夏普比率</td>
+                    {% for r in results %}<td>{{ "%.2f"|format(r.sharpe_ratio) if r.sharpe_ratio else '-' }}</td>{% endfor %}
+                </tr>
+                <tr><td>最大回撤</td>
+                    {% for r in results %}<td class="loss">{{ "%.2f%%"|format(r.max_drawdown) if r.max_drawdown else '-' }}</td>{% endfor %}
+                </tr>
+                <tr><td>胜率</td>
+                    {% for r in results %}<td>{{ "%.1f%%"|format(r.win_rate) if r.win_rate else '-' }}</td>{% endfor %}
+                </tr>
+                <tr><td>盈亏比</td>
+                    {% for r in results %}<td>{{ "%.2f"|format(r.profit_factor) if r.profit_factor else '-' }}</td>{% endfor %}
+                </tr>
+                <tr><td>交易次数</td>
+                    {% for r in results %}<td>{{ r.total_trades or 0 }}</td>{% endfor %}
+                </tr>
+                <tr><td>超额收益(vs沪深300)</td>
+                    {% for r in results %}<td class="{% if r.excess_return and r.excess_return > 0 %}profit{% else %}loss{% endif %}">{{ "%.2f%%"|format(r.excess_return) if r.excess_return else '-' }}</td>{% endfor %}
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 雷达图 -->
+<div class="card p-4 mb-4">
+    <h5 class="section-title">策略雷达图</h5>
+    <div id="radar-chart" class="chart-container" style="height: 450px;"></div>
+</div>
+
+{% else %}
+<div class="card p-5 text-center text-muted">
+    <i class="bi bi-bar-chart" style="font-size: 3rem;"></i>
+    <p class="mt-3">选择多个回测结果进行对比</p>
+    <p class="small">在 <a href="/backtest">回测执行页</a> 运行多个策略后，可通过 URL 参数 <code>?ids=1,2,3</code> 对比</p>
+</div>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+{% if results %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 净值叠加图
+    const chartDom = document.getElementById('compare-equity-chart');
+    if (chartDom) {
+        const chart = echarts.init(chartDom);
+        const colors = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
+        const series = [];
+        
+        {% for r in results %}
+        (function() {
+            const data = JSON.parse('{{ r.equity_curve | safe }}');
+            if (!data || data.length === 0) return;
+            
+            const dates = data.map(d => d.date);
+            const equities = data.map(d => d.equity);
+            const firstEquity = equities[0] || 1;
+            
+            series.push({
+                name: '{{ r.strategy.name if r.strategy else "策略" ~ loop.index }}',
+                type: 'line',
+                data: equities.map(e => (e / firstEquity * 100).toFixed(2)),
+                smooth: true,
+                showSymbol: false,
+                lineStyle: { width: 2, color: colors[{{ loop.index0 }} % colors.length] }
+            });
+        })();
+        {% endfor %}
+        
+        chart.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { bottom: 0 },
+            grid: { left: 60, right: 20, top: 20, bottom: 40 },
+            xAxis: { 
+                type: 'category', 
+                data: (function() {
+                    {% for r in results %}
+                    if ('{{ r.equity_curve | safe }}') {
+                        const d = JSON.parse('{{ r.equity_curve | safe }}');
+                        if (d && d.length > 0) return d.map(x => x.date);
+                    }
+                    {% endfor %}
+                    return [];
+                })(),
+                axisLabel: { rotate: 45, fontSize: 10 }
+            },
+            yAxis: { type: 'value', name: '净值 (基准=100)', axisLabel: { formatter: v => v.toFixed(0) } },
+            series: series
+        });
+    }
+    
+    // 雷达图
+    const radarDom = document.getElementById('radar-chart');
+    if (radarDom) {
+        const radar = echarts.init(radarDom);
+        radar.setOption({
+            tooltip: {},
+            legend: { bottom: 0 },
+            radar: {
+                indicator: [
+                    { name: '收益率', max: 100 },
+                    { name: '夏普比率', max: 3 },
+                    { name: '抗回撤', max: 100 },
+                    { name: '胜率', max: 100 },
+                    { name: '盈亏比', max: 5 }
+                ]
+            },
+            series: [{
+                type: 'radar',
+                data: [
+                    {% for r in results %}
+                    {
+                        name: '{{ r.strategy.name if r.strategy else "策略" ~ loop.index }}',
+                        value: [
+                            {{ (r.total_return or 0) if (r.total_return or 0) < 100 else 100 }},
+                            {{ (r.sharpe_ratio or 0) if (r.sharpe_ratio or 0) < 3 else 3 }},
+                            {{ 100 - (abs(r.max_drawdown or 0)) if (abs(r.max_drawdown or 0)) < 100 else 0 }},
+                            {{ (r.win_rate or 0) }},
+                            {{ (r.profit_factor or 0) if (r.profit_factor or 0) < 5 else 5 }}
+                        ]
+                    }{% if not loop.last %},{% endif %}
+                    {% endfor %}
+                ]
+            }]
+        });
+    }
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}回测详情 - {{ result.strategy.name if result.strategy else '未知' }} × {{ result.stock_code }}{% endblock %}
+{% block content %}
+
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">仪表盘</a></li>
+                <li class="breadcrumb-item"><a href="/backtest">回测执行</a></li>
+                <li class="breadcrumb-item active">{{ result.strategy.name if result.strategy else '未知' }}</li>
+            </ol>
+        </nav>
+        <h2>
+            {{ result.strategy.name if result.strategy else '未知策略' }}
+            <small class="text-muted fs-6">×</small>
+            <span class="stock-tag fs-5">{{ result.stock_code }}</span>
+            {{ result.stock_name or '' }}
+        </h2>
+        <p class="text-muted">
+            回测区间: {{ result.start_date }} ~ {{ result.end_date }} | 
+            初始资金: {{ "{:,.0f}".format(result.initial_capital) }} 元 |
+            回测时间: {{ result.created_at.strftime('%Y-%m-%d %H:%M') if result.created_at else '-' }}
+        </p>
+    </div>
+</div>
+
+<!-- 核心指标卡片 -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-2">
+        <div class="card p-3 text-center">
+            <div class="metric-label">总收益率</div>
+            <div class="metric-value {% if result.total_return and result.total_return > 0 %}profit{% else %}loss{% endif %}">
+                {{ "%.2f%%"|format(result.total_return) if result.total_return else '-' }}
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card p-3 text-center">
+            <div class="metric-label">年化收益</div>
+            <div class="metric-value">{{ "%.2f%%"|format(result.annual_return) if result.annual_return else '-' }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card p-3 text-center">
+            <div class="metric-label">夏普比率</div>
+            <div class="metric-value">{{ "%.2f"|format(result.sharpe_ratio) if result.sharpe_ratio else '-' }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card p-3 text-center">
+            <div class="metric-label">最大回撤</div>
+            <div class="metric-value loss">{{ "%.2f%%"|format(result.max_drawdown) if result.max_drawdown else '-' }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card p-3 text-center">
+            <div class="metric-label">胜率</div>
+            <div class="metric-value">{{ "%.1f%%"|format(result.win_rate) if result.win_rate else '-' }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card p-3 text-center">
+            <div class="metric-label">交易次数</div>
+            <div class="metric-value">{{ result.total_trades or 0 }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- 第二行指标 -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card p-2 text-center">
+            <small class="text-muted">最终权益</small>
+            <strong>{{ "{:,.0f}".format(result.final_equity) if result.final_equity else '-' }} 元</strong>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-2 text-center">
+            <small class="text-muted">盈亏比</small>
+            <strong>{{ "%.2f"|format(result.profit_factor) if result.profit_factor else '-' }}</strong>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-2 text-center">
+            <small class="text-muted">年化波动率</small>
+            <strong>{{ "%.2f%%"|format(result.annual_volatility) if result.annual_volatility else '-' }}</strong>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-2 text-center">
+            <small class="text-muted">卡玛比率</small>
+            <strong>{{ "%.2f"|format(result.calmar_ratio) if result.calmar_ratio else '-' }}</strong>
+        </div>
+    </div>
+</div>
+
+<!-- 基准对比 -->
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card p-3 text-center">
+            <small class="text-muted">沪深300同期收益</small>
+            <strong>{{ "%.2f%%"|format(result.benchmark_return) if result.benchmark_return else '-' }}</strong>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-3 text-center">
+            <small class="text-muted">超额收益 (Alpha)</small>
+            <strong class="{% if result.excess_return and result.excess_return > 0 %}profit{% else %}loss{% endif %}">
+                {{ "%.2f%%"|format(result.excess_return) if result.excess_return else '-' }}
+            </strong>
+        </div>
+    </div>
+</div>
+
+<!-- 图表: 净值曲线 & 回撤曲线 -->
+<div class="row g-3 mb-4">
+    <div class="col-md-8">
+        <div class="card p-4">
+            <h5 class="section-title">净值曲线</h5>
+            <div id="equity-chart" class="chart-container"></div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-4">
+            <h5 class="section-title">回撤曲线</h5>
+            <div id="drawdown-chart" class="chart-container"></div>
+        </div>
+    </div>
+</div>
+
+<!-- 交易明细 -->
+<div class="card p-4 mb-4">
+    <h5 class="section-title">交易明细</h5>
+    {% if trades %}
+    <div class="table-responsive">
+        <table class="table table-sm table-hover" id="trades-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>数量</th>
+                    <th>买入价</th>
+                    <th>卖出价</th>
+                    <th>盈亏</th>
+                    <th>收益率</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in trades %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ t.size }}</td>
+                    <td>{{ "%.2f"|format(t.entry_price) if t.entry_price else '-' }}</td>
+                    <td>{{ "%.2f"|format(t.exit_price) if t.exit_price else '-' }}</td>
+                    <td class="{% if t.pnl and t.pnl > 0 %}profit{% else %}loss{% endif %}">
+                        {{ "%.2f"|format(t.pnl) if t.pnl else '-' }}
+                    </td>
+                    <td class="{% if t.return_pct and t.return_pct > 0 %}profit{% else %}loss{% endif %}">
+                        {{ "%.2f%%"|format(t.return_pct) if t.return_pct else '-' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-4">该回测未产生交易</div>
+    {% endif %}
+</div>
+
+<!-- 交易成本说明 -->
+<div class="card p-4 mb-4">
+    <h5 class="section-title">交易成本假设</h5>
+    <table class="table table-sm w-auto">
+        <tbody>
+            <tr><td>佣金费率</td><td>{{ "%.3f%%"|format(costs.commission_rate * 100) if costs.commission_rate else '0.030%' }} (双边)</td></tr>
+            <tr><td>印花税</td><td>{{ "%.3f%%"|format(costs.stamp_duty_rate * 100) if costs.stamp_duty_rate else '0.050%' }} (仅卖出)</td></tr>
+            <tr><td>滑点</td><td>{{ "%.3f%%"|format(costs.slippage * 100) if costs.slippage else '0.010%' }}</td></tr>
+            <tr><td>T+1 模拟</td><td>当日买入，次日方可卖出 (trade_on_close=True)</td></tr>
+            <tr><td>涨跌停限制</td><td><span class="text-warning">⚠ 未模拟</span></td></tr>
+        </tbody>
+    </table>
+    <div class="ai-disclaimer">
+        ⚠️ 以上为简化的成本模型。回测结果不代表实际交易表现。历史数据回测存在过拟合风险。
+    </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const equityData = {{ equity_curve | safe }};
+    const drawdownData = {{ drawdown_curve | safe }};
+    
+    // 净值曲线
+    if (equityData && equityData.length > 0) {
+        const equityChart = echarts.init(document.getElementById('equity-chart'));
+        equityChart.setOption({
+            tooltip: { trigger: 'axis' },
+            grid: { left: 60, right: 20, top: 20, bottom: 30 },
+            xAxis: { type: 'category', data: equityData.map(d => d.date), axisLabel: { rotate: 45, fontSize: 10 } },
+            yAxis: { type: 'value', name: '权益 (元)', axisLabel: { formatter: v => (v/10000).toFixed(0) + '万' } },
+            series: [{
+                name: '净值', type: 'line', data: equityData.map(d => d.equity),
+                smooth: true, showSymbol: false, lineStyle: { color: '#6366f1', width: 2 },
+                areaStyle: { color: 'rgba(99,102,241,0.1)' }
+            }]
+        });
+    }
+    
+    // 回撤曲线
+    if (drawdownData && drawdownData.length > 0) {
+        const ddChart = echarts.init(document.getElementById('drawdown-chart'));
+        ddChart.setOption({
+            tooltip: { trigger: 'axis', formatter: p => `${p[0].axisValue}<br/>回撤: ${p[0].value}%` },
+            grid: { left: 50, right: 10, top: 20, bottom: 30 },
+            xAxis: { type: 'category', data: drawdownData.map(d => d.date), axisLabel: { fontSize: 9 } },
+            yAxis: { type: 'value', name: '回撤 %', inverse: true, axisLabel: { formatter: v => v + '%' } },
+            series: [{
+                name: '回撤', type: 'line', data: drawdownData.map(d => d.drawdown),
+                smooth: true, showSymbol: false, lineStyle: { color: '#ef4444', width: 1 },
+                areaStyle: { color: 'rgba(239,68,68,0.15)' }
+            }]
+        });
+    }
+});
+</script>
+{% endblock %}

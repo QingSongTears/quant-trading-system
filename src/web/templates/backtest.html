@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}回测执行 - {{ app_name }}{% endblock %}
+{% block content %}
+
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-play-circle"></i> 回测执行</h2>
+        <p class="text-muted">选择策略和标的，运行历史数据回测</p>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- 回测配置面板 -->
+    <div class="col-md-5">
+        <div class="card p-4">
+            <h5 class="section-title">回测配置</h5>
+            <form id="backtest-form">
+                <div class="mb-3">
+                    <label class="form-label">选择策略 <span class="text-danger">*</span></label>
+                    <select class="form-select" id="strategy-select" required>
+                        <option value="">-- 选择策略 --</option>
+                        {% for s in strategies %}
+                        <option value="{{ s.name }}">{{ s.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">策略在 <code>config/strategies.yaml</code> 中注册</div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">股票代码 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="stock-code" 
+                           placeholder="例如: 000001" required>
+                    <div class="form-text">输入6位数字代码（全市场A股）</div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col">
+                        <label class="form-label">开始日期</label>
+                        <input type="date" class="form-control" id="start-date" 
+                               value="{{ default_start }}">
+                    </div>
+                    <div class="col">
+                        <label class="form-label">结束日期</label>
+                        <input type="date" class="form-control" id="end-date" 
+                               value="{{ default_end }}">
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">初始资金 (元)</label>
+                    <input type="number" class="form-control" id="initial-capital" 
+                           value="100000" step="10000" min="10000">
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100" id="run-btn">
+                    <i class="bi bi-play-fill"></i> 运行回测
+                </button>
+            </form>
+
+            <hr>
+
+            <!-- 交易成本说明 -->
+            <div class="small text-muted">
+                <strong>交易成本假设:</strong>
+                <ul class="mb-0">
+                    <li>佣金费率: 0.03% (双边)</li>
+                    <li>印花税: 0.05% (仅卖出)</li>
+                    <li>滑点: 0.01%</li>
+                    <li>T+1 交易制度: 当日买入，次日可卖</li>
+                </ul>
+            </div>
+            <div class="ai-disclaimer mt-2 small">
+                ⚠️ 以上为简化成本模型。回测未模拟涨跌停限制。结果仅供参考。
+            </div>
+        </div>
+    </div>
+
+    <!-- 结果面板 -->
+    <div class="col-md-7">
+        <div class="card p-4" id="result-panel">
+            <h5 class="section-title">回测结果</h5>
+            <div id="result-placeholder" class="text-center text-muted py-5">
+                <i class="bi bi-arrow-left" style="font-size: 2rem;"></i>
+                <p class="mt-3">在左侧配置回测参数并点击「运行回测」</p>
+            </div>
+            <div id="result-content" class="d-none">
+                <div class="row g-3 mb-3" id="metrics-row"></div>
+                <div class="chart-container" id="equity-chart"></div>
+                <div class="text-center mt-3">
+                    <a id="detail-link" href="#" class="btn btn-outline-primary">
+                        <i class="bi bi-zoom-in"></i> 查看完整报告
+                    </a>
+                </div>
+            </div>
+            <div id="result-error" class="d-none">
+                <div class="alert alert-danger" id="error-message"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('backtest-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const runBtn = document.getElementById('run-btn');
+    const resultPlaceholder = document.getElementById('result-placeholder');
+    const resultContent = document.getElementById('result-content');
+    const resultError = document.getElementById('result-error');
+    
+    runBtn.disabled = true;
+    runBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 运行中...';
+    resultPlaceholder.classList.add('d-none');
+    resultContent.classList.add('d-none');
+    resultError.classList.add('d-none');
+    
+    const payload = {
+        strategy_name: document.getElementById('strategy-select').value,
+        stock_code: document.getElementById('stock-code').value.trim(),
+        start_date: document.getElementById('start-date').value,
+        end_date: document.getElementById('end-date').value,
+        initial_capital: parseFloat(document.getElementById('initial-capital').value)
+    };
+    
+    try {
+        const resp = await fetch('/api/backtest/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail || '回测失败');
+        }
+        
+        const data = await resp.json();
+        const r = data.report;
+        
+        // 显示指标卡片
+        document.getElementById('metrics-row').innerHTML = `
+            <div class="col-4"><div class="card p-2 text-center">
+                <div class="metric-label">总收益率</div>
+                <div class="metric-value ${r.total_return > 0 ? 'profit' : 'loss'}">${r.total_return.toFixed(2)}%</div>
+            </div></div>
+            <div class="col-4"><div class="card p-2 text-center">
+                <div class="metric-label">夏普比率</div>
+                <div class="metric-value">${r.sharpe_ratio.toFixed(2)}</div>
+            </div></div>
+            <div class="col-4"><div class="card p-2 text-center">
+                <div class="metric-label">最大回撤</div>
+                <div class="metric-value loss">${r.max_drawdown.toFixed(2)}%</div>
+            </div></div>
+            <div class="col-4"><div class="card p-2 text-center">
+                <div class="metric-label">胜率</div>
+                <div class="metric-value">${r.win_rate.toFixed(1)}%</div>
+            </div></div>
+            <div class="col-4"><div class="card p-2 text-center">
+                <div class="metric-label">交易次数</div>
+                <div class="metric-value">${r.total_trades}</div>
+            </div></div>
+            <div class="col-4"><div class="card p-2 text-center">
+                <div class="metric-label">超额收益(vs沪深300)</div>
+                <div class="metric-value ${r.excess_return > 0 ? 'profit' : 'loss'}">${r.excess_return.toFixed(2)}%</div>
+            </div></div>
+        `;
+        
+        // 更新详情链接
+        document.getElementById('detail-link').href = `/backtest/${data.result_id}`;
+        
+        resultContent.classList.remove('d-none');
+        
+    } catch (err) {
+        document.getElementById('error-message').textContent = err.message;
+        resultError.classList.remove('d-none');
+    } finally {
+        runBtn.disabled = false;
+        runBtn.innerHTML = '<i class="bi bi-play-fill"></i> 运行回测';
+    }
+});
+</script>
+{% endblock %}

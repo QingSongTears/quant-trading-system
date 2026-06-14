@@ -1,0 +1,51 @@
+# ============================================================
+# 策略注册表
+# 每项策略需指定: name, class_path, params, description
+# ============================================================
+
+strategies:
+  # ---- 内置预设策略 ----
+  
+  - name: "双均线交叉"
+    class_path: "strategies.ma_cross.MACrossStrategy"
+    params:
+      fast_period: 5
+      slow_period: 20
+    description: "短期均线上穿长期均线买入，下穿卖出。经典趋势跟踪策略。"
+    source: "基于移动平均线交叉概念，广泛应用于技术分析"
+
+  - name: "MACD金叉死叉"
+    class_path: "strategies.macd_signal.MACDSignalStrategy"
+    params:
+      fast_period: 12
+      slow_period: 26
+      signal_period: 9
+    description: "MACD线上穿信号线买入，下穿卖出。"
+    source: "Appel, G. (1979). The Moving Average Convergence-Divergence Method"
+
+  - name: "RSI超买超卖"
+    class_path: "strategies.rsi_reversal.RSIReversalStrategy"
+    params:
+      rsi_period: 14
+      oversold_threshold: 30
+      overbought_threshold: 70
+    description: "RSI低于超卖阈值买入，高于超买阈值卖出。均值回归策略。"
+    source: "Wilder, J. W. (1978). New Concepts in Technical Trading Systems"
+
+  - name: "布林带突破"
+    class_path: "strategies.bollinger_breakout.BollingerBreakoutStrategy"
+    params:
+      period: 20
+      std_dev: 2.0
+    description: "价格突破布林带下轨买入，突破上轨卖出。波动率策略。"
+    source: "Bollinger, J. (2001). Bollinger on Bollinger Bands"
+
+  - name: "海龟交易法则"
+    class_path: "strategies.turtle_trading.TurtleTradingStrategy"
+    params:
+      entry_period: 20
+      exit_period: 10
+      atr_period: 20
+      atr_multiplier: 2.0
+    description: "唐奇安通道突破入场，ATR动态止损。经典趋势跟踪策略。"
+    source: "Faith, C. (2007). Way of the Turtle"

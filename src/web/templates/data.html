@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}数据管理 - {{ app_name }}{% endblock %}
+{% block content %}
+
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-database"></i> 数据管理</h2>
+        <p class="text-muted">全市场A股历史数据下载 · 本地SQLite存储 · 可考证数据源</p>
+    </div>
+</div>
+
+<!-- 数据覆盖概览 -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card p-3 text-center">
+            <div class="metric-label">股票总数</div>
+            <div class="metric-value">{{ coverage.total_stocks or 0 }}</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3 text-center">
+            <div class="metric-label">总记录数</div>
+            <div class="metric-value">{{ "{:,}".format(coverage.total_records or 0) }}</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3 text-center">
+            <div class="metric-label">日期范围</div>
+            <div class="metric-value fs-5">
+                {% if coverage.date_range.start %}
+                {{ coverage.date_range.start }} ~ {{ coverage.date_range.end }}
+                {% else %}
+                无数据
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 下载控制 -->
+<div class="card p-4 mb-4">
+    <h5 class="section-title"><i class="bi bi-cloud-download"></i> 数据下载控制</h5>
+    
+    <div class="row g-3 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label">下载模式</label>
+            <select class="form-select" id="download-mode">
+                <option value="incremental">增量更新（推荐）</option>
+                <option value="full">全量下载（重新下载所有数据）</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-primary w-100" onclick="startDownload()">
+                <i class="bi bi-download"></i> 开始下载
+            </button>
+        </div>
+        <div class="col-md-7">
+            <div id="download-progress" class="d-none">
+                <label class="form-label">下载进度</label>
+                <div class="progress" style="height: 25px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         id="progress-bar" style="width: 0%">0%</div>
+                </div>
+                <small class="text-muted" id="progress-text"></small>
+            </div>
+        </div>
+    </div>
+    
+    <div class="ai-disclaimer mt-3">
+        🔵 <strong>数据来源声明</strong>: 所有数据来自 AKShare (akshare.readthedocs.io) 
+        封装的东方财富/新浪财经公开接口，原始数据未经任何修改或模拟。
+    </div>
+</div>
+
+<!-- 下载历史 -->
+<div class="card p-4 mb-4">
+    <h5 class="section-title"><i class="bi bi-clock-history"></i> 下载历史</h5>
+    {% if download_history %}
+    <div class="table-responsive">
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>数据源</th>
+                    <th>下载时间</th>
+                    <th>股票数</th>
+                    <th>记录数</th>
+                    <th>状态</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in download_history %}
+                <tr>
+                    <td>{{ h.source_name }}</td>
+                    <td>{{ h.download_time.strftime('%Y-%m-%d %H:%M') if h.download_time else '-' }}</td>
+                    <td>{{ h.stock_count or '-' }}</td>
+                    <td>{{ "{:,}".format(h.record_count) if h.record_count else '-' }}</td>
+                    <td>
+                        {% if h.status == 'completed' %}
+                        <span class="badge bg-success">完成</span>
+                        {% else %}
+                        <span class="badge bg-warning">{{ h.status }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-4">
+        <p>暂无下载记录，请先下载数据</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 数据源信息 -->
+<div class="card p-4">
+    <h5 class="section-title"><i class="bi bi-info-circle"></i> 数据源详细说明</h5>
+    <table class="table">
+        <thead>
+            <tr><th>数据项</th><th>来源</th><th>接口</th><th>可考证方式</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>A股日线行情</td>
+                <td>AKShare → 东方财富</td>
+                <td><code>ak.stock_zh_a_hist()</code></td>
+                <td>对比东方财富网页K线图</td>
+            </tr>
+            <tr>
+                <td>股票列表</td>
+                <td>AKShare → 交易所</td>
+                <td><code>ak.stock_info_a_code_name()</code></td>
+                <td>对比沪深京交易所官网</td>
+            </tr>
+            <tr>
+                <td>沪深300指数</td>
+                <td>AKShare</td>
+                <td><code>ak.stock_zh_index_daily()</code></td>
+                <td>对比中证指数官网</td>
+            </tr>
+            <tr>
+                <td>技术指标验证</td>
+                <td>WeStock Data（腾讯自选股）</td>
+                <td><code>npx westock-data-clawhub technical</code></td>
+                <td>对比腾讯自选股App</td>
+            </tr>
+        </tbody>
+    </table>
+    <div class="ai-disclaimer">
+        🔵 <strong>{{ ai_disclaimer.text }}</strong> · 本系统禁止使用任何模拟/伪造/插值生成的数据。所有数值保留原始精度。
+    </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+async function startDownload() {
+    const mode = document.getElementById('download-mode').value;
+    const progressDiv = document.getElementById('download-progress');
+    const bar = document.getElementById('progress-bar');
+    const text = document.getElementById('progress-text');
+    
+    progressDiv.classList.remove('d-none');
+    bar.style.width = '0%';
+    bar.textContent = '启动中...';
+    text.textContent = '正在准备下载...';
+    
+    try {
+        const resp = await fetch(`/api/data/download?mode=${mode}`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            text.textContent = '下载任务已启动，请等待完成（可能需要数分钟）';
+        } else {
+            text.textContent = '下载失败: ' + (data.error || '未知错误');
+        }
+    } catch (e) {
+        text.textContent = '请求失败: ' + e.message;
+    }
+}
+</script>
+{% endblock %}

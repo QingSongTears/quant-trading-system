@@ -1,0 +1,74 @@
+# ============================================================
+# A股量化交易模型系统 — 全局配置
+# ============================================================
+
+system:
+  name: "QuantTradingSystem"
+  version: "0.1.0"
+  port: 5050               # Web 服务默认端口
+  debug: false
+
+# ---- 数据库 ----
+database:
+  engine: "sqlite"         # sqlite（默认）
+  path: "database/quant.db"
+  echo: false              # SQL 日志
+
+# ---- 数据下载 ----
+data:
+  # 主数据源: AKShare（批量历史数据）
+  primary_source: "akshare"
+  # 补充数据源: WeStock Data（实时行情/技术指标/财报）— 通过 npx CLI 调用
+  secondary_source: "westock"
+  # 备选数据源: Baostock
+  fallback_source: "baostock"
+  
+  # 下载参数
+  download:
+    start_date: "2022-06-01"   # 历史数据起始日期（近3年）
+    request_interval: 0.8      # 请求间隔（秒），避免触发反爬
+    max_retries: 3             # 单只股票最大重试次数
+    timeout: 30                # 请求超时（秒）
+    batch_size: 50             # 每批下载股票数
+    
+  # 数据范围: 全市场（SH/SZ/BJ）
+  markets: ["SH", "SZ", "BJ"]
+
+# ---- 回测引擎 ----
+backtest:
+  # 交易成本（默认值，可在回测时自定义）
+  costs:
+    commission_rate: 0.0003     # 佣金费率 0.03%
+    stamp_duty_rate: 0.0005     # 印花税 0.05%（仅卖出）
+    slippage: 0.0001            # 滑点 0.01%
+    min_commission: 5.0         # 最低佣金（元）
+  
+  # 基准指数
+  benchmark: "sh000300"         # 沪深300
+  
+  # 无风险利率
+  risk_free_rate: 0.02          # 2%
+
+# ---- Web 前端 ----
+web:
+  title: "QuantTrading - A股量化回测系统"
+  # 所有前端资源通过 CDN 引入，零本地构建
+  cdn:
+    bootstrap: "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist"
+    echarts: "https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist"
+    datatables: "https://cdn.jsdelivr.net/npm/datatables@1.13.8"
+    htmx: "https://unpkg.com/htmx.org@1.9.12"
+    icons: "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3"
+
+# ---- AI 内容标注 ----
+ai_disclaimer:
+  enabled: true
+  text: "本文档由 AI 生成，仅供参考，不构成投资建议"
+  css_class: "ai-disclaimer"
+
+# ---- 日志 ----
+logging:
+  level: "INFO"
+  format: "{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
+  file: "logs/quant.log"
+  rotation: "10 MB"
