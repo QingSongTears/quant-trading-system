@@ -7,7 +7,7 @@ strategies:
   # ---- 内置预设策略 ----
   
   - name: "双均线交叉"
-    class_path: "strategies.ma_cross.MACrossStrategy"
+    class_path: "src.strategies.ma_cross.MACrossStrategy"
     params:
       fast_period: 5
       slow_period: 20
@@ -15,7 +15,7 @@ strategies:
     source: "基于移动平均线交叉概念，广泛应用于技术分析"
 
   - name: "MACD金叉死叉"
-    class_path: "strategies.macd_signal.MACDSignalStrategy"
+    class_path: "src.strategies.macd_signal.MACDSignalStrategy"
     params:
       fast_period: 12
       slow_period: 26
@@ -24,7 +24,7 @@ strategies:
     source: "Appel, G. (1979). The Moving Average Convergence-Divergence Method"
 
   - name: "RSI超买超卖"
-    class_path: "strategies.rsi_reversal.RSIReversalStrategy"
+    class_path: "src.strategies.rsi_reversal.RSIReversalStrategy"
     params:
       rsi_period: 14
       oversold_threshold: 30
@@ -33,7 +33,7 @@ strategies:
     source: "Wilder, J. W. (1978). New Concepts in Technical Trading Systems"
 
   - name: "布林带突破"
-    class_path: "strategies.bollinger_breakout.BollingerBreakoutStrategy"
+    class_path: "src.strategies.bollinger_breakout.BollingerBreakoutStrategy"
     params:
       period: 20
       std_dev: 2.0
@@ -41,7 +41,7 @@ strategies:
     source: "Bollinger, J. (2001). Bollinger on Bollinger Bands"
 
   - name: "海龟交易法则"
-    class_path: "strategies.turtle_trading.TurtleTradingStrategy"
+    class_path: "src.strategies.turtle_trading.TurtleTradingStrategy"
     params:
       entry_period: 20
       exit_period: 10

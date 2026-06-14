@@ -7,7 +7,7 @@ from typing import List, Optional
 
 import pandas as pd
 from sqlalchemy import create_engine, func, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..config import get_config, get_db_url
 from .database import Base, StockBasic, DailyPrice, BenchmarkData, StrategyConfig, BacktestResult, DataSourceMeta
@@ -166,14 +166,17 @@ class DataRepository:
         return result.id
 
     def get_backtest_result(self, result_id: int) -> Optional[BacktestResult]:
-        """获取回测结果详情"""
-        with self.get_session() as session:
-            return session.query(BacktestResult).filter_by(id=result_id).first()
-
-    def get_recent_backtests(self, limit: int = 10) -> List[BacktestResult]:
-        """获取最近的回测结果"""
+        """获取回测结果详情（已 eager load strategy 关系）"""
         with self.get_session() as session:
             return session.query(BacktestResult) \
+                .options(joinedload(BacktestResult.strategy)) \
+                .filter_by(id=result_id).first()
+
+    def get_recent_backtests(self, limit: int = 10) -> List[BacktestResult]:
+        """获取最近的回测结果（已 eager load strategy 关系）"""
+        with self.get_session() as session:
+            return session.query(BacktestResult) \
+                .options(joinedload(BacktestResult.strategy)) \
                 .order_by(BacktestResult.created_at.desc()) \
                 .limit(limit).all()
 

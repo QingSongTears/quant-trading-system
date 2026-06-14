@@ -7,42 +7,106 @@
         <h2><i class="bi bi-speedometer2"></i> 系统仪表盘</h2>
         <p class="text-muted">A股全市场量化回测系统 · 本地数据驱动</p>
     </div>
+    <div class="col-auto">
+        <span class="badge {% if has_data %}bg-success{% else %}bg-warning{% endif %} fs-6">
+            <i class="bi bi-{% if has_data %}check-circle{% else %}exclamation-triangle{% endif %}"></i>
+            {{ '系统就绪' if has_data else '需要下载数据' }}
+        </span>
+    </div>
 </div>
+
+{% if not has_data %}
+<!-- 空数据引导 -->
+<div class="row mb-4">
+    <div class="col">
+        <div class="card border-warning">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-cloud-download text-warning" style="font-size: 4rem;"></i>
+                <h4 class="mt-3">欢迎使用 A股量化回测系统</h4>
+                <p class="text-muted">首次使用需要下载全市场历史数据，预计耗时 30-90 分钟</p>
+                <div class="mt-3">
+                    <a href="/data" class="btn btn-primary btn-lg me-2">
+                        <i class="bi bi-download"></i> 开始下载数据
+                    </a>
+                    <a href="/strategies" class="btn btn-outline-secondary btn-lg">
+                        <i class="bi bi-layers"></i> 浏览策略
+                    </a>
+                </div>
+                <div class="ai-disclaimer mt-4 mx-auto" style="max-width: 600px;">
+                    🔵 <strong>{{ ai_disclaimer.text }}</strong> · 所有数据来自可考证的公开市场数据接口
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
 
 <!-- 数据状态卡片 -->
 <div class="row g-3 mb-4">
     <div class="col-md-3">
-        <div class="card p-3 text-center">
-            <div class="metric-label">A股总数</div>
-            <div class="metric-value">{{ coverage.total_stocks or 0 }}</div>
-            <small class="text-muted">沪深京三地</small>
+        <div class="card p-3 text-center h-100">
+            <div class="metric-label"><i class="bi bi-database"></i> A股总数</div>
+            <div class="metric-value">{{ "{:,}".format(coverage.total_stocks or 0) }}</div>
+            <small class="text-muted">沪深京三地上市公司</small>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card p-3 text-center">
-            <div class="metric-label">日线记录</div>
+        <div class="card p-3 text-center h-100">
+            <div class="metric-label"><i class="bi bi-bar-chart"></i> 日线记录</div>
             <div class="metric-value">{{ "{:,}".format(coverage.total_records or 0) }}</div>
-            <small class="text-muted">近3年历史数据</small>
+            <small class="text-muted">近3年历史行情数据</small>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card p-3 text-center">
-            <div class="metric-label">覆盖区间</div>
+        <div class="card p-3 text-center h-100">
+            <div class="metric-label"><i class="bi bi-calendar-range"></i> 覆盖区间</div>
             <div class="metric-value fs-5">
                 {% if coverage.date_range.start %}
                 {{ coverage.date_range.start }} ~ {{ coverage.date_range.end }}
-                {% else %}
-                暂无数据
-                {% endif %}
+                {% else %}暂无数据{% endif %}
             </div>
             <small class="text-muted">数据时间范围</small>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card p-3 text-center">
-            <div class="metric-label">数据来源</div>
+        <div class="card p-3 text-center h-100">
+            <div class="metric-label"><i class="bi bi-cloud-check"></i> 数据源</div>
             <div class="metric-value fs-5">AKShare</div>
             <small class="text-muted">东方财富/新浪公开接口</small>
+        </div>
+    </div>
+</div>
+
+<!-- 回测统计卡片 -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card p-3 text-center h-100 border-start border-4 border-primary">
+            <div class="metric-label"><i class="bi bi-trophy"></i> 最佳收益率</div>
+            <div class="metric-value {% if best_return and best_return > 0 %}profit{% else %}loss{% endif %}">
+                {{ "%.2f%%"|format(best_return) if best_return is not none else '-' }}
+            </div>
+            <small class="text-muted">所有回测中最高</small>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 text-center h-100 border-start border-4 border-info">
+            <div class="metric-label"><i class="bi bi-graph-up"></i> 平均夏普</div>
+            <div class="metric-value">{{ avg_sharpe if avg_sharpe is not none else '-' }}</div>
+            <small class="text-muted">风险调整后收益</small>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 text-center h-100 border-start border-4 border-success">
+            <div class="metric-label"><i class="bi bi-check2-circle"></i> 正收益比例</div>
+            <div class="metric-value">{{ win_rate|string + '%' if win_rate is not none else '-' }}</div>
+            <small class="text-muted">策略盈利占比</small>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 text-center h-100 border-start border-4 border-warning">
+            <div class="metric-label"><i class="bi bi-layers"></i> 已注册策略</div>
+            <div class="metric-value">{{ total_strategies }}</div>
+            <small class="text-muted">config/strategies.yaml</small>
         </div>
     </div>
 </div>
@@ -50,85 +114,108 @@
 <!-- 快捷操作 -->
 <div class="row g-3 mb-4">
     <div class="col-md-4">
-        <a href="/data" class="card p-4 text-decoration-none text-dark">
-            <h5><i class="bi bi-cloud-download"></i> 下载/更新数据</h5>
-            <p class="text-muted mb-0">首次使用请先下载全市场历史数据</p>
+        <a href="/data" class="card p-4 text-decoration-none h-100 hover-shadow" style="transition: box-shadow 0.2s;">
+            <h5><i class="bi bi-cloud-download text-primary"></i> 下载/更新数据</h5>
+            <p class="text-muted mb-0">增量更新或全量下载全市场历史数据</p>
+            <small class="text-primary">进入 →</small>
         </a>
     </div>
     <div class="col-md-4">
-        <a href="/backtest" class="card p-4 text-decoration-none text-dark">
-            <h5><i class="bi bi-play-fill"></i> 开始回测</h5>
-            <p class="text-muted mb-0">选择策略和标的，运行回测</p>
+        <a href="/backtest" class="card p-4 text-decoration-none h-100 hover-shadow" style="transition: box-shadow 0.2s;">
+            <h5><i class="bi bi-play-fill text-success"></i> 开始回测</h5>
+            <p class="text-muted mb-0">选择策略和标的，运行历史数据回测</p>
+            <small class="text-success">进入 →</small>
         </a>
     </div>
     <div class="col-md-4">
-        <a href="/strategies" class="card p-4 text-decoration-none text-dark">
-            <h5><i class="bi bi-layers"></i> 管理策略</h5>
-            <p class="text-muted mb-0">查看和配置已注册的量化策略</p>
+        <a href="/strategies" class="card p-4 text-decoration-none h-100 hover-shadow" style="transition: box-shadow 0.2s;">
+            <h5><i class="bi bi-layers text-info"></i> 管理策略</h5>
+            <p class="text-muted mb-0">查看和配置已注册的{{ total_strategies }}个量化策略</p>
+            <small class="text-info">进入 →</small>
         </a>
     </div>
 </div>
 
+{% if recent_backtests %}
+<!-- 回测绩效散点图 -->
+<div class="card p-4 mb-4">
+    <h5 class="section-title"><i class="bi bi-scatter-chart"></i> 回测绩效总览</h5>
+    <div id="performance-overview-chart" class="chart-container"></div>
+</div>
+{% endif %}
+
 <!-- 最近回测 -->
 <div class="card p-4 mb-4">
-    <h5 class="section-title"><i class="bi bi-clock-history"></i> 最近回测</h5>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="section-title mb-0"><i class="bi bi-clock-history"></i> 最近回测</h5>
+        <a href="/backtest" class="btn btn-sm btn-outline-primary">运行新回测</a>
+    </div>
     {% if recent_backtests %}
     <div class="table-responsive">
-        <table class="table table-hover">
-            <thead>
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
                 <tr>
                     <th>策略</th>
                     <th>标的</th>
-                    <th>收益率</th>
-                    <th>夏普比率</th>
-                    <th>最大回撤</th>
+                    <th class="text-end">收益率</th>
+                    <th class="text-end">夏普比率</th>
+                    <th class="text-end">最大回撤</th>
                     <th>回测时间</th>
-                    <th>操作</th>
+                    <th class="text-center">操作</th>
                 </tr>
             </thead>
             <tbody>
                 {% for r in recent_backtests %}
                 <tr>
-                    <td>{{ r.strategy.name if r.strategy else '未知' }}</td>
+                    <td><span class="badge bg-light text-dark">{{ r.strategy.name if r.strategy else '未知' }}</span></td>
                     <td><span class="stock-tag">{{ r.stock_code }}</span> {{ r.stock_name or '' }}</td>
-                    <td class="{% if r.total_return and r.total_return > 0 %}profit{% else %}loss{% endif %}">
-                        {{ "%.2f%%"|format(r.total_return) if r.total_return else '-' }}
+                    <td class="text-end">
+                        <span class="{% if r.total_return and r.total_return > 0 %}profit{% else %}loss{% endif %} fw-bold">
+                            {{ "%.2f%%"|format(r.total_return) if r.total_return else '-' }}
+                        </span>
                     </td>
-                    <td>{{ "%.2f"|format(r.sharpe_ratio) if r.sharpe_ratio else '-' }}</td>
-                    <td class="loss">{{ "%.2f%%"|format(r.max_drawdown) if r.max_drawdown else '-' }}</td>
-                    <td><small>{{ r.created_at.strftime('%Y-%m-%d %H:%M') if r.created_at else '-' }}</small></td>
-                    <td><a href="/backtest/{{ r.id }}" class="btn btn-sm btn-outline-primary">详情</a></td>
+                    <td class="text-end">{{ "%.2f"|format(r.sharpe_ratio) if r.sharpe_ratio else '-' }}</td>
+                    <td class="text-end">
+                        <span class="loss">{{ "%.2f%%"|format(r.max_drawdown) if r.max_drawdown else '-' }}</span>
+                    </td>
+                    <td><small class="text-muted">{{ r.created_at.strftime('%m-%d %H:%M') if r.created_at else '-' }}</small></td>
+                    <td class="text-center">
+                        <a href="/backtest/{{ r.id }}" class="btn btn-sm btn-outline-primary">详情</a>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
     {% else %}
-    <div class="text-center text-muted py-5">
-        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
-        <p class="mt-3">暂无回测记录 · <a href="/backtest">开始第一次回测</a></p>
+    <div class="text-center text-muted py-4">
+        <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+        <p class="mt-2">暂无回测记录 · <a href="/backtest">开始第一次回测</a></p>
     </div>
     {% endif %}
 </div>
+{% endif %}
 
 <!-- 数据源声明 -->
 <div class="row g-3">
     <div class="col-12">
         <div class="card p-3">
             <h6><i class="bi bi-database-check"></i> 数据来源声明</h6>
+            <div class="table-responsive">
             <table class="table table-sm mb-0">
                 <thead><tr><th>数据源</th><th>接口</th><th>用途</th><th>可考证方式</th></tr></thead>
                 <tbody>
                     {% for src in data_sources %}
                     <tr>
                         <td><strong>{{ src.name }}</strong></td>
-                        <td><a href="{{ src.url }}" target="_blank">{{ src.url }}</a></td>
+                        <td><a href="{{ src.url }}" target="_blank" rel="noopener">{{ src.url }}</a></td>
                         <td>{{ src.desc }}</td>
                         <td>对比交易所公开数据</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
             <div class="ai-disclaimer mt-2">
                 🔵 <strong>{{ ai_disclaimer.text }}</strong> · 以上数据来源于可考证的公开市场数据接口，未经任何修改。回测结果不代表未来表现。
             </div>
@@ -136,4 +223,79 @@
     </div>
 </div>
 
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 回测绩效散点图 (收益率 vs 夏普比率)
+    const chartDom = document.getElementById('performance-overview-chart');
+    if (!chartDom) return;
+    
+    const chart = echarts.init(chartDom);
+    
+    // 提取回测数据渲染散点图
+    const rows = document.querySelectorAll('table.table tbody tr');
+    const scatterData = [];
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        const returnCell = cells[2]?.textContent?.trim();
+        const sharpeCell = cells[3]?.textContent?.trim();
+        const strategyCell = cells[0]?.textContent?.trim();
+        if (returnCell && sharpeCell && returnCell !== '-') {
+            scatterData.push({
+                value: [parseFloat(returnCell), parseFloat(sharpeCell)],
+                name: strategyCell,
+            });
+        }
+    });
+    
+    if (scatterData.length > 0) {
+        chart.setOption({
+            tooltip: {
+                trigger: 'item',
+                formatter: function(p) {
+                    return `${p.name}<br/>收益率: ${p.value[0].toFixed(2)}%<br/>夏普: ${p.value[1].toFixed(2)}`;
+                }
+            },
+            grid: { left: 60, right: 30, top: 20, bottom: 40 },
+            xAxis: {
+                name: '收益率 (%)',
+                nameLocation: 'center',
+                nameGap: 25,
+                axisLine: { lineStyle: { color: '#999' } },
+                splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' } }
+            },
+            yAxis: {
+                name: '夏普比率',
+                nameLocation: 'center',
+                nameGap: 35,
+                axisLine: { lineStyle: { color: '#999' } },
+                splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' } }
+            },
+            series: [{
+                type: 'scatter',
+                data: scatterData,
+                symbolSize: function(data) {
+                    return Math.min(Math.abs(data[0]) * 0.8 + 8, 40);
+                },
+                itemStyle: {
+                    color: function(params) {
+                        return params.value[0] > 0 ? '#22c55e' : '#ef4444';
+                    },
+                    opacity: 0.7,
+                },
+                emphasis: {
+                    scale: 1.5,
+                    itemStyle: { opacity: 1 }
+                },
+            }]
+        });
+    } else {
+        chartDom.innerHTML = '<div class="text-center text-muted py-5">暂无回测数据可展示</div>';
+    }
+    
+    // 响应式
+    window.addEventListener('resize', () => chart.resize());
+});
+</script>
 {% endblock %}

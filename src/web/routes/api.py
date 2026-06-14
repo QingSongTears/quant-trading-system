@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from ...models.repository import DataRepository
 from ...data.downloader import DataDownloader
 from ...backtest.engine import BacktestEngine
+from ..app import download_status as _download_status
 
 router = APIRouter()
 
@@ -72,28 +73,45 @@ async def trigger_download(mode: str = "incremental"):
     
     🔵 下载状态和进度通过 /api/data/download/status 查询
     """
-    download_status = {"running": True, "progress": 0, "total": 0, "current": ""}
+    from datetime import datetime as dt
+
+    # 检查是否有正在运行的下载
+    if _download_status["running"]:
+        return {
+            "success": False,
+            "error": "下载任务正在运行中，请等待完成",
+            "current": _download_status["current"],
+            "progress": _download_status["progress"],
+            "total": _download_status["total"],
+        }
+
+    # 重置全局状态
+    _download_status.update({
+        "running": True, "mode": mode, "progress": 0,
+        "total": 0, "current": "准备中...", "error": None,
+        "result": None, "started_at": dt.now().isoformat(),
+    })
 
     def _run():
         try:
             downloader = DataDownloader()
             if mode == "full":
                 result = downloader.download_full(
-                    progress_callback=lambda c, t, code, name: download_status.update(
+                    progress_callback=lambda c, t, code, name: _download_status.update(
                         {"progress": c, "total": t, "current": f"{code} {name}"}
                     )
                 )
             else:
                 result = downloader.download_incremental(
-                    progress_callback=lambda c, t, code, name: download_status.update(
+                    progress_callback=lambda c, t, code, name: _download_status.update(
                         {"progress": c, "total": t, "current": f"{code} {name}"}
                     )
                 )
-            download_status["running"] = False
-            download_status["result"] = result
+            _download_status["running"] = False
+            _download_status["result"] = result
         except Exception as e:
-            download_status["running"] = False
-            download_status["error"] = str(e)
+            _download_status["running"] = False
+            _download_status["error"] = str(e)
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
@@ -103,9 +121,18 @@ async def trigger_download(mode: str = "incremental"):
 
 @router.get("/data/download/status")
 async def get_download_status():
-    """查询下载进度"""
-    # 需要全局状态管理，此处简化实现
-    return {"success": True, "note": "🔵 AI生成: 下载状态功能需要全局状态管理器"}
+    """查询下载进度（使用全局状态管理器）"""
+    return {
+        "success": True,
+        "running": _download_status["running"],
+        "mode": _download_status["mode"],
+        "progress": _download_status["progress"],
+        "total": _download_status["total"],
+        "current": _download_status["current"],
+        "error": _download_status["error"],
+        "result": _download_status["result"],
+        "started_at": _download_status["started_at"],
+    }
 
 
 # ===== 回测 API =====
@@ -162,8 +189,7 @@ async def run_backtest(req: BacktestRequest):
             strategy_record = session.query(StrategyConfig).filter_by(name=req.strategy_name).first()
             strategy_id = strategy_record.id if strategy_record else None
 
-            result_dict = report.to_dict()
-            result_dict["strategy_id"] = strategy_id
+            result_dict = report.to_db_dict(strategy_id)
             result_dict["stock_name"] = report.stock_name
             result_id = repo.save_backtest_result(session, result_dict)
             session.commit()

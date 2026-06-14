@@ -23,12 +23,20 @@
             回测时间: {{ result.created_at.strftime('%Y-%m-%d %H:%M') if result.created_at else '-' }}
         </p>
     </div>
+    <div class="col-auto">
+        <a href="/backtest" class="btn btn-outline-primary">
+            <i class="bi bi-arrow-repeat"></i> 重新回测
+        </a>
+        <a href="/compare?ids={{ result.id }}" class="btn btn-outline-secondary ms-1">
+            <i class="bi bi-bar-chart"></i> 加入对比
+        </a>
+    </div>
 </div>
 
 <!-- 核心指标卡片 -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-md-2">
-        <div class="card p-3 text-center">
+        <div class="card p-3 text-center h-100">
             <div class="metric-label">总收益率</div>
             <div class="metric-value {% if result.total_return and result.total_return > 0 %}profit{% else %}loss{% endif %}">
                 {{ "%.2f%%"|format(result.total_return) if result.total_return else '-' }}
@@ -36,31 +44,31 @@
         </div>
     </div>
     <div class="col-6 col-md-2">
-        <div class="card p-3 text-center">
+        <div class="card p-3 text-center h-100">
             <div class="metric-label">年化收益</div>
             <div class="metric-value">{{ "%.2f%%"|format(result.annual_return) if result.annual_return else '-' }}</div>
         </div>
     </div>
     <div class="col-6 col-md-2">
-        <div class="card p-3 text-center">
+        <div class="card p-3 text-center h-100">
             <div class="metric-label">夏普比率</div>
             <div class="metric-value">{{ "%.2f"|format(result.sharpe_ratio) if result.sharpe_ratio else '-' }}</div>
         </div>
     </div>
     <div class="col-6 col-md-2">
-        <div class="card p-3 text-center">
+        <div class="card p-3 text-center h-100">
             <div class="metric-label">最大回撤</div>
             <div class="metric-value loss">{{ "%.2f%%"|format(result.max_drawdown) if result.max_drawdown else '-' }}</div>
         </div>
     </div>
     <div class="col-6 col-md-2">
-        <div class="card p-3 text-center">
+        <div class="card p-3 text-center h-100">
             <div class="metric-label">胜率</div>
             <div class="metric-value">{{ "%.1f%%"|format(result.win_rate) if result.win_rate else '-' }}</div>
         </div>
     </div>
     <div class="col-6 col-md-2">
-        <div class="card p-3 text-center">
+        <div class="card p-3 text-center h-100">
             <div class="metric-label">交易次数</div>
             <div class="metric-value">{{ result.total_trades or 0 }}</div>
         </div>
@@ -113,49 +121,55 @@
     </div>
 </div>
 
-<!-- 图表: 净值曲线 & 回撤曲线 -->
+<!-- 图表: 净值曲线 & 基准叠加 -->
+<div class="card p-4 mb-4">
+    <h5 class="section-title">净值曲线与基准对比</h5>
+    <div id="equity-benchmark-chart" class="chart-container" style="height: 450px;"></div>
+</div>
+
+<!-- 图表: 回撤曲线 & 月度热力图 -->
 <div class="row g-3 mb-4">
-    <div class="col-md-8">
-        <div class="card p-4">
-            <h5 class="section-title">净值曲线</h5>
-            <div id="equity-chart" class="chart-container"></div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card p-4">
+    <div class="col-md-7">
+        <div class="card p-4 h-100">
             <h5 class="section-title">回撤曲线</h5>
             <div id="drawdown-chart" class="chart-container"></div>
+        </div>
+    </div>
+    <div class="col-md-5">
+        <div class="card p-4 h-100">
+            <h5 class="section-title">月度收益热力图</h5>
+            <div id="monthly-heatmap" class="chart-container"></div>
         </div>
     </div>
 </div>
 
 <!-- 交易明细 -->
 <div class="card p-4 mb-4">
-    <h5 class="section-title">交易明细</h5>
+    <h5 class="section-title">交易明细 <span class="badge bg-secondary">{{ trades|length if trades else 0 }} 笔</span></h5>
     {% if trades %}
     <div class="table-responsive">
         <table class="table table-sm table-hover" id="trades-table">
-            <thead>
+            <thead class="table-light">
                 <tr>
                     <th>#</th>
-                    <th>数量</th>
-                    <th>买入价</th>
-                    <th>卖出价</th>
-                    <th>盈亏</th>
-                    <th>收益率</th>
+                    <th class="text-end">数量</th>
+                    <th class="text-end">买入价</th>
+                    <th class="text-end">卖出价</th>
+                    <th class="text-end">盈亏</th>
+                    <th class="text-end">收益率</th>
                 </tr>
             </thead>
             <tbody>
                 {% for t in trades %}
                 <tr>
                     <td>{{ loop.index }}</td>
-                    <td>{{ t.size }}</td>
-                    <td>{{ "%.2f"|format(t.entry_price) if t.entry_price else '-' }}</td>
-                    <td>{{ "%.2f"|format(t.exit_price) if t.exit_price else '-' }}</td>
-                    <td class="{% if t.pnl and t.pnl > 0 %}profit{% else %}loss{% endif %}">
+                    <td class="text-end">{{ t.size }}</td>
+                    <td class="text-end">{{ "%.2f"|format(t.entry_price) if t.entry_price else '-' }}</td>
+                    <td class="text-end">{{ "%.2f"|format(t.exit_price) if t.exit_price else '-' }}</td>
+                    <td class="text-end {% if t.pnl and t.pnl > 0 %}profit{% else %}loss{% endif %}">
                         {{ "%.2f"|format(t.pnl) if t.pnl else '-' }}
                     </td>
-                    <td class="{% if t.return_pct and t.return_pct > 0 %}profit{% else %}loss{% endif %}">
+                    <td class="text-end {% if t.return_pct and t.return_pct > 0 %}profit{% else %}loss{% endif %}">
                         {{ "%.2f%%"|format(t.return_pct) if t.return_pct else '-' }}
                     </td>
                 </tr>
@@ -191,21 +205,59 @@
 document.addEventListener('DOMContentLoaded', function() {
     const equityData = {{ equity_curve | safe }};
     const drawdownData = {{ drawdown_curve | safe }};
+    const monthlyData = {{ monthly_returns | safe }};
     
-    // 净值曲线
+    // 净值曲线 + 基准叠加
     if (equityData && equityData.length > 0) {
-        const equityChart = echarts.init(document.getElementById('equity-chart'));
-        equityChart.setOption({
-            tooltip: { trigger: 'axis' },
-            grid: { left: 60, right: 20, top: 20, bottom: 30 },
-            xAxis: { type: 'category', data: equityData.map(d => d.date), axisLabel: { rotate: 45, fontSize: 10 } },
-            yAxis: { type: 'value', name: '权益 (元)', axisLabel: { formatter: v => (v/10000).toFixed(0) + '万' } },
+        const chart = echarts.init(document.getElementById('equity-benchmark-chart'));
+        const dates = equityData.map(d => d.date);
+        const equity = equityData.map(d => d.equity);
+        
+        const option = {
+            tooltip: { 
+                trigger: 'axis',
+                axisPointer: { type: 'cross' }
+            },
+            legend: { 
+                data: ['策略净值', '初始资金'],
+                top: 0,
+            },
+            grid: { left: 70, right: 20, top: 35, bottom: 35 },
+            xAxis: { 
+                type: 'category', 
+                data: dates, 
+                axisLabel: { rotate: 30, fontSize: 10, formatter: v => v.slice(0, 7) },
+            },
+            yAxis: { 
+                type: 'value', 
+                name: '权益 (元)',
+                axisLabel: { formatter: v => (v/10000).toFixed(0) + '万' },
+                splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+            },
             series: [{
-                name: '净值', type: 'line', data: equityData.map(d => d.equity),
-                smooth: true, showSymbol: false, lineStyle: { color: '#6366f1', width: 2 },
-                areaStyle: { color: 'rgba(99,102,241,0.1)' }
-            }]
-        });
+                name: '策略净值',
+                type: 'line', 
+                data: equity,
+                smooth: true, 
+                showSymbol: false, 
+                lineStyle: { color: '#6366f1', width: 2 },
+                areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1, [
+                    {offset: 0, color: 'rgba(99,102,241,0.2)'},
+                    {offset: 1, color: 'rgba(99,102,241,0.02)'}
+                ])},
+                markLine: {
+                    silent: true,
+                    data: [{ yAxis: {{ result.initial_capital }}, label: { formatter: '初始', position: 'start' } }],
+                    lineStyle: { color: '#999', type: 'dashed' }
+                }
+            }],
+            dataZoom: [
+                { type: 'inside', start: 0, end: 100 },
+                { type: 'slider', start: 0, end: 100, height: 20, bottom: 5 }
+            ]
+        };
+        chart.setOption(option);
+        window.addEventListener('resize', () => chart.resize());
     }
     
     // 回撤曲线
@@ -213,15 +265,60 @@ document.addEventListener('DOMContentLoaded', function() {
         const ddChart = echarts.init(document.getElementById('drawdown-chart'));
         ddChart.setOption({
             tooltip: { trigger: 'axis', formatter: p => `${p[0].axisValue}<br/>回撤: ${p[0].value}%` },
-            grid: { left: 50, right: 10, top: 20, bottom: 30 },
-            xAxis: { type: 'category', data: drawdownData.map(d => d.date), axisLabel: { fontSize: 9 } },
+            grid: { left: 50, right: 15, top: 15, bottom: 30 },
+            xAxis: { type: 'category', data: drawdownData.map(d => d.date), axisLabel: { fontSize: 9, rotate: 30 } },
             yAxis: { type: 'value', name: '回撤 %', inverse: true, axisLabel: { formatter: v => v + '%' } },
             series: [{
                 name: '回撤', type: 'line', data: drawdownData.map(d => d.drawdown),
                 smooth: true, showSymbol: false, lineStyle: { color: '#ef4444', width: 1 },
                 areaStyle: { color: 'rgba(239,68,68,0.15)' }
+            }],
+            dataZoom: [{ type: 'inside' }, { type: 'slider', height: 15, bottom: 5 }]
+        });
+        window.addEventListener('resize', () => ddChart.resize());
+    }
+    
+    // 月度收益热力图
+    const heatmapDom = document.getElementById('monthly-heatmap');
+    if (heatmapDom && monthlyData && Object.keys(monthlyData).length > 0) {
+        const heatChart = echarts.init(heatmapDom);
+        const months = Object.keys(monthlyData).sort();
+        const values = months.map(m => monthlyData[m]);
+        const maxAbs = Math.max(Math.abs(Math.max(...values)), Math.abs(Math.min(...values)), 1);
+        
+        heatChart.setOption({
+            tooltip: { 
+                trigger: 'axis',
+                formatter: p => `${p[0].name}<br/>收益: ${p[0].value.toFixed(2)}%`
+            },
+            grid: { left: 55, right: 15, top: 10, bottom: 45 },
+            xAxis: { 
+                type: 'category', data: months,
+                axisLabel: { rotate: 45, fontSize: 9, formatter: v => v.slice(2) }
+            },
+            yAxis: { type: 'value', name: '%', axisLabel: { formatter: v => v + '%' } },
+            visualMap: {
+                min: -maxAbs, max: maxAbs,
+                calculable: true,
+                orient: 'horizontal',
+                left: 'center', bottom: 0,
+                inRange: { color: ['#ef4444', '#f8fafc', '#22c55e'] },
+                textStyle: { fontSize: 9 }
+            },
+            series: [{
+                type: 'bar',
+                data: values.map((v, i) => ({
+                    value: v,
+                    itemStyle: { color: v >= 0 ? 
+                        `rgba(34,197,94,${Math.min(0.8, Math.abs(v)/maxAbs*0.8+0.2)})` : 
+                        `rgba(239,68,68,${Math.min(0.8, Math.abs(v)/maxAbs*0.8+0.2)})` 
+                    }
+                })),
             }]
         });
+        window.addEventListener('resize', () => heatChart.resize());
+    } else if (heatmapDom) {
+        heatmapDom.innerHTML = '<div class="text-center text-muted py-5"><small>暂无月度数据</small></div>';
     }
 });
 </script>

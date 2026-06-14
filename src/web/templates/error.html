@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ error_code }} - {{ app_name }}</title>
+    <link href="{{ cdn.bootstrap }}/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ cdn.icons }}/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        .error-page { min-height: 80vh; display: flex; align-items: center; justify-content: center; }
+        .error-code { font-size: 6rem; font-weight: 800; color: #6366f1; line-height: 1; }
+        .ai-disclaimer { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 0.75rem 1rem; border-radius: 6px; font-size: 0.85rem; color: #1e40af; }
+    </style>
+</head>
+<body>
+    <div class="error-page">
+        <div class="text-center">
+            <div class="error-code">{{ error_code }}</div>
+            <h3 class="mt-3 mb-4">{{ error_message }}</h3>
+            <p class="text-muted">
+                {% if error_code == 404 %}
+                您访问的页面不存在或已被移除
+                {% else %}
+                服务器遇到了意外错误，请稍后重试
+                {% endif %}
+            </p>
+            <div class="mt-4">
+                <a href="/" class="btn btn-primary">
+                    <i class="bi bi-house"></i> 返回首页
+                </a>
+                <a href="/backtest" class="btn btn-outline-secondary ms-2">
+                    <i class="bi bi-play-circle"></i> 回测执行
+                </a>
+            </div>
+            <div class="ai-disclaimer mt-4 mx-auto" style="max-width: 500px;">
+                🔵 <strong>{{ ai_disclaimer.text }}</strong> · 所有行情数据来源于可考证的公开数据接口
+            </div>
+        </div>
+    </div>
+    <script src="{{ cdn.bootstrap }}/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

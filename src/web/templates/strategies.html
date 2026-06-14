@@ -24,8 +24,7 @@
                 <table class="table table-sm small">
                     <tbody>
                         {% if s.params %}
-                        {% set params = s.params | tojson | from_json if s.params is string else s.params %}
-                        {% for k, v in params.items() %}
+                        {% for k, v in s.params.items() %}
                         <tr><td><code>{{ k }}</code></td><td>{{ v }}</td></tr>
                         {% endfor %}
                         {% else %}

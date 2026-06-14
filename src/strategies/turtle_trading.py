@@ -40,7 +40,7 @@ class TurtleTradingStrategy(BaseStrategy):
 
     def next(self):
         n = max(self.entry_period, self.atr_period)
-        if len(self.close) < n:
+        if len(self.data.Close) < n:
             return
 
         # 入场: 突破N日高点

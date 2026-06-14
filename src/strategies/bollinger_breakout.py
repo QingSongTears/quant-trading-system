@@ -28,7 +28,7 @@ class BollingerBreakoutStrategy(BaseStrategy):
         )
 
     def next(self):
-        if len(self.close) < self.period:
+        if len(self.data.Close) < self.period:
             return
 
         # 价格跌破下轨 → 买入

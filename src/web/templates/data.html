@@ -7,32 +7,48 @@
         <h2><i class="bi bi-database"></i> 数据管理</h2>
         <p class="text-muted">全市场A股历史数据下载 · 本地SQLite存储 · 可考证数据源</p>
     </div>
+    <div class="col-auto">
+        <span class="badge {% if stock_count and stock_count > 0 %}bg-success{% else %}bg-secondary{% endif %} fs-6">
+            <i class="bi bi-{% if stock_count and stock_count > 0 %}check-circle{% else %}dash-circle{% endif %}"></i>
+            {{ stock_count or 0 }} 只股票
+        </span>
+    </div>
 </div>
 
 <!-- 数据覆盖概览 -->
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
-        <div class="card p-3 text-center">
+    <div class="col-md-3">
+        <div class="card p-3 text-center h-100">
             <div class="metric-label">股票总数</div>
-            <div class="metric-value">{{ coverage.total_stocks or 0 }}</div>
+            <div class="metric-value">{{ "{:,}".format(coverage.total_stocks or 0) }}</div>
+            <small class="text-muted">沪深京三地</small>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card p-3 text-center">
+    <div class="col-md-3">
+        <div class="card p-3 text-center h-100">
             <div class="metric-label">总记录数</div>
             <div class="metric-value">{{ "{:,}".format(coverage.total_records or 0) }}</div>
+            <small class="text-muted">日均 {{ "{:.0f}".format(avg_records_per_stock) }} 条/股</small>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card p-3 text-center">
+    <div class="col-md-3">
+        <div class="card p-3 text-center h-100">
             <div class="metric-label">日期范围</div>
             <div class="metric-value fs-5">
                 {% if coverage.date_range.start %}
                 {{ coverage.date_range.start }} ~ {{ coverage.date_range.end }}
-                {% else %}
-                无数据
-                {% endif %}
+                {% else %}无数据{% endif %}
             </div>
+            <small class="text-muted">数据覆盖区间</small>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 text-center h-100">
+            <div class="metric-label">数据源状态</div>
+            <div class="metric-value fs-5">
+                <span class="text-success"><i class="bi bi-check-circle-fill"></i> AKShare</span>
+            </div>
+            <small class="text-muted">主数据源就绪</small>
         </div>
     </div>
 </div>
@@ -49,26 +65,62 @@
                 <option value="full">全量下载（重新下载所有数据）</option>
             </select>
         </div>
-        <div class="col-md-2">
-            <button class="btn btn-primary w-100" onclick="startDownload()">
-                <i class="bi bi-download"></i> 开始下载
-            </button>
+        <div class="col-md-3">
+            <label class="form-label">操作</label>
+            <div>
+                <button class="btn btn-primary w-100" id="download-btn" onclick="startDownload()">
+                    <i class="bi bi-download"></i> 开始下载
+                </button>
+                <button class="btn btn-outline-danger w-100 mt-1 d-none" id="cancel-btn" onclick="cancelDownload()">
+                    <i class="bi bi-x-circle"></i> 取消
+                </button>
+            </div>
         </div>
-        <div class="col-md-7">
+        <div class="col-md-6">
             <div id="download-progress" class="d-none">
-                <label class="form-label">下载进度</label>
-                <div class="progress" style="height: 25px;">
+                <div class="d-flex justify-content-between">
+                    <label class="form-label">下载进度 <span id="progress-pct">0%</span></label>
+                    <small class="text-muted" id="progress-eta"></small>
+                </div>
+                <div class="progress" style="height: 28px;">
                     <div class="progress-bar progress-bar-striped progress-bar-animated" 
                          id="progress-bar" style="width: 0%">0%</div>
                 </div>
-                <small class="text-muted" id="progress-text"></small>
+                <small class="text-muted mt-1 d-block" id="progress-current">准备中...</small>
+                <div id="download-error" class="alert alert-danger mt-2 py-2 d-none"></div>
+                <div id="download-done" class="alert alert-success mt-2 py-2 d-none">
+                    <i class="bi bi-check-circle"></i> 下载完成！<a href="." class="ms-2">刷新页面查看</a>
+                </div>
             </div>
         </div>
     </div>
     
     <div class="ai-disclaimer mt-3">
         🔵 <strong>数据来源声明</strong>: 所有数据来自 AKShare (akshare.readthedocs.io) 
-        封装的东方财富/新浪财经公开接口，原始数据未经任何修改或模拟。
+        封装的东方财富/新浪财经公开接口，原始数据未经任何修改或模拟。下载速率受限于 AKShare 服务端限流策略。
+    </div>
+</div>
+
+<!-- 股票搜索 -->
+<div class="card p-4 mb-4">
+    <h5 class="section-title"><i class="bi bi-search"></i> 股票数据查询</h5>
+    <div class="row g-3">
+        <div class="col-md-6">
+            <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" class="form-control" id="stock-search" 
+                       placeholder="输入股票代码或名称搜索..." 
+                       autocomplete="off">
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div id="search-results" class="list-group" style="max-height: 200px; overflow-y: auto;"></div>
+        </div>
+    </div>
+    <div id="stock-detail" class="mt-3 d-none">
+        <div class="card bg-light">
+            <div class="card-body py-2" id="stock-detail-content"></div>
+        </div>
     </div>
 </div>
 
@@ -77,8 +129,8 @@
     <h5 class="section-title"><i class="bi bi-clock-history"></i> 下载历史</h5>
     {% if download_history %}
     <div class="table-responsive">
-        <table class="table table-sm">
-            <thead>
+        <table class="table table-sm table-hover">
+            <thead class="table-light">
                 <tr>
                     <th>数据源</th>
                     <th>下载时间</th>
@@ -91,12 +143,14 @@
                 {% for h in download_history %}
                 <tr>
                     <td>{{ h.source_name }}</td>
-                    <td>{{ h.download_time.strftime('%Y-%m-%d %H:%M') if h.download_time else '-' }}</td>
+                    <td><small>{{ h.download_time.strftime('%Y-%m-%d %H:%M') if h.download_time else '-' }}</small></td>
                     <td>{{ h.stock_count or '-' }}</td>
                     <td>{{ "{:,}".format(h.record_count) if h.record_count else '-' }}</td>
                     <td>
                         {% if h.status == 'completed' %}
                         <span class="badge bg-success">完成</span>
+                        {% elif h.status == 'failed' %}
+                        <span class="badge bg-danger">失败</span>
                         {% else %}
                         <span class="badge bg-warning">{{ h.status }}</span>
                         {% endif %}
@@ -108,7 +162,8 @@
     </div>
     {% else %}
     <div class="text-center text-muted py-4">
-        <p>暂无下载记录，请先下载数据</p>
+        <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+        <p class="mt-2">暂无下载记录，请先下载数据</p>
     </div>
     {% endif %}
 </div>
@@ -116,6 +171,7 @@
 <!-- 数据源信息 -->
 <div class="card p-4">
     <h5 class="section-title"><i class="bi bi-info-circle"></i> 数据源详细说明</h5>
+    <div class="table-responsive">
     <table class="table">
         <thead>
             <tr><th>数据项</th><th>来源</th><th>接口</th><th>可考证方式</th></tr>
@@ -147,6 +203,7 @@
             </tr>
         </tbody>
     </table>
+    </div>
     <div class="ai-disclaimer">
         🔵 <strong>{{ ai_disclaimer.text }}</strong> · 本系统禁止使用任何模拟/伪造/插值生成的数据。所有数值保留原始精度。
     </div>
@@ -155,28 +212,165 @@
 {% endblock %}
 {% block scripts %}
 <script>
+let downloadPollTimer = null;
+let downloadStartTime = null;
+
+// 股票搜索（防抖）
+let searchTimer = null;
+document.getElementById('stock-search').addEventListener('input', function() {
+    clearTimeout(searchTimer);
+    const q = this.value.trim();
+    if (q.length < 1) {
+        document.getElementById('search-results').innerHTML = '';
+        return;
+    }
+    searchTimer = setTimeout(() => searchStocks(q), 300);
+});
+
+async function searchStocks(q) {
+    const resultsDiv = document.getElementById('search-results');
+    try {
+        const resp = await fetch(`/api/data/search?q=${encodeURIComponent(q)}`);
+        const data = await resp.json();
+        if (data.success && data.data.length > 0) {
+            resultsDiv.innerHTML = data.data.map(s => 
+                `<button class="list-group-item list-group-item-action py-2" onclick="showStockDetail('${s.code}','${s.name}','${s.market || ''}')">
+                    <span class="stock-tag">${s.code}</span> <strong>${s.name}</strong>
+                    <small class="text-muted ms-2">${s.market || ''}</small>
+                </button>`
+            ).join('');
+        } else {
+            resultsDiv.innerHTML = '<div class="list-group-item text-muted py-2">未找到匹配股票</div>';
+        }
+    } catch (e) {
+        resultsDiv.innerHTML = '<div class="list-group-item text-danger py-2">搜索失败</div>';
+    }
+}
+
+function showStockDetail(code, name, market) {
+    const detail = document.getElementById('stock-detail');
+    detail.classList.remove('d-none');
+    document.getElementById('stock-detail-content').innerHTML = 
+        `<strong>${name}</strong> <span class="stock-tag">${code}</span> 
+         <small class="text-muted">${market}</small>
+         <a href="/backtest" class="btn btn-sm btn-outline-primary ms-3">对该股回测 →</a>`;
+}
+
+// 下载控制
 async function startDownload() {
     const mode = document.getElementById('download-mode').value;
     const progressDiv = document.getElementById('download-progress');
     const bar = document.getElementById('progress-bar');
-    const text = document.getElementById('progress-text');
+    const downloadBtn = document.getElementById('download-btn');
+    const cancelBtn = document.getElementById('cancel-btn');
     
     progressDiv.classList.remove('d-none');
+    document.getElementById('download-error').classList.add('d-none');
+    document.getElementById('download-done').classList.add('d-none');
+    downloadBtn.disabled = true;
+    cancelBtn.classList.remove('d-none');
+    downloadStartTime = Date.now();
+    
     bar.style.width = '0%';
     bar.textContent = '启动中...';
-    text.textContent = '正在准备下载...';
+    bar.className = 'progress-bar progress-bar-striped progress-bar-animated';
+    document.getElementById('progress-current').textContent = '正在启动下载任务...';
+    document.getElementById('progress-eta').textContent = '';
     
     try {
         const resp = await fetch(`/api/data/download?mode=${mode}`, { method: 'POST' });
         const data = await resp.json();
         if (data.success) {
-            text.textContent = '下载任务已启动，请等待完成（可能需要数分钟）';
+            document.getElementById('progress-current').textContent = '下载任务已启动，正在获取数据...';
+            // 开始轮询进度
+            downloadPollTimer = setInterval(pollDownloadStatus, 2000);
         } else {
-            text.textContent = '下载失败: ' + (data.error || '未知错误');
+            showDownloadError(data.error || '启动下载失败');
+            resetDownloadUI();
         }
     } catch (e) {
-        text.textContent = '请求失败: ' + e.message;
+        showDownloadError('请求失败: ' + e.message);
+        resetDownloadUI();
     }
+}
+
+async function pollDownloadStatus() {
+    try {
+        const resp = await fetch('/api/data/download/status');
+        const data = await resp.json();
+        
+        if (!data.success) return;
+        
+        const bar = document.getElementById('progress-bar');
+        const pctDisplay = document.getElementById('progress-pct');
+        const currentLabel = document.getElementById('progress-current');
+        const etaLabel = document.getElementById('progress-eta');
+        
+        if (data.total > 0) {
+            const pct = Math.round(data.progress / data.total * 100);
+            bar.style.width = pct + '%';
+            bar.textContent = pct + '%';
+            pctDisplay.textContent = pct + '%';
+            
+            // 预估剩余时间
+            if (downloadStartTime && data.progress > 0) {
+                const elapsed = (Date.now() - downloadStartTime) / 1000;
+                const rate = data.progress / elapsed;
+                const remaining = (data.total - data.progress) / rate;
+                const mins = Math.floor(remaining / 60);
+                const secs = Math.floor(remaining % 60);
+                etaLabel.textContent = `预计剩余: ${mins}分${secs}秒`;
+            }
+        }
+        
+        currentLabel.textContent = data.current || '处理中...';
+        
+        if (data.error) {
+            showDownloadError(data.error);
+            stopPollingAndReset();
+        }
+        
+        if (!data.running) {
+            // 下载完成
+            clearInterval(downloadPollTimer);
+            downloadPollTimer = null;
+            bar.style.width = '100%';
+            bar.textContent = '100%';
+            bar.className = 'progress-bar bg-success';
+            document.getElementById('progress-current').textContent = '下载完成!';
+            document.getElementById('progress-eta').textContent = '';
+            document.getElementById('download-done').classList.remove('d-none');
+            document.getElementById('cancel-btn').classList.add('d-none');
+            document.getElementById('download-btn').disabled = false;
+        }
+    } catch (e) {
+        // 轮询失败不显示错误，继续重试
+    }
+}
+
+function showDownloadError(msg) {
+    const errDiv = document.getElementById('download-error');
+    errDiv.textContent = '❌ ' + msg;
+    errDiv.classList.remove('d-none');
+}
+
+function resetDownloadUI() {
+    document.getElementById('download-btn').disabled = false;
+    document.getElementById('cancel-btn').classList.add('d-none');
+}
+
+function stopPollingAndReset() {
+    if (downloadPollTimer) {
+        clearInterval(downloadPollTimer);
+        downloadPollTimer = null;
+    }
+    resetDownloadUI();
+}
+
+function cancelDownload() {
+    stopPollingAndReset();
+    document.getElementById('progress-current').textContent = '已取消';
+    document.getElementById('progress-bar').className = 'progress-bar bg-secondary';
 }
 </script>
 {% endblock %}
