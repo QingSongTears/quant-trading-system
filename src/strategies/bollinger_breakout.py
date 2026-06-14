@@ -8,7 +8,7 @@
 
 来源: Bollinger, J. (2001). Bollinger on Bollinger Bands. McGraw-Hill.
 """
-from ...backtest.base_strategy import BaseStrategy
+from ..backtest.base_strategy import BaseStrategy
 
 
 class BollingerBreakoutStrategy(BaseStrategy):

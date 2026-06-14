@@ -9,7 +9,7 @@
 
 来源: Faith, C. (2007). Way of the Turtle. McGraw-Hill.
 """
-from ...backtest.base_strategy import BaseStrategy
+from ..backtest.base_strategy import BaseStrategy
 
 
 class TurtleTradingStrategy(BaseStrategy):

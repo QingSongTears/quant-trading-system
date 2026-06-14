@@ -68,7 +68,7 @@ class BacktestReport:
             self.cost_config = {}
 
     def to_dict(self) -> dict:
-        """转为字典，用于 JSON 序列化和数据库存储"""
+        """转为字典，用于 JSON 序列化"""
         d = asdict(self)
         d["start_date"] = str(d["start_date"])
         d["end_date"] = str(d["end_date"])
@@ -77,6 +77,29 @@ class BacktestReport:
         d["monthly_returns"] = json.dumps(d["monthly_returns"])
         d["cost_config"] = json.dumps(d["cost_config"])
         return d
+
+    def to_db_dict(self, strategy_id: int) -> dict:
+        """转为数据库存储格式（排除非DB字段）"""
+        d = asdict(self)
+        # 只保留 BacktestResult 表中存在的字段
+        db_fields = {
+            "stock_code", "start_date", "end_date", "initial_capital",
+            "final_equity", "total_return", "annual_return", "sharpe_ratio",
+            "max_drawdown", "win_rate", "profit_factor", "total_trades",
+            "annual_volatility", "calmar_ratio", "benchmark_return",
+            "excess_return", "equity_curve", "trades_detail",
+            "monthly_returns", "cost_config"
+        }
+        result = {k: v for k, v in d.items() if k in db_fields}
+        result["strategy_id"] = strategy_id
+        result["stock_name"] = self.stock_name
+        result["start_date"] = self.start_date
+        result["end_date"] = self.end_date
+        result["equity_curve"] = json.dumps(self.equity_curve) if self.equity_curve else "[]"
+        result["trades_detail"] = json.dumps(self.trades_detail) if self.trades_detail else "[]"
+        result["monthly_returns"] = json.dumps(self.monthly_returns) if self.monthly_returns else "{}"
+        result["cost_config"] = json.dumps(self.cost_config) if self.cost_config else "{}"
+        return result
 
 
 class BacktestEngine:
@@ -146,6 +169,12 @@ class BacktestEngine:
         df = self.repo.get_daily_data(stock_code, start_date, end_date)
         if df.empty:
             raise ValueError(f"股票 {stock_code} 在 [{start_date}, {end_date}] 范围内无数据")
+
+        # Backtesting.py 要求列名大写: Open/High/Low/Close/Volume
+        df = df.rename(columns={
+            'open': 'Open', 'high': 'High', 'low': 'Low',
+            'close': 'Close', 'volume': 'Volume'
+        })
 
         logger.info(f"回测: {strategy_class.name} x {stock_code} | {start_date} ~ {end_date} | 数据: {len(df)} 条")
 
@@ -334,7 +363,7 @@ class BacktestEngine:
         """计算夏普比率"""
         if days <= 1:
             return 0
-        daily_returns = df["close"].pct_change().dropna()
+        daily_returns = df["Close"].pct_change().dropna()
         if len(daily_returns) == 0:
             return 0
         excess = daily_returns.mean() * 250 - self.risk_free_rate
@@ -343,7 +372,7 @@ class BacktestEngine:
 
     def _calc_annual_volatility(self, df: pd.DataFrame) -> float:
         """计算年化波动率"""
-        daily_returns = df["close"].pct_change().dropna()
+        daily_returns = df["Close"].pct_change().dropna()
         if len(daily_returns) == 0:
             return 0
         return daily_returns.std() * np.sqrt(250) * 100

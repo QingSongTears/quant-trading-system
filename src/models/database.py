@@ -63,7 +63,7 @@ class DailyPrice(Base):
     low: Mapped[float] = mapped_column(Float, nullable=False, comment="最低价")
     close: Mapped[float] = mapped_column(Float, nullable=False, comment="收盘价")
     volume: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="成交量(股)")
-    amount: Mapped[float] = mapped_column(Float, nullable=False, comment="成交额(元)")
+    amount: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="成交额(元)")
     pct_change: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="涨跌幅(%)")
     turnover: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="换手率(%)")
 

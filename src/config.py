@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any, Dict
 
 
-# 项目根目录
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+# 项目根目录 (src/config.py → ../ 即项目根)
+PROJECT_ROOT = Path(__file__).parent.parent
 
 # 配置文件路径
 CONFIG_DIR = PROJECT_ROOT / "config"

@@ -8,7 +8,7 @@ RSI 超买超卖策略 (RSI Reversal)
 
 来源: Wilder, J. W. (1978). New Concepts in Technical Trading Systems.
 """
-from ...backtest.base_strategy import BaseStrategy
+from ..backtest.base_strategy import BaseStrategy
 
 
 class RSIReversalStrategy(BaseStrategy):
