@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple
 
-from config import DATA_DIR, OUTPUT_DIR
+from src.strategies.stock_screener.config import DATA_DIR, OUTPUT_DIR
 
 # 特征提取参数
 PRE_WINDOW_DAYS = 60  # 翻倍前回溯天数

@@ -10,7 +10,7 @@ from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass, field
 from collections import defaultdict
 
-from config import DATA_DIR, OUTPUT_DIR
+from src.strategies.stock_screener.config import DATA_DIR, OUTPUT_DIR
 
 # ============================================================
 # 第一部分：加载数据

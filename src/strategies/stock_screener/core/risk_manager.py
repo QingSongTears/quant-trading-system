@@ -4,7 +4,7 @@
 
 import pandas as pd
 from typing import Dict, List
-from config import (
+from ..config import (
     STOP_LOSS_PCT, QUANT_TAKE_PROFIT_PCT, NORMAL_TAKE_PROFIT_PCT,
     MAX_POSITIONS, MAX_SINGLE_POSITION_PCT, MAX_TOTAL_POSITION_PCT,
     NORMAL_BREAK_EMA_EXIT,

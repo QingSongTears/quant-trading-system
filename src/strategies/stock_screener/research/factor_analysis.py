@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Tuple
 import warnings
-from config import DATA_DIR, OUTPUT_DIR
+from src.strategies.stock_screener.config import DATA_DIR, OUTPUT_DIR
 warnings.filterwarnings("ignore")
 def run_factor_analysis():
     """

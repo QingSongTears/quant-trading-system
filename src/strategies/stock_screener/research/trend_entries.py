@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 
-from config import DATA_DIR, OUTPUT_DIR
+from src.strategies.stock_screener.config import DATA_DIR, OUTPUT_DIR
 
 
 def analyze_trend_entries():

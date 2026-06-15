@@ -12,8 +12,8 @@
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Optional
-from config import QUANT_THRESHOLD, QUANT_WEIGHTS, QUANT_MAX_HOLD_DAYS
-from core.data_fetcher import get_stock_kline
+from ..config import QUANT_THRESHOLD, QUANT_WEIGHTS, QUANT_MAX_HOLD_DAYS
+from .data_fetcher import get_stock_kline
 
 
 def detect_quant_participation(

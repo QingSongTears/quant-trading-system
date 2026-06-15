@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
 
-from config import DATA_DIR, CACHE_DIR
+from ..config import DATA_DIR, CACHE_DIR
 
 # ============================================================
 # 1. 全市场行情（tencent_quotes.csv）

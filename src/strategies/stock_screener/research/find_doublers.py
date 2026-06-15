@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Tuple
 from collections import defaultdict
 
-from config import DATA_DIR, OUTPUT_DIR
+from src.strategies.stock_screener.config import DATA_DIR, OUTPUT_DIR
 
 
 def find_all_doublers(

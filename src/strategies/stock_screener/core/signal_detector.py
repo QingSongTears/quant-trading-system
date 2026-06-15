@@ -10,12 +10,12 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
-from config import (
+from ..config import (
     EMA_FAST, EMA_SLOW, REQUIRE_PRICE_ABOVE_EMA,
     VOLUME_RATIO_THRESHOLD, GOLDEN_CROSS_CONFIRM_BARS,
     MAX_SIGNAL_AGE_DAYS,
 )
-from core.data_fetcher import get_stock_kline
+from .data_fetcher import get_stock_kline
 
 
 def detect_golden_cross_signal(

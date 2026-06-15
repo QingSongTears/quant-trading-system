@@ -7,7 +7,8 @@
 import sys
 from pathlib import Path
 _HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(_HERE.parent))
+_PROJECT_ROOT = _HERE.parents[3]  # stock_screener/backtest -> project root
+sys.path.insert(0, str(_PROJECT_ROOT))
 
 import pandas as pd
 import numpy as np
@@ -15,7 +16,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
-from config import (
+from src.strategies.stock_screener.config import (
     DATA_DIR, OUTPUT_DIR, CACHE_DIR,
     EMA_FAST, EMA_SLOW, VOLUME_RATIO_THRESHOLD,
     QUANT_THRESHOLD, QUANT_WEIGHTS, QUANT_MAX_HOLD_DAYS,

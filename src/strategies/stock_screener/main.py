@@ -2,21 +2,24 @@
 """
 A股波段选股系统 — 主入口
 用法:
-  python main.py              # 运行完整策略
+  cd src/strategies/stock_screener && python main.py              # 独立运行
+  python -m src.strategies.stock_screener.main                     # 包内运行
   python main.py --quick      # 快速模式（减少数据拉取）
   python main.py --codes 600519,000858  # 指定代码检测
 """
 
 import sys
 from pathlib import Path
-_HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(_HERE))
+
+# 确保项目根目录在 sys.path 中，支持独立运行
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
 import argparse
-import sys
 from datetime import datetime
 
-from .core.strategy import StockScreenerStrategy
+from src.strategies.stock_screener.core.strategy import StockScreenerStrategy
 
 
 def main():
