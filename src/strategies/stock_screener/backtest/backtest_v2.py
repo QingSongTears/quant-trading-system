@@ -8,20 +8,19 @@
 每日全市场重新扫描，严格 walk-forward 无未来数据泄露
 """
 
+import sys
+from pathlib import Path
+_HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(_HERE.parent))
+
 import pandas as pd
 import numpy as np
-from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass, field
 import warnings
+from config import DATA_DIR, OUTPUT_DIR, CACHE_DIR
 warnings.filterwarnings("ignore")
-
-DATA_DIR = Path("/workspace/stock-screener/data")
-OUTPUT_DIR = Path("/workspace/stock-screener/output")
-CACHE_DIR = Path("/workspace/stock-screener/cache")
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ============================================================
 # 滚动窗口辅助函数

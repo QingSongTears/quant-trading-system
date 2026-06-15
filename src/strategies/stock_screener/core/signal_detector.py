@@ -15,7 +15,7 @@ from config import (
     VOLUME_RATIO_THRESHOLD, GOLDEN_CROSS_CONFIRM_BARS,
     MAX_SIGNAL_AGE_DAYS,
 )
-from data_fetcher import get_stock_kline
+from core.data_fetcher import get_stock_kline
 
 
 def detect_golden_cross_signal(

@@ -4,25 +4,25 @@
 严格无未来数据泄露：第 T 天的决策只能用 ≤T 的数据
 """
 
+import sys
+from pathlib import Path
+_HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(_HERE.parent))
+
 import pandas as pd
 import numpy as np
-from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
 from config import (
+    DATA_DIR, OUTPUT_DIR, CACHE_DIR,
     EMA_FAST, EMA_SLOW, VOLUME_RATIO_THRESHOLD,
     QUANT_THRESHOLD, QUANT_WEIGHTS, QUANT_MAX_HOLD_DAYS,
     STOP_LOSS_PCT, QUANT_TAKE_PROFIT_PCT, NORMAL_TAKE_PROFIT_PCT,
     MAX_POSITIONS, MAX_SINGLE_POSITION_PCT, MAX_SIGNAL_AGE_DAYS,
     MIN_MARKET_CAP, MIN_DAILY_TURNOVER,
 )
-
-DATA_DIR = Path("/workspace/stock-screener/data")
-CACHE_DIR = Path("/workspace/stock-screener/cache")
-OUTPUT_DIR = Path("/workspace/stock-screener/output")
-
 
 @dataclass
 class Trade:

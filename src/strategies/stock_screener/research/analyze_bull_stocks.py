@@ -10,9 +10,7 @@ from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass, field
 from collections import defaultdict
 
-DATA_DIR = Path("/workspace/stock-screener/data")
-OUTPUT_DIR = Path("/workspace/stock-screener/output")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+from config import DATA_DIR, OUTPUT_DIR
 
 # ============================================================
 # 第一部分：加载数据
@@ -866,4 +864,6 @@ def _calc_r_squared(x: np.ndarray, y: np.ndarray) -> float:
 
 
 if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     bulls, validation = main()

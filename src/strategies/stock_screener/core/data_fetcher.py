@@ -13,9 +13,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
 
-CACHE_DIR = Path("/workspace/stock-screener/cache")
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
-DATA_DIR = Path("/workspace/stock-screener/data")
+from config import DATA_DIR, CACHE_DIR
 
 # ============================================================
 # 1. 全市场行情（tencent_quotes.csv）

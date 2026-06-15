@@ -11,9 +11,7 @@ from typing import List, Dict, Tuple
 from collections import defaultdict
 import json
 
-DATA_DIR = Path("/workspace/stock-screener/data")
-OUTPUT_DIR = Path("/workspace/stock-screener/output")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+from config import DATA_DIR, OUTPUT_DIR
 
 np.random.seed(42)
 
@@ -529,6 +527,8 @@ def _calc_sector_performance(name: str, kline: pd.DataFrame) -> Dict:
 # ================================================================
 
 if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     # 阶段1：筛选100只
     selected = select_institutional_climbers(100)
 

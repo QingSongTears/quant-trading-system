@@ -9,13 +9,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Tuple
 import warnings
+from config import DATA_DIR, OUTPUT_DIR
 warnings.filterwarnings("ignore")
-
-DATA_DIR = Path("/workspace/stock-screener/data")
-OUTPUT_DIR = Path("/workspace/stock-screener/output")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-
 def run_factor_analysis():
     """
     完整因子分析流程：
@@ -202,7 +197,7 @@ def _generate_control_group(doublers: pd.DataFrame) -> pd.DataFrame:
         if len(pre_data) < 60:
             continue
 
-        from research_extract_features import _extract_single_case_features
+        from research.extract_features import _extract_single_case_features
 
         fake = {
             "code": code,
@@ -254,4 +249,6 @@ def _load_kline():
 
 
 if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     run_factor_analysis()

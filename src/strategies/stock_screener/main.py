@@ -7,15 +7,16 @@ A股波段选股系统 — 主入口
   python main.py --codes 600519,000858  # 指定代码检测
 """
 
+import sys
+from pathlib import Path
+_HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(_HERE))
+
 import argparse
 import sys
 from datetime import datetime
-from pathlib import Path
 
-# 确保项目路径
-sys.path.insert(0, str(Path(__file__).parent))
-
-from strategy import StockScreenerStrategy
+from .core.strategy import StockScreenerStrategy
 
 
 def main():

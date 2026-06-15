@@ -8,7 +8,7 @@ import pandas as pd
 import re
 from typing import List, Set
 from config import (
-    EXCLUDED_SECTORS, MIN_MARKET_CAP, MIN_DAILY_TURNOVER,
+    EXCLUDE_SECTORS, MIN_MARKET_CAP, MIN_DAILY_TURNOVER,
     EXCLUDE_ST, EXCLUDE_SUSPENDED,
 )
 

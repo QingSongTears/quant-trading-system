@@ -9,17 +9,18 @@ v2 致命缺陷 (命中率仅22.7%)：
   - 要求趋势确认（EMA多头/R²高/60日涨>8%）
   - 但77%的大牛股起涨时处于空头/下跌状态
 """
+import sys
+from pathlib import Path
+_HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(_HERE.parent))
+
 import pandas as pd
 import numpy as np
-from pathlib import Path
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 import warnings
+from config import DATA_DIR, OUTPUT_DIR
 warnings.filterwarnings("ignore")
-
-DATA_DIR = Path("/workspace/stock-screener/data")
-OUTPUT_DIR = Path("/workspace/stock-screener/output")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ============================================================
 # 滚动窗口辅助函数

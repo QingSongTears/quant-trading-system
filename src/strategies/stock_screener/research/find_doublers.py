@@ -9,9 +9,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Tuple
 from collections import defaultdict
 
-DATA_DIR = Path("/workspace/stock-screener/data")
-OUTPUT_DIR = Path("/workspace/stock-screener/output")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+from config import DATA_DIR, OUTPUT_DIR
 
 
 def find_all_doublers(
@@ -153,6 +151,8 @@ def _find_run_up_ranges(
 
 
 if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     df = find_all_doublers()
     if not df.empty:
         output_path = OUTPUT_DIR / "doubler_cases.csv"

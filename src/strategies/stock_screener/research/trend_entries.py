@@ -10,9 +10,7 @@ from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 
-DATA_DIR = Path("/workspace/stock-screener/data")
-OUTPUT_DIR = Path("/workspace/stock-screener/output")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+from config import DATA_DIR, OUTPUT_DIR
 
 
 def analyze_trend_entries():
@@ -307,4 +305,6 @@ def _load_kline():
 
 
 if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     analyze_trend_entries()

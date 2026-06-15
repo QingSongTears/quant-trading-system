@@ -1,15 +1,18 @@
+import sys
+from pathlib import Path
+_HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(_HERE))
+
 #!/usr/bin/env python3
 """端到端测试脚本"""
 import sys, pandas as pd
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
-
-from data_fetcher import get_all_stocks_with_market_cap, get_stock_kline
-from screener import screen_candidates
-from signal_detector import batch_detect_signals
-from quant_detector import batch_detect_quant
-from buy_point import batch_evaluate_buy_points
 from datetime import datetime
+
+from .core.data_fetcher import get_all_stocks_with_market_cap, get_stock_kline
+from .core.screener import screen_candidates
+from .core.signal_detector import batch_detect_signals
+from .core.quant_detector import batch_detect_quant
+from .core.buy_point import batch_evaluate_buy_points
 
 print("=" * 60)
 print(f"A股波段选股策略 v0.1 — {datetime.now().strftime('%Y-%m-%d')}")

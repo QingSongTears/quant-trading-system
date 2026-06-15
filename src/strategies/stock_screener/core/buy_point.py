@@ -13,7 +13,7 @@ from config import (
     PULLBACK_MA_FAST, PULLBACK_MA_SLOW,
     HISTORY_LOOKBACK_TIMES, PULLBACK_SCORE_CONFIG,
 )
-from data_fetcher import get_stock_kline
+from core.data_fetcher import get_stock_kline
 
 
 def evaluate_pullback(code: str, signal: Dict, kline_df: pd.DataFrame = None) -> Dict:

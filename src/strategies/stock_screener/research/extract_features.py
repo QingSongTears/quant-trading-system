@@ -10,9 +10,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple
 
-DATA_DIR = Path("/workspace/stock-screener/data")
-OUTPUT_DIR = Path("/workspace/stock-screener/output")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+from config import DATA_DIR, OUTPUT_DIR
 
 # 特征提取参数
 PRE_WINDOW_DAYS = 60  # 翻倍前回溯天数
@@ -292,4 +290,6 @@ def _avg_lower_shadow(df_tail):
 
 
 if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     extract_features_for_all_doublers()
