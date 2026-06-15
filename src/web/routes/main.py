@@ -11,10 +11,10 @@ from fastapi.templating import Jinja2Templates
 
 from ...config import get_config
 from ...models.repository import DataRepository
-from ..app import TEMPLATES_DIR
+from ..app import TEMPLATES_DIR, get_templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates = get_templates()
 
 # 注入全局配置到模板
 def _get_global_context(request: Request) -> dict:

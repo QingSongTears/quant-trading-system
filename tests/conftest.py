@@ -195,3 +195,5 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "slow: 慢速测试（需网络或大数据）")
     config.addinivalue_line("markers", "network: 需要网络连接")
     config.addinivalue_line("markers", "integration: 集成测试")
+    config.addinivalue_line("markers", "smoke: 冒烟测试（快速验证核心功能）")
+    config.addinivalue_line("markers", "regression: 全量回归测试")

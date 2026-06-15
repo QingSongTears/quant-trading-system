@@ -18,6 +18,19 @@ from ..config import get_config
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 
+# 共享 Jinja2 模板引擎（注册自定义过滤器）
+_shared_templates = None
+
+
+def get_templates() -> Jinja2Templates:
+    """获取共享的 Jinja2 模板引擎实例（懒加载，注册自定义过滤器/全局函数）"""
+    global _shared_templates
+    if _shared_templates is None:
+        _shared_templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+        _shared_templates.env.filters["abs"] = abs
+        _shared_templates.env.globals["abs"] = abs  # 同时支持函数调用 abs(...)
+    return _shared_templates
+
 # 全局下载状态管理器
 download_status = {
     "running": False,
@@ -61,7 +74,7 @@ def create_app() -> FastAPI:
     @app.exception_handler(404)
     async def not_found_handler(request: Request, exc):
         """自定义 404 页面"""
-        templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+        tmpl = get_templates()
         ctx = {
             "request": request,
             "app_name": web_config.get("title", "QuantTrading"),
@@ -71,14 +84,14 @@ def create_app() -> FastAPI:
             "error_message": "页面未找到",
         }
         return HTMLResponse(
-            templates.get_template("error.html").render(ctx),
+            tmpl.get_template("error.html").render(ctx),
             status_code=404,
         )
 
     @app.exception_handler(500)
     async def server_error_handler(request: Request, exc):
         """自定义 500 页面"""
-        templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+        tmpl = get_templates()
         ctx = {
             "request": request,
             "app_name": web_config.get("title", "QuantTrading"),
@@ -88,7 +101,7 @@ def create_app() -> FastAPI:
             "error_message": "服务器内部错误",
         }
         return HTMLResponse(
-            templates.get_template("error.html").render(ctx),
+            tmpl.get_template("error.html").render(ctx),
             status_code=500,
         )
 
