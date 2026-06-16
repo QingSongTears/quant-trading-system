@@ -319,3 +319,57 @@ class TestBoundaryScenarios:
         """对比页非法 ID"""
         response = client.get("/compare?ids=abc")
         assert response.status_code == 200  # 不崩溃
+
+    def test_compare_radar_abs_regression(self, client, monkeypatch):
+        """#50 回归: 雷达图 abs() 在有回撤数据时不崩溃"""
+        import json
+        from datetime import date as dt_date
+
+        # 构造一个包含 max_drawdown 的 mock 回测结果
+        mock_result = MagicMock()
+        mock_result.id = 1
+        mock_result.strategy = MagicMock()
+        mock_result.strategy.name = "双均线交叉"
+        mock_result.total_return = 15.5
+        mock_result.annual_return = 8.2
+        mock_result.sharpe_ratio = 1.2
+        mock_result.max_drawdown = -12.5  # 触发 abs() 的关键字段
+        mock_result.win_rate = 55.0
+        mock_result.profit_factor = 2.1
+        mock_result.total_trades = 42
+        mock_result.excess_return = 5.3
+        mock_result.benchmark_return = 10.2
+        mock_result.equity_curve = json.dumps([
+            {"date": "2024-01-02", "equity": 100000},
+            {"date": "2024-01-03", "equity": 101000},
+            {"date": "2024-01-04", "equity": 99500},
+        ])
+        mock_result.trades_detail = "[]"
+        mock_result.monthly_returns = "{}"
+        mock_result.cost_config = "{}"
+        mock_result.stock_name = "测试股票"
+        mock_result.stock_code = "000001"
+
+        # patch DataRepository 返回 mock 结果
+        mock_repo = MagicMock()
+        mock_repo.get_backtest_result = MagicMock(return_value=mock_result)
+        mock_repo.get_recent_backtests = MagicMock(return_value=[mock_result])
+        mock_repo.get_data_coverage = MagicMock(return_value={
+            "total_stocks": 10, "total_records": 100,
+            "date_range": {"start": None, "end": None}
+        })
+        mock_repo.init_database = MagicMock()
+
+        monkeypatch.setattr(
+            "src.web.routes.main.DataRepository",
+            lambda *args, **kwargs: mock_repo
+        )
+        monkeypatch.setattr(
+            "src.models.repository.DataRepository",
+            lambda *args, **kwargs: mock_repo
+        )
+
+        response = client.get("/compare?ids=1")
+        assert response.status_code == 200, f"雷达图渲染不应崩溃: {response.text[:200]}"
+        assert "双均线交叉" in response.text
+        assert "12.5" in response.text or "12" in response.text  # max_drawdown 值出现

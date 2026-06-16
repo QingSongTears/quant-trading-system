@@ -152,7 +152,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         value: [
                             {{ (r.total_return or 0) if (r.total_return or 0) < 100 else 100 }},
                             {{ (r.sharpe_ratio or 0) if (r.sharpe_ratio or 0) < 3 else 3 }},
-                            {{ 100 - (abs(r.max_drawdown or 0)) if (abs(r.max_drawdown or 0)) < 100 else 0 }},
+                            {{ 100 - ((r.max_drawdown or 0)|abs) if ((r.max_drawdown or 0)|abs) < 100 else 0 }},
                             {{ (r.win_rate or 0) }},
                             {{ (r.profit_factor or 0) if (r.profit_factor or 0) < 5 else 5 }}
                         ]
