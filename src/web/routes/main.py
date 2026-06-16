@@ -169,6 +169,9 @@ async def backtest_detail(request: Request, result_id: int):
         "trades": trades,
         "monthly_returns": json.dumps(monthly),
         "costs": costs,
+        "model_type": "portfolio" if result.stock_code == "PORTFOLIO" 
+                      else "voting" if result.stock_code == "VOTING" 
+                      else "signal",
     })
     return templates.TemplateResponse("backtest_detail.html", ctx)
 

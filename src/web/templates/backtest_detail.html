@@ -13,9 +13,15 @@
         </nav>
         <h2>
             {{ result.strategy.name if result.strategy else '未知策略' }}
+            {% if model_type == 'portfolio' %}
+            <span class="badge bg-info fs-6 ms-2">组合选股</span>
+            {% elif model_type == 'voting' %}
+            <span class="badge bg-warning fs-6 ms-2">投票模型</span>
+            {% else %}
             <small class="text-muted fs-6">×</small>
             <span class="stock-tag fs-5">{{ result.stock_code }}</span>
             {{ result.stock_name or '' }}
+            {% endif %}
         </h2>
         <p class="text-muted">
             回测区间: {{ result.start_date }} ~ {{ result.end_date }} | 
@@ -145,6 +151,90 @@
 
 <!-- 交易明细 -->
 <div class="card p-4 mb-4">
+{% if model_type == 'portfolio' %}
+    <!-- ── 组合选股: 调仓历史 ── -->
+    <h5 class="section-title">调仓记录 <span class="badge bg-info">{{ trades|length if trades else 0 }} 次</span></h5>
+    {% if trades %}
+    <div class="table-responsive">
+        <table class="table table-sm table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>#</th>
+                    <th>日期</th>
+                    <th>操作</th>
+                    <th>选股数量</th>
+                    <th>交易成本</th>
+                    <th>调仓前权益</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in trades %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ t.date }}</td>
+                    <td><span class="badge bg-primary">{{ t.action or '调仓' }}</span></td>
+                    <td class="text-end">{{ t.n_new or '-' }}</td>
+                    <td class="text-end">{{ "%.2f"|format(t.transaction_cost) if t.transaction_cost else '-' }} 元</td>
+                    <td class="text-end">{{ "%.0f"|format(t.equity_before_rebalance) if t.equity_before_rebalance else '-' }} 元</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-4">该回测未产生调仓记录</div>
+    {% endif %}
+
+{% elif model_type == 'voting' %}
+    <!-- ── 投票模型: 买卖信号 ── -->
+    <h5 class="section-title">交易信号 <span class="badge bg-warning">{{ trades|length if trades else 0 }} 笔</span></h5>
+    {% if trades %}
+    <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+        <table class="table table-sm table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>日期</th>
+                    <th>股票</th>
+                    <th>操作</th>
+                    <th>原因</th>
+                    <th class="text-end">价格</th>
+                    <th class="text-end">数量</th>
+                    <th class="text-end">金额</th>
+                    <th class="text-end">盈亏%</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in trades %}
+                <tr>
+                    <td>{{ t.date }}</td>
+                    <td><span class="stock-tag">{{ t.code }}</span></td>
+                    <td>
+                        {% if t.action == 'buy' %}
+                        <span class="badge bg-success">买入</span>
+                        {% elif t.action == 'sell' %}
+                        <span class="badge bg-danger">卖出</span>
+                        {% else %}
+                        {{ t.action }}
+                        {% endif %}
+                    </td>
+                    <td><small class="text-muted">{{ t.reason or '-' }}</small></td>
+                    <td class="text-end">{{ "%.2f"|format(t.price) if t.price else '-' }}</td>
+                    <td class="text-end">{{ t.shares if t.shares else '-' }}</td>
+                    <td class="text-end">{{ "%.0f"|format(t.value) if t.value else '-' }}</td>
+                    <td class="text-end {% if t.pnl_pct and t.pnl_pct > 0 %}profit{% elif t.pnl_pct and t.pnl_pct < 0 %}loss{% endif %}">
+                        {{ "%.2f%%"|format(t.pnl_pct) if t.pnl_pct is defined else '-' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-4">该回测未产生交易信号</div>
+    {% endif %}
+
+{% else %}
+    <!-- ── 信号策略: 逐笔交易 ── -->
     <h5 class="section-title">交易明细 <span class="badge bg-secondary">{{ trades|length if trades else 0 }} 笔</span></h5>
     {% if trades %}
     <div class="table-responsive">
@@ -180,6 +270,7 @@
     {% else %}
     <div class="text-center text-muted py-4">该回测未产生交易</div>
     {% endif %}
+{% endif %}
 </div>
 
 <!-- 交易成本说明 -->
