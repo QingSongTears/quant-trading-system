@@ -17,10 +17,9 @@ router = APIRouter()
 templates = get_templates()
 
 # 注入全局配置到模板
-def _get_global_context(request: Request) -> dict:
+def _get_global_context() -> dict:
     config = get_config()
     return {
-        "request": request,
         "app_name": config["web"]["title"],
         "ai_disclaimer": config["ai_disclaimer"],
         "cdn": config["web"]["cdn"],
@@ -62,7 +61,7 @@ async def index(request: Request):
         avg_sharpe = None
         win_rate = None
 
-    ctx = _get_global_context(request)
+    ctx = _get_global_context()
     ctx.update({
         "coverage": coverage,
         "recent_backtests": recent,
@@ -77,7 +76,7 @@ async def index(request: Request):
             {"name": "Baostock", "url": "http://baostock.com", "desc": "免费证券数据（备选）"},
         ]
     })
-    return templates.TemplateResponse("index.html", ctx)
+    return templates.TemplateResponse(request, "index.html", ctx)
 
 
 @router.get("/data", response_class=HTMLResponse)
@@ -100,14 +99,14 @@ async def data_page(request: Request):
         stock_count = 0
         avg_records_per_stock = 0
 
-    ctx = _get_global_context(request)
+    ctx = _get_global_context()
     ctx.update({
         "coverage": coverage,
         "download_history": download_history,
         "stock_count": stock_count,
         "avg_records_per_stock": avg_records_per_stock,
     })
-    return templates.TemplateResponse("data.html", ctx)
+    return templates.TemplateResponse(request, "data.html", ctx)
 
 
 @router.get("/backtest", response_class=HTMLResponse)
@@ -126,7 +125,7 @@ async def backtest_page(request: Request):
     yaml_strategies = load_strategies().get("strategies", [])
     yaml_map = {s["name"]: s for s in yaml_strategies}
 
-    ctx = _get_global_context(request)
+    ctx = _get_global_context()
     ctx.update({
         "strategies": strategies,
         "strategy_configs": yaml_map,  # 包含 strategy_type 等字段
@@ -134,7 +133,7 @@ async def backtest_page(request: Request):
         "default_start": (date.today() - timedelta(days=365 * 3)).strftime("%Y-%m-%d"),
         "default_end": date.today().strftime("%Y-%m-%d"),
     })
-    return templates.TemplateResponse("backtest.html", ctx)
+    return templates.TemplateResponse(request, "backtest.html", ctx)
 
 
 @router.get("/backtest/{result_id}", response_class=HTMLResponse)
@@ -161,7 +160,7 @@ async def backtest_detail(request: Request, result_id: int):
         dd = (e - peak) / peak * 100 if peak > 0 else 0
         drawdowns.append({"date": point["date"], "drawdown": round(dd, 2)})
 
-    ctx = _get_global_context(request)
+    ctx = _get_global_context()
     ctx.update({
         "result": result,
         "equity_curve": json.dumps(equity_curve),
@@ -173,7 +172,7 @@ async def backtest_detail(request: Request, result_id: int):
                       else "voting" if result.stock_code == "VOTING" 
                       else "signal",
     })
-    return templates.TemplateResponse("backtest_detail.html", ctx)
+    return templates.TemplateResponse(request, "backtest_detail.html", ctx)
 
 
 @router.get("/strategies", response_class=HTMLResponse)
@@ -201,9 +200,9 @@ async def strategies_page(request: Request):
     except Exception:
         strategies_data = []
 
-    ctx = _get_global_context(request)
+    ctx = _get_global_context()
     ctx.update({"strategies": strategies_data})
-    return templates.TemplateResponse("strategies.html", ctx)
+    return templates.TemplateResponse(request, "strategies.html", ctx)
 
 
 @router.get("/compare", response_class=HTMLResponse)
@@ -223,9 +222,9 @@ async def compare_page(
             except Exception:
                 pass
 
-    ctx = _get_global_context(request)
+    ctx = _get_global_context()
     ctx.update({
         "results": results,
         "all_backtests": repo.get_recent_backtests(limit=50),
     })
-    return templates.TemplateResponse("compare.html", ctx)
+    return templates.TemplateResponse(request, "compare.html", ctx)
