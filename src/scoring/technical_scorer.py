@@ -563,8 +563,13 @@ class TechnicalScorer:
         }
 
     def batch_score(
-        self, codes_and_dates: List[Tuple[str, str]], verbose: bool = False
+        self, codes, as_of_date: Optional[str] = None, verbose: bool = False
     ) -> pd.DataFrame:
+        # 统一接口适配: 兼容旧版 codes_and_dates: List[Tuple[str, str]]
+        if as_of_date is None and isinstance(codes, list) and codes and isinstance(codes[0], (list, tuple)):
+            codes_and_dates = codes
+        else:
+            codes_and_dates = [(c, as_of_date) for c in codes]
         results = []
         for i, (code, dt) in enumerate(codes_and_dates):
             r = self.score(code, dt)

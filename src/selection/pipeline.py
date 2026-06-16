@@ -151,8 +151,12 @@ class SelectionPipeline:
 
         # Step 4: 计算综合分
         result = self._combine_scores(scores_df)
-        result = result.merge(candidates[["code", "name", "mcap_yi", "pe_ttm"]],
-                              on="code", how="left")
+        # 附加候选池信息 (仅合并存在的列)
+        merge_cols = ["code", "name"]
+        for mc in ["mcap_yi", "pe_ttm"]:
+            if mc in candidates.columns:
+                merge_cols.append(mc)
+        result = result.merge(candidates[merge_cols], on="code", how="left")
 
         # Step 5: 排名
         result = result.sort_values("combined_score", ascending=False)

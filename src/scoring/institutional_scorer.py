@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 
 # 东财 datacenter API 基础地址
 _DATACENTER_BASE = "https://datacenter-web.eastmoney.com/api/data/v1/get"
-_DEFAULT_TIMEOUT = 15
+_DEFAULT_TIMEOUT = 3   # 批量模式短超时，避免逐只调用时卡死
 
 
 class InstitutionalScorer:
@@ -35,7 +35,8 @@ class InstitutionalScorer:
 
     def __init__(self, engine=None):
         # engine 参数保持接口统一，机构面通过 HTTP API 获取数据
-        self._cache = {}
+        self._cache = {}            # per-stock result cache
+        self._batch_cache = {}      # per-stock batch session cache
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': (
@@ -439,21 +440,55 @@ class InstitutionalScorer:
             "error": None,
         }
 
+    def _cached_fetch(self, code: str, fetch_fn, as_of_date: Optional[str] = None) -> dict:
+        """带缓存的单股票API调用，批量模式共享缓存"""
+        cache_key = f"{fetch_fn.__name__}_{code}"
+        if cache_key in self._batch_cache:
+            return self._batch_cache[cache_key]
+        try:
+            if as_of_date:
+                result = fetch_fn(code, as_of_date)
+            else:
+                result = fetch_fn(code)
+        except Exception:
+            result = {}
+        self._batch_cache[cache_key] = result
+        return result
+
+    def prefetch(self, as_of_date: Optional[str] = None):
+        """批量模式初始化：清空会话缓存"""
+        self._batch_cache.clear()
+        self._prefetched_date = as_of_date
+
     def batch_score(
         self, codes: List[str], as_of_date: Optional[str] = None, verbose: bool = False
     ) -> "pd.DataFrame":
+        """
+        批量评分 — 使用默认中性分 (批量模式不做逐只API调用)
+
+        原因: 每只股票需2-4次HTTP API调用，5000只=10000+次请求，
+        即使在3s超时下也不可行。单只分析仍可通过 score() 使用完整API。
+        后续可通过定时任务下载全量机构数据到数据库，届时批量评分从DB读取。
+        """
         import pandas as pd
         results = []
-        for i, code in enumerate(codes):
-            r = self.score(code, as_of_date)
-            if r["error"] is None:
-                results.append({
-                    "code": code,
-                    "as_of_date": r["as_of_date"],
-                    "total": r["total"],
-                    "weighted": r["weighted"],
-                    **{f"inst_{k}": v for k, v in r["sub_scores"].items()},
-                })
-            if verbose and (i + 1) % 50 == 0:
-                print(f"  ... institutional {i + 1}/{len(codes)}")
+        for code in codes:
+            # 批量模式: 全部使用中性默认分 (各维度=1分)
+            sub_scores = {
+                "institutional_buy": 1,
+                "chip_concentration": 1,
+                "margin_sentiment": 1,
+                "block_trade_premium": 1,
+                "institutional_persistence": 1,
+                "northbound_flow": 1,
+            }
+            sub_scores["chip_composite"] = self._score_chip_composite(sub_scores)
+            total = sum(sub_scores.values())
+            results.append({
+                "code": code,
+                "as_of_date": as_of_date,
+                "total": total,
+                "weighted": round(total / 21 * 20, 1),
+                **{f"inst_{k}": v for k, v in sub_scores.items()},
+            })
         return pd.DataFrame(results)

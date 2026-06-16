@@ -1,10 +1,11 @@
 """
-资金面评分器 v2 — 持续吸筹模型 (权重 20%)
+资金面评分器 v2.1 — 持续吸筹模型 (权重 20%)
 ===========================================
 
 版本演进:
   v1 (七维资金流): 主力流入=好, 大单=好, 背离=好 → 总分负相关(-0.059) ❌
   v2 (持续吸筹): 持续流入+稳定低波动→好, 抛弃单日流入/背离/中单反向 ✅
+  v2.1: 移除 flow_reversal (-0.031) → 6维度聚焦"持续+稳定"
 
 核心洞察 (2,137样本 × 资金面子指标归因):
   - consecutive_inflow +0.035: 唯一正向维度, 持续>单日
@@ -13,19 +14,18 @@
   - flow_divergence -0.003: 价跌+资金流入≠背离吸筹
   - 单日主力净流入追入=接飞刀, 连续5日+才是真正吸筹
 
-v2 设计理念:
+v2.1 设计理念:
   追寻"持续稳定的主力吸筹"而非单日异动。
-  类似技术面v3的"极端反转"逻辑——
-  在持续流出后的首次反转是买点，而非追涨连续流入的高点。
+  移除 flow_reversal (流出反转, 相关性-0.031) — 反转信号在技术面v3已充分覆盖,
+  资金面聚焦于"持续"和"稳定"两个核心维度。
 
-7个子指标 (每项 0-3 分，满分 21，归一化到 0-20):
-  1. 持续流入   (0-3): 连续主力净流入天数 (唯一验证正向维度)
-  2. 流入稳定性 (0-3): 近10日主力净流入的日间波动 (低波动=稳定吸筹)
-  3. 正向占比   (0-3): 近10日主力净流入的阳线天数占比
-  4. 流出反转   (0-3): 连续流出后的首次反转流入 (极端反转!)
-  5. 智能资金   (0-3): 超大单流入+大单流出 (机构vs游资)
-  6. 流入加速度 (0-3): 近5日 vs 近20日均流入对比
-  7. 相对规模   (0-3): 主力净流入/流通市值 (替代绝对金额)
+6个子指标 (每项 0-3 分，满分 18，归一化到 0-20):
+  1. 持续流入   (0-3): 连续主力净流入天数 (核心正向 +0.035)
+  2. 流入稳定性 (0-3): 近10日主力净流入的日间波动 (低波动=稳定吸筹 +0.023)
+  3. 正向占比   (0-3): 近10日主力净流入的阳线天数占比 (最强 +0.046)
+  4. 智能资金   (0-3): 超大单流入+大单流出 (机构vs游资)
+  5. 流入加速度 (0-3): 近5日 vs 近20日均流入对比
+  6. 相对规模   (0-3): 主力净流入/流通市值 (替代绝对金额)
 
 用法:
     scorer = FundFlowScorer()
@@ -211,51 +211,7 @@ class FundFlowScorer:
         return 0
 
     # ============================================================
-    #  4. 流出反转 (0-3) — NEW: 基于tech v3"极端反转"逻辑
-    # ============================================================
-    def _score_flow_reversal(self, df: pd.DataFrame) -> int:
-        """
-        连续流出后的首次反转流入。
-
-        逻辑: 类似技术面v3"深度回调后反弹>温和回调"。
-        连续5天流出后开始流入 > 一直在流入(高位追入)。
-
-        3分: 此前连续≥5天净流出, 最近1-2天开始净流入 (极端反转)
-        2分: 此前连续3-4天流出, 最近开始流入
-        1分: 此前1-2天流出, 最近开始流入
-        0分: 无反转 (一直在流入或一直在流出)
-        """
-        if len(df) < 6:
-            return 0
-
-        main = df["main_net"].values.astype(np.float64)
-
-        # 找最近的流出连续天数 (在反转之前)
-        outflow_streak = 0
-        # 从倒数第二天开始往前数流出天数
-        for i in range(len(main) - 1, -1, -1):
-            if main[i] <= 0:
-                outflow_streak += 1
-            else:
-                break
-
-        # 检查最近1-2天是否反转流入
-        latest_inflow = main[-1] > 0
-        recent_inflow = np.sum(main[-2:] > 0) >= 1
-
-        if not (latest_inflow or recent_inflow):
-            return 0  # 没有反转
-
-        if outflow_streak >= 5:
-            return 3  # 大幅流出后反转 = 最佳
-        elif outflow_streak >= 3:
-            return 2
-        elif outflow_streak >= 1:
-            return 1
-        return 0
-
-    # ============================================================
-    #  5. 智能资金 (0-3) — 超大单+大单背离 (保留并强化)
+    #  4. 智能资金 (0-3) — 超大单+大单背离 (保留并强化)
     # ============================================================
     def _score_smart_money(self, df: pd.DataFrame) -> int:
         """
@@ -300,7 +256,7 @@ class FundFlowScorer:
         return 1
 
     # ============================================================
-    #  6. 流入加速度 (0-3) — 保留但加条件
+    #  5. 流入加速度 (0-3) — 保留但加条件
     # ============================================================
     def _score_flow_acceleration(self, df: pd.DataFrame) -> int:
         """
@@ -342,7 +298,7 @@ class FundFlowScorer:
         return 1
 
     # ============================================================
-    #  7. 相对规模 (0-3) — 替代flow_intensity
+    #  6. 相对规模 (0-3) — 替代flow_intensity
     # ============================================================
     def _score_relative_scale(self, df: pd.DataFrame, code: str) -> int:
         """
@@ -414,14 +370,13 @@ class FundFlowScorer:
             "persistent_inflow": self._score_persistent_inflow(df),
             "flow_stability": self._score_flow_stability(df),
             "positive_ratio": self._score_positive_ratio(df),
-            "flow_reversal": self._score_flow_reversal(df),
             "smart_money": self._score_smart_money(df),
             "flow_acceleration": self._score_flow_acceleration(df),
             "relative_scale": self._score_relative_scale(df, code),
         }
 
         total = sum(sub_scores.values())
-        weighted = round(total / 21 * 20, 1)
+        weighted = round(total / 18 * 20, 1)  # 6维 × 3分 = 18满分 → 归一化到0-20
 
         return {
             "code": code,
@@ -433,8 +388,13 @@ class FundFlowScorer:
         }
 
     def batch_score(
-        self, codes_and_dates: List[Tuple[str, str]], verbose: bool = False
+        self, codes, as_of_date: Optional[str] = None, verbose: bool = False
     ) -> pd.DataFrame:
+        # 统一接口适配: 兼容旧版 codes_and_dates: List[Tuple[str, str]]
+        if as_of_date is None and isinstance(codes, list) and codes and isinstance(codes[0], (list, tuple)):
+            codes_and_dates = codes
+        else:
+            codes_and_dates = [(c, as_of_date) for c in codes]
         results = []
         for i, (code, dt) in enumerate(codes_and_dates):
             r = self.score(code, dt)

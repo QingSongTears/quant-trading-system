@@ -274,21 +274,62 @@ class SentimentScorer:
             "error": None,
         }
 
+    def prefetch(self, as_of_date: Optional[str] = None):
+        """批量模式下预取全局数据（热点题材、市场情绪），避免重复HTTP调用"""
+        if as_of_date is None:
+            as_of_date = date.today().strftime("%Y%m%d")
+        self._prefetched_topics = self._fetch_hot_topics(as_of_date)
+        self._prefetched_date = as_of_date
+
+    def _score_with_prefetch(self, code: str) -> Dict[str, int]:
+        """使用预取数据评分，不发起HTTP请求"""
+        # 题材热度: 从预取热点中查找
+        topic_heat = 1
+        for topic in self._prefetched_topics:
+            if topic.get("code", "") == code:
+                topic_heat = 3
+                break
+
+        # 市场情绪: 从预取热点数量判断
+        topic_count = len(self._prefetched_topics)
+        if topic_count >= 20:
+            market_sentiment = 3
+        elif topic_count >= 10:
+            market_sentiment = 2
+        elif topic_count >= 5:
+            market_sentiment = 1
+        else:
+            market_sentiment = 0
+
+        # 新闻情感: 批量模式下使用默认中性分 (API已降级)
+        sub_scores = {
+            "news_sentiment": 1,
+            "topic_heat": topic_heat,
+            "market_sentiment": market_sentiment,
+            "attention_change": 1,
+            "announcement_sentiment": 1,
+            "topic_durability": 1,
+        }
+        sub_scores["sentiment_composite"] = self._score_sentiment_composite(sub_scores)
+        return sub_scores
+
     def batch_score(
         self, codes: List[str], as_of_date: Optional[str] = None, verbose: bool = False
     ) -> "pd.DataFrame":
         import pandas as pd
+        # 批量模式: 预取全局数据，按股票评分时不再调API
+        self.prefetch(as_of_date)
         results = []
         for i, code in enumerate(codes):
-            r = self.score(code, as_of_date)
-            if r["error"] is None:
-                results.append({
-                    "code": code,
-                    "as_of_date": r["as_of_date"],
-                    "total": r["total"],
-                    "weighted": r["weighted"],
-                    **{f"sent_{k}": v for k, v in r["sub_scores"].items()},
-                })
-            if verbose and (i + 1) % 50 == 0:
+            sub_scores = self._score_with_prefetch(code)
+            total = sum(sub_scores.values())
+            results.append({
+                "code": code,
+                "as_of_date": self._prefetched_date,
+                "total": total,
+                "weighted": round(total / 21 * 20, 1),
+                **{f"sent_{k}": v for k, v in sub_scores.items()},
+            })
+            if verbose and (i + 1) % 500 == 0:
                 print(f"  ... sentiment {i + 1}/{len(codes)}")
         return pd.DataFrame(results)
