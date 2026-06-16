@@ -123,3 +123,30 @@ strategies:
     description: "5策略投票委员会：双均线+MACD+RSI+布林带+海龟，总分≥+2买入/≤-2卖出，最多持仓10只。"
     source: "综合投票模型: Appel(1979); Wilder(1978); Bollinger(2001); Faith(2007)"
     strategy_type: "voting"
+
+  - name: "极致小市值"
+    class_path: "src.models.extreme_small_cap.ExtremeSmallCapStrategy"
+    params:
+      n_stocks: 50
+      candidate_pool: 200
+      rebalance_days: 20
+      lookback_days: 20
+      min_amount_wan: 5000
+      min_price: 3.0
+      min_list_days: 250
+    description: "五层过滤选最小50只：剔除ST/低股价/次新/低流动，市值最小200中精选。适合卫星仓位。"
+    source: "Fama & French (1993) SMB因子增强; Asness et al. (2019). Size Matters"
+    strategy_type: "portfolio"
+
+  - name: "盾+矛全天候"
+    class_path: "src.models.shield_spear.ShieldSpearStrategy"
+    params:
+      n_stocks: 200
+      rebalance_days: 20
+      lookback_days: 60
+      min_amount_wan: 3000
+      min_price: 2.0
+      min_list_days: 250
+    description: "市场温度计动态调节：进攻(盾30:矛70)/中性(50:50)/防御(70:30)。盾=低波动，矛=小市值+反转。熊市抗跌。"
+    source: "市场温度计 + Fama & French (1993) + Jegadeesh (1990) + Baker et al. (2011)"
+    strategy_type: "portfolio"
