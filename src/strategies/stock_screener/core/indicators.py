@@ -125,7 +125,7 @@ def precompute_indicators(
     df["max_dd_60d"] = df.groupby("code")["close"].transform(
         lambda x: x.rolling(60, min_periods=40).apply(rolling_max_dd, raw=True))
 
-    print("  [指标] 计算量比/20日高点/前日收盘...")
+    print("  [指标] 计算量比/20日高点/前日收盘/ATR...")
     df["vol_20ma"] = df.groupby("code")["volume"].transform(
         lambda x: x.rolling(20, min_periods=1).mean())
     df["vol_ratio_d"] = df["volume"] / (df["vol_20ma"] + 1e-10)
@@ -133,6 +133,20 @@ def precompute_indicators(
     df["high_20d"] = df.groupby("code")["high"].transform(
         lambda x: x.rolling(20, min_periods=1).max())
     df["prev_close_d"] = df.groupby("code")["close"].shift(1)
+    # 昨日涨跌幅（用于连续阳线判断，shift使当天看到的是昨天的涨跌）
+    df["prev_chg_d"] = df.groupby("code")["close"].transform(
+        lambda x: x.pct_change().shift(1) * 100)
+
+    # ATR(14) 波动率
+    grp = df.groupby("code")
+    tr = pd.concat([
+        df["high"] - df["low"],
+        (df["high"] - df["prev_close_d"].fillna(df["close"])).abs(),
+        (df["low"] - df["prev_close_d"].fillna(df["close"])).abs(),
+    ], axis=1).max(axis=1)
+    df["tr"] = tr
+    df["atr_14_d"] = grp["tr"].transform(lambda x: x.rolling(14, min_periods=5).mean())
+    df["atr_pct_d"] = df["atr_14_d"] / df["close"] * 100  # ATR百分比
 
     # v2 额外需要的指标（已在上方包含，这里保留兼容列名）
     # v3 额外需要的指标也已包含

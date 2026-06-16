@@ -308,7 +308,14 @@ class BacktestEngine:
                     for sig in signals:
                         if len(pos_list) >= max_for_strategy:
                             break
-                        cost = min(strategy_cash * self.single_position_pct,
+                        # 🔥 ATR自适应头寸: 高波动→小仓位, 低波动→大仓位
+                        atr_pct = sig.extra.get("atr_pct", None) if sig.extra else None
+                        if atr_pct is not None and atr_pct > 0:
+                            adj_pct = self.single_position_pct * min(1.5, max(0.4, 2.5 / atr_pct))
+                        else:
+                            adj_pct = self.single_position_pct
+
+                        cost = min(strategy_cash * adj_pct,
                                    strategy_cash * 0.9 / max(1, max_for_strategy - len(pos_list)))
                         shares = int(cost / sig.close)
                         if shares == 0:
