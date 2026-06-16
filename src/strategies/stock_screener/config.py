@@ -7,13 +7,23 @@ from pathlib import Path
 # 路径（相对 — 唯一来源）
 # ============================================================
 ROOT_DIR = Path(__file__).resolve().parent
-DATA_DIR = ROOT_DIR / "data"
+DATA_DIR = ROOT_DIR / "data" / "raw"     # 向后兼容：旧代码直接用 DATA_DIR 加载 CSV
+DATA_RAW_DIR = DATA_DIR                  # 新代码用 DATA_RAW_DIR
+DATA_PROCESSED_DIR = DATA_DIR / "processed"
 OUTPUT_DIR = ROOT_DIR / "output"
 CACHE_DIR = ROOT_DIR / "cache"
 
+# 输出子目录（按策略分类）
+OUTPUT_V2_DIR = OUTPUT_DIR / "v2"
+OUTPUT_V3_DIR = OUTPUT_DIR / "v3"
+OUTPUT_V4_DIR = OUTPUT_DIR / "v4"
+OUTPUT_COMBINED_DIR = OUTPUT_DIR / "combined"
+
 # 确保目录存在
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
+for _d in [DATA_DIR, DATA_RAW_DIR, DATA_PROCESSED_DIR,
+           OUTPUT_DIR, OUTPUT_V2_DIR, OUTPUT_V3_DIR,
+           OUTPUT_V4_DIR, OUTPUT_COMBINED_DIR, CACHE_DIR]:
+    _d.mkdir(parents=True, exist_ok=True)
 
 # ============================================================
 # 筛选层
