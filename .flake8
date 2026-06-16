@@ -1,0 +1,6 @@
+[flake8]
+max-line-length = 120
+exclude = .git,__pycache__,__init__.py,migrations,.pytest_cache
+# Phase 1: 只检查 error 级别, 后续逐步启用 F/W
+select = E
+ignore = E203,E501,W503
