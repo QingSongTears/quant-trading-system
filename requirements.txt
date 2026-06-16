@@ -20,9 +20,6 @@ aiosqlite>=0.20.0        # SQLite 异步驱动（可选）
 pandas>=2.2.0
 numpy>=1.26.0
 
-# === 技术指标 ===
-pandas-ta>=0.3.14b       # 技术分析指标库
-
 # === 配置 ===
 pyyaml>=6.0
 
