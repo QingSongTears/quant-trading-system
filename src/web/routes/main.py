@@ -121,9 +121,15 @@ async def backtest_page(request: Request):
         strategies = []
         stock_list = []
 
+    # 加载 strategies.yaml 获取 strategy_type 信息
+    from ...config import load_strategies
+    yaml_strategies = load_strategies().get("strategies", [])
+    yaml_map = {s["name"]: s for s in yaml_strategies}
+
     ctx = _get_global_context(request)
     ctx.update({
         "strategies": strategies,
+        "strategy_configs": yaml_map,  # 包含 strategy_type 等字段
         "stock_list": stock_list.to_dict("records") if hasattr(stock_list, "to_dict") else [],
         "default_start": (date.today() - timedelta(days=365 * 3)).strftime("%Y-%m-%d"),
         "default_end": date.today().strftime("%Y-%m-%d"),

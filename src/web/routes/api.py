@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from ...models.repository import DataRepository
 from ...data.downloader import DataDownloader
 from ...backtest.engine import BacktestEngine
+from ...backtest.portfolio_engine import PortfolioBacktestEngine
 from ..app import download_status as _download_status
 
 router = APIRouter()
@@ -36,6 +37,14 @@ class BatchBacktestRequest(BaseModel):
     start_date: str
     end_date: str
     initial_capital: float = 100000
+
+
+class PortfolioBacktestRequest(BaseModel):
+    """组合回测请求 — 选股策略专用 (不需要 stock_code)"""
+    strategy_name: str
+    start_date: str
+    end_date: str
+    initial_capital: float = 1000000
 
 
 # ===== 数据 API =====
@@ -185,6 +194,92 @@ async def run_backtest(req: BacktestRequest):
                     break
 
             # 查找策略ID
+            from ...models.database import StrategyConfig
+            strategy_record = session.query(StrategyConfig).filter_by(name=req.strategy_name).first()
+            strategy_id = strategy_record.id if strategy_record else None
+
+            result_dict = report.to_db_dict(strategy_id)
+            result_dict["stock_name"] = report.stock_name
+            result_id = repo.save_backtest_result(session, result_dict)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+
+        return {
+            "success": True,
+            "result_id": result_id,
+            "report": {
+                "total_return": report.total_return,
+                "annual_return": report.annual_return,
+                "sharpe_ratio": report.sharpe_ratio,
+                "max_drawdown": report.max_drawdown,
+                "win_rate": report.win_rate,
+                "total_trades": report.total_trades,
+                "benchmark_return": report.benchmark_return,
+                "excess_return": report.excess_return,
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== 组合回测 API (选股策略) =====
+
+@router.post("/backtest/portfolio/run")
+async def run_portfolio_backtest(req: PortfolioBacktestRequest):
+    """执行组合回测 (选股策略)"""
+    try:
+        from ...config import load_strategies
+        import importlib
+
+        strategies_config = load_strategies()
+        strategy_class = None
+        strategy_meta = None
+
+        for s in strategies_config.get("strategies", []):
+            if s["name"] == req.strategy_name and s.get("strategy_type") == "portfolio":
+                module_path, class_name = s["class_path"].rsplit(".", 1)
+                module = importlib.import_module(module_path)
+                strategy_class = getattr(module, class_name)
+                strategy_meta = s
+                break
+
+        if strategy_class is None:
+            raise ValueError(f"未找到选股策略: {req.strategy_name}")
+
+        # 用 YAML 参数实例化策略
+        strategy_params = strategy_meta.get("params", {})
+        strategy = strategy_class()
+        for k, v in strategy_params.items():
+            if hasattr(strategy, k):
+                setattr(strategy, k, v)
+
+        engine = PortfolioBacktestEngine()
+        report = engine.run(
+            strategy=strategy,
+            start_date=date.fromisoformat(req.start_date),
+            end_date=date.fromisoformat(req.end_date),
+            initial_capital=req.initial_capital,
+        )
+
+        # 持久化
+        repo = DataRepository()
+        session = repo.get_session()
+        try:
+            for s in strategies_config.get("strategies", []):
+                if s["name"] == req.strategy_name:
+                    repo.save_strategy_config(
+                        session, s["name"], s["class_path"],
+                        json.dumps(s.get("params", {})),
+                        s.get("description", ""),
+                        s.get("source", "")
+                    )
+                    break
+
             from ...models.database import StrategyConfig
             strategy_record = session.query(StrategyConfig).filter_by(name=req.strategy_name).first()
             strategy_id = strategy_record.id if strategy_record else None

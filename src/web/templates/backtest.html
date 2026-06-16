@@ -138,6 +138,9 @@
 {% endblock %}
 {% block scripts %}
 <script>
+// 当前选中策略的类型 (signal 或 portfolio)
+let currentStrategyType = 'signal';
+
 // 加载策略列表
 async function loadStrategies() {
     try {
@@ -149,6 +152,7 @@ async function loadStrategies() {
                 const opt = document.createElement('option');
                 opt.value = s.name;
                 opt.textContent = s.name;
+                if (s.strategy_type) opt.dataset.strategyType = s.strategy_type;
                 select.appendChild(opt);
             });
         }
@@ -157,11 +161,29 @@ async function loadStrategies() {
     }
 }
 
-// 策略选择时显示描述
+// 策略选择时显示描述 + 适配选股策略
 document.getElementById('strategy-select').addEventListener('change', async function() {
     const info = document.getElementById('strategy-info');
+    const stockGroup = document.getElementById('stock-code').closest('.mb-3');
+    const capitalInput = document.getElementById('initial-capital');
     const name = this.value;
-    if (!name) { info.textContent = ''; return; }
+    const selectedOpt = this.selectedOptions[0];
+    const strategyType = selectedOpt?.dataset?.strategyType || 'signal';
+    currentStrategyType = strategyType;
+    
+    if (!name) { info.textContent = ''; stockGroup.style.display = ''; return; }
+    
+    // 选股策略: 隐藏股票选择框 + 调高初始资金
+    if (strategyType === 'portfolio') {
+        stockGroup.style.display = 'none';
+        capitalInput.value = capitalInput.value || '1000000';
+        document.getElementById('stock-code').removeAttribute('required');
+    } else {
+        stockGroup.style.display = '';
+        capitalInput.value = capitalInput.value || '100000';
+        document.getElementById('stock-code').setAttribute('required', '');
+    }
+    
     try {
         const resp = await fetch('/api/strategies');
         const data = await resp.json();
@@ -169,6 +191,9 @@ document.getElementById('strategy-select').addEventListener('change', async func
         if (s) {
             info.innerHTML = `<strong>${s.description || '无描述'}</strong>`;
             if (s.source) info.innerHTML += ` | <small class="text-muted">来源: ${s.source}</small>`;
+            if (s.strategy_type === 'portfolio') {
+                info.innerHTML += '<br><span class="badge bg-info mt-1">组合选股</span>';
+            }
         }
     } catch(e) {}
 });
@@ -223,27 +248,36 @@ document.getElementById('backtest-form').addEventListener('submit', async functi
     error.classList.add('d-none');
     loading.classList.remove('d-none');
     
-    const code = document.getElementById('stock-code').value.trim();
     const startDate = document.getElementById('start-date').value;
     const endDate = document.getElementById('end-date').value;
+    const isPortfolio = currentStrategyType === 'portfolio';
     
-    if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
-        showError('请输入有效的6位股票代码');
-        resetButton();
-        return;
+    // 选股策略不需要股票代码
+    if (!isPortfolio) {
+        const code = document.getElementById('stock-code').value.trim();
+        if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
+            showError('请输入有效的6位股票代码');
+            resetButton();
+            return;
+        }
     }
     
     const payload = {
         strategy_name: document.getElementById('strategy-select').value,
-        stock_code: code,
         start_date: startDate,
         end_date: endDate,
         initial_capital: parseFloat(document.getElementById('initial-capital').value),
-        commission: parseFloat(document.getElementById('commission').value) / 100,
     };
+    if (!isPortfolio) {
+        payload.stock_code = document.getElementById('stock-code').value.trim();
+        payload.commission = parseFloat(document.getElementById('commission').value) / 100;
+    }
+    
+    // 选股策略走组合回测 API
+    const apiUrl = isPortfolio ? '/api/backtest/portfolio/run' : '/api/backtest/run';
     
     try {
-        const resp = await fetch('/api/backtest/run', {
+        const resp = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)

@@ -49,3 +49,50 @@ strategies:
       atr_multiplier: 2.0
     description: "唐奇安通道突破入场，ATR动态止损。经典趋势跟踪策略。"
     source: "Faith, C. (2007). Way of the Turtle"
+
+  # ---- v2.0 A股核心选股策略 (Portfolio Selection) ----
+  # 策略类型: portfolio — 全市场选股+等权组合+定期调仓
+
+  - name: "小市值选股"
+    class_path: "src.strategies.small_cap.SmallCapStrategy"
+    params:
+      n_stocks: 20
+      rebalance_days: 20
+      lookback_days: 20
+      min_amount_wan: 3000
+    description: "选择估算市值最小的N只股票，定期调仓。A股最可靠Alpha来源。"
+    source: "Fama & French (1993). Common Risk Factors"
+    strategy_type: "portfolio"
+
+  - name: "短期反转选股"
+    class_path: "src.strategies.reversal.ReversalStrategy"
+    params:
+      n_stocks: 20
+      rebalance_days: 20
+      lookback_days: 20
+      min_return: -30
+    description: "选择近期跌幅最大的N只股票，博弈超跌反弹。行为金融核心策略。"
+    source: "Jegadeesh (1990). Evidence of Predictable Behavior"
+    strategy_type: "portfolio"
+
+  - name: "低波动选股"
+    class_path: "src.strategies.low_volatility.LowVolatilityStrategy"
+    params:
+      n_stocks: 20
+      rebalance_days: 60
+      lookback_days: 60
+    description: "选择波动率最低的N只股票，低波动异象策略。防御利器。"
+    source: "Baker, Bradley & Wurgler (2011). Benchmarks as Limits to Arbitrage"
+    strategy_type: "portfolio"
+
+  - name: "低换手选股"
+    class_path: "src.strategies.low_turnover.LowTurnoverStrategy"
+    params:
+      n_stocks: 20
+      rebalance_days: 60
+      lookback_days: 60
+      max_turnover: 1.0
+      min_market_cap_yi: 50
+    description: "选择换手率最低的N只股票，筹码锁定信号。流动性溢价策略。"
+    source: "Datar, Naik & Radcliffe (1998). Liquidity and Stock Returns"
+    strategy_type: "portfolio"

@@ -201,3 +201,32 @@ class DataRepository:
             return session.query(DataSourceMeta) \
                 .order_by(DataSourceMeta.download_time.desc()) \
                 .limit(10).all()
+
+    # ===== 全市场数据 (选股策略用) =====
+
+    def get_all_daily_data(self, start: date, end: date) -> pd.DataFrame:
+        """
+        获取全市场日线数据 (JOIN stock_basic 获取 name)
+
+        Returns:
+            DataFrame with columns: code, name, trade_date, open, high, low,
+            close, volume, amount, pct_change, turnover
+        """
+        query = f"""
+            SELECT dp.code, sb.name, dp.trade_date,
+                   dp.open, dp.high, dp.low, dp.close,
+                   dp.volume, dp.amount, dp.pct_change, dp.turnover
+            FROM daily_price dp
+            JOIN stock_basic sb ON dp.code = sb.code
+            WHERE dp.trade_date >= '{start}'
+              AND dp.trade_date <= '{end}'
+            ORDER BY dp.code, dp.trade_date
+        """
+        df = pd.read_sql(query, self.engine)
+        if not df.empty:
+            df["trade_date"] = pd.to_datetime(df["trade_date"])
+        return df
+
+    def get_all_stock_basics(self) -> pd.DataFrame:
+        """获取所有股票基本信息"""
+        return self.get_stock_list()
