@@ -32,6 +32,7 @@ warnings.filterwarnings("ignore")
 from config import DATA_RAW_DIR, OUTPUT_DIR, OUTPUT_COMBINED_DIR
 from core.data_loader import load_kline, load_quotes, load_finance, build_exclusion_set, build_spot_map
 from core.indicators import precompute_indicators
+from core.market_breadth import MarketBreadthFilter
 
 
 # ============================================================
@@ -137,12 +138,16 @@ class BacktestEngine:
         end_date: str = "2026-06-12",
         max_positions: int = 10,
         single_position_pct: float = 0.10,
+        use_breadth_filter: bool = False,
+        breadth_min_up_ratio: float = 0.40,
     ):
         self.initial_capital = initial_capital
         self.start_date = start_date
         self.end_date = end_date
         self.max_positions = max_positions
         self.single_position_pct = single_position_pct
+        self.use_breadth_filter = use_breadth_filter
+        self.breadth_filter = MarketBreadthFilter(min_up_ratio=breadth_min_up_ratio) if use_breadth_filter else None
 
         self._strategies: List[Tuple[BaseStrategy, float]] = []  # (strategy, weight)
 
@@ -245,6 +250,15 @@ class BacktestEngine:
                     p["code"] for plist in positions_by_strategy.values() for p in plist
                 )
 
+                # 市场广度过滤
+                today_data = kline[kline["date"] == today]
+                if self.use_breadth_filter:
+                    context["breadth"] = self.breadth_filter.compute(today_data, context.get("spot_map", {}))
+                    if not context["breadth"]["pass"] and verbose and day_idx % 30 == 0:
+                        print(f"    ⚠️  [{today_str}] 市场广度不通过: {context['breadth']['reason']}")
+                else:
+                    context["breadth"] = None
+
                 for strategy, weight in self._strategies:
                     strategy_cash = cash * weight / sum(w for _, w in self._strategies)
                     pos_list = positions_by_strategy[strategy.name]
@@ -255,7 +269,6 @@ class BacktestEngine:
                     if strategy_cash < self.initial_capital * 0.02:
                         continue
 
-                    today_data = kline[kline["date"] == today]
                     signals = strategy.scan(today_data, today, context)
 
                     for sig in signals:
@@ -267,14 +280,18 @@ class BacktestEngine:
                         if shares == 0:
                             continue
                         cash -= shares * sig.close
-                        pos_list.append({
+                        pos = {
                             "code": sig.code,
                             "entry_price": sig.close,
                             "entry_date": today_str,
                             "shares": shares,
                             "name": sig.name,
                             "strategy": strategy.name,
-                        })
+                        }
+                        # 传递信号的extra字段（如dynamic_tp等）
+                        if sig.extra:
+                            pos.update(sig.extra)
+                        pos_list.append(pos)
 
         # 6. 期末清仓
         last_day = trading_days[-1]
