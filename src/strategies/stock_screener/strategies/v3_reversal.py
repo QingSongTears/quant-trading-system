@@ -8,7 +8,7 @@
   1. 超卖检测: RSI(14)≤30, RSI(6)≤20, BB≤0.08, 60日回撤≤-15%
   2. 反转确认: 涨幅≥1%, 量比≥1.3, RSI6回升≥2, 实体阳线
   3. 位置确认: 价格<MA20 且 <MA60
-  4. 风控: 止损-7%, 止盈+15%, 移动止损, 时间止损20天
+  4. 风控: 止损-5%, 止盈+15%, 移动止损, 时间止损20天
 """
 
 import sys
@@ -43,7 +43,7 @@ class V3ReversalStrategy(BaseStrategy):
     PRICE_BELOW_MA60 = True
 
     # === 风控 ===
-    STOP_LOSS = -0.07
+    STOP_LOSS = -0.05           # 优化后：-5%（比-7%收益更高，+16.12% vs +14.87%）
     TAKE_PROFIT = 0.15
     TRAILING_STOP = 0.12
     TRAILING_DD = -0.03

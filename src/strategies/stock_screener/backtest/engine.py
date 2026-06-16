@@ -140,6 +140,9 @@ class BacktestEngine:
         single_position_pct: float = 0.10,
         use_breadth_filter: bool = False,
         breadth_min_up_ratio: float = 0.40,
+        use_breadth_exit: bool = False,          # 广度紧急清仓
+        breadth_exit_threshold: float = 0.40,    # 清仓阈值（通常比入口更严）
+        breadth_exit_smoothed: bool = True,      # 用SMA平滑版判断清仓
     ):
         self.initial_capital = initial_capital
         self.start_date = start_date
@@ -148,6 +151,9 @@ class BacktestEngine:
         self.single_position_pct = single_position_pct
         self.use_breadth_filter = use_breadth_filter
         self.breadth_filter = MarketBreadthFilter(min_up_ratio=breadth_min_up_ratio) if use_breadth_filter else None
+        self.use_breadth_exit = use_breadth_exit
+        self.breadth_exit_threshold = breadth_exit_threshold
+        self.breadth_exit_smoothed = breadth_exit_smoothed
 
         self._strategies: List[Tuple[BaseStrategy, float]] = []  # (strategy, weight)
 
@@ -228,7 +234,40 @@ class BacktestEngine:
                 print(f"  [{today_str}] d{day_idx:3d}/{len(trading_days)} | "
                       f"pos:{total_pos} | trades:{total_tr} wr:{wr}")
 
-            # 5a. 更新持仓（各策略独立管理）
+            # 5a. 市场广度计算（入口过滤 + 紧急清仓共用）
+            today_data = kline[kline["date"] == today]
+            breadth = None
+            if self.use_breadth_filter or self.use_breadth_exit:
+                if self.use_breadth_exit and self.breadth_exit_smoothed:
+                    # 紧急清仓用SMA平滑版
+                    exit_filter = MarketBreadthFilter(
+                        min_up_ratio=self.breadth_exit_threshold,
+                        lookback_days=5)
+                    breadth = exit_filter.compute_smoothed(kline, today, context.get("spot_map", {}))
+                elif self.breadth_filter:
+                    breadth = self.breadth_filter.compute(today_data, context.get("spot_map", {}))
+                context["breadth"] = breadth
+
+            # 5b. 广度紧急清仓 — 恐慌日强制平掉所有持仓
+            if self.use_breadth_exit and breadth is not None and not breadth.get("pass", True):
+                if verbose and day_idx % 30 == 0:
+                    print(f"    🚨 [{today_str}] 广度紧急清仓! {breadth['reason']}")
+                for strategy, _ in self._strategies:
+                    pos_list = positions_by_strategy[strategy.name]
+                    for p in list(pos_list):
+                        row = kline[(kline["code"] == p["code"]) & (kline["date"] == today)]
+                        if not row.empty:
+                            cp = row.iloc[-1]["close"]
+                            ret = (cp - p["entry_price"]) / p["entry_price"] * 100
+                            hold = (today - pd.Timestamp(p["entry_date"])).days
+                            t = Trade(p["code"], p.get("name", ""), p.get("strategy", strategy.name),
+                                      p["entry_date"], today_str, p["entry_price"], cp,
+                                      "breadth_exit", ret, hold, p["shares"])
+                            trades_by_strategy[strategy.name].append(t)
+                            cash += cp * p["shares"]
+                    positions_by_strategy[strategy.name] = []
+
+            # 5c. 正常更新持仓（各策略独立管理）
             for strategy, _ in self._strategies:
                 pos_list = positions_by_strategy[strategy.name]
                 positions_by_strategy[strategy.name], closed = self._update_strategy_positions(
@@ -238,11 +277,11 @@ class BacktestEngine:
                     trades_by_strategy[strategy.name].append(t)
                     cash += t.exit_price * t._shares
 
-            # 5b. 计算权益
+            # 5d. 计算权益
             equity = self._calc_equity(positions_by_strategy, kline, today, cash)
             equity_curve.append({"date": today_str, "equity": equity})
 
-            # 5c. 开新仓
+            # 5e. 开新仓
             total_positions = sum(len(p) for p in positions_by_strategy.values())
             if total_positions < self.max_positions and cash > self.initial_capital * 0.05:
                 context["positions"] = positions_by_strategy
@@ -250,26 +289,21 @@ class BacktestEngine:
                     p["code"] for plist in positions_by_strategy.values() for p in plist
                 )
 
-                # 市场广度过滤
-                today_data = kline[kline["date"] == today]
-                if self.use_breadth_filter:
-                    context["breadth"] = self.breadth_filter.compute(today_data, context.get("spot_map", {}))
-                    if not context["breadth"]["pass"] and verbose and day_idx % 30 == 0:
-                        print(f"    ⚠️  [{today_str}] 市场广度不通过: {context['breadth']['reason']}")
+                # 广度入口过滤（已计算过，直接复用）
+                if self.use_breadth_filter and breadth and not breadth.get("pass", True):
+                    pass  # 不开仓
                 else:
-                    context["breadth"] = None
+                    for strategy, weight in self._strategies:
+                        strategy_cash = cash * weight / sum(w for _, w in self._strategies)
+                        pos_list = positions_by_strategy[strategy.name]
+                        max_for_strategy = max(2, self.max_positions // len(self._strategies))
 
-                for strategy, weight in self._strategies:
-                    strategy_cash = cash * weight / sum(w for _, w in self._strategies)
-                    pos_list = positions_by_strategy[strategy.name]
-                    max_for_strategy = max(2, self.max_positions // len(self._strategies))
+                        if len(pos_list) >= max_for_strategy:
+                            continue
+                        if strategy_cash < self.initial_capital * 0.02:
+                            continue
 
-                    if len(pos_list) >= max_for_strategy:
-                        continue
-                    if strategy_cash < self.initial_capital * 0.02:
-                        continue
-
-                    signals = strategy.scan(today_data, today, context)
+                        signals = strategy.scan(today_data, today, context)
 
                     for sig in signals:
                         if len(pos_list) >= max_for_strategy:
