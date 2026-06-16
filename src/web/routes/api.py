@@ -47,6 +47,14 @@ class PortfolioBacktestRequest(BaseModel):
     initial_capital: float = 1000000
 
 
+class VotingBacktestRequest(BaseModel):
+    """投票模型回测请求 — 技术投票模型专用"""
+    start_date: str
+    end_date: str
+    initial_capital: float = 1000000
+    max_stocks: int = 50  # 最多扫描50只 (性能考虑)
+
+
 # ===== 数据 API =====
 
 @router.get("/data/coverage")
@@ -282,6 +290,81 @@ async def run_portfolio_backtest(req: PortfolioBacktestRequest):
 
             from ...models.database import StrategyConfig
             strategy_record = session.query(StrategyConfig).filter_by(name=req.strategy_name).first()
+            strategy_id = strategy_record.id if strategy_record else None
+
+            result_dict = report.to_db_dict(strategy_id)
+            result_dict["stock_name"] = report.stock_name
+            result_id = repo.save_backtest_result(session, result_dict)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+
+        return {
+            "success": True,
+            "result_id": result_id,
+            "report": {
+                "total_return": report.total_return,
+                "annual_return": report.annual_return,
+                "sharpe_ratio": report.sharpe_ratio,
+                "max_drawdown": report.max_drawdown,
+                "win_rate": report.win_rate,
+                "total_trades": report.total_trades,
+                "benchmark_return": report.benchmark_return,
+                "excess_return": report.excess_return,
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== 投票模型回测 API (技术投票模型) =====
+
+@router.post("/backtest/voting/run")
+async def run_voting_backtest(req: VotingBacktestRequest):
+    """执行技术投票模型回测"""
+    try:
+        from ...models.technical_voting import TechnicalVotingModel
+        from ...models.repository import DataRepository
+
+        repo = DataRepository()
+
+        # 获取股票池: 从 daily_price 中取有足够数据的股票
+        stock_list = repo.get_stock_list()
+        if hasattr(stock_list, 'code'):
+            all_codes = stock_list["code"].tolist() if hasattr(stock_list, "tolist") else list(stock_list.code)
+        else:
+            all_codes = stock_list["code"].tolist()
+
+        # 限制数量 (性能考虑)
+        stock_pool = all_codes[:req.max_stocks]
+
+        model = TechnicalVotingModel()
+        report = model.run(
+            stock_pool=stock_pool,
+            start_date=date.fromisoformat(req.start_date),
+            end_date=date.fromisoformat(req.end_date),
+            initial_capital=req.initial_capital,
+        )
+
+        # 持久化
+        session = repo.get_session()
+        try:
+            repo.save_strategy_config(
+                session, "技术指标投票模型",
+                "src.models.technical_voting.TechnicalVotingModel",
+                "{}",
+                "5策略投票委员会: 双均线+MACD+RSI+布林带+海龟",
+                "综合投票模型"
+            )
+
+            from ...models.database import StrategyConfig
+            strategy_record = session.query(StrategyConfig).filter_by(
+                name="技术指标投票模型"
+            ).first()
             strategy_id = strategy_record.id if strategy_record else None
 
             result_dict = report.to_db_dict(strategy_id)

@@ -173,8 +173,8 @@ document.getElementById('strategy-select').addEventListener('change', async func
     
     if (!name) { info.textContent = ''; stockGroup.style.display = ''; return; }
     
-    // 选股策略: 隐藏股票选择框 + 调高初始资金
-    if (strategyType === 'portfolio') {
+    // 选股策略/投票模型: 隐藏股票选择框 + 调高初始资金
+    if (strategyType === 'portfolio' || strategyType === 'voting') {
         stockGroup.style.display = 'none';
         capitalInput.value = capitalInput.value || '1000000';
         document.getElementById('stock-code').removeAttribute('required');
@@ -193,6 +193,8 @@ document.getElementById('strategy-select').addEventListener('change', async func
             if (s.source) info.innerHTML += ` | <small class="text-muted">来源: ${s.source}</small>`;
             if (s.strategy_type === 'portfolio') {
                 info.innerHTML += '<br><span class="badge bg-info mt-1">组合选股</span>';
+            } else if (s.strategy_type === 'voting') {
+                info.innerHTML += '<br><span class="badge bg-warning mt-1">投票模型</span>';
             }
         }
     } catch(e) {}
@@ -251,9 +253,10 @@ document.getElementById('backtest-form').addEventListener('submit', async functi
     const startDate = document.getElementById('start-date').value;
     const endDate = document.getElementById('end-date').value;
     const isPortfolio = currentStrategyType === 'portfolio';
+    const isVoting = currentStrategyType === 'voting';
     
-    // 选股策略不需要股票代码
-    if (!isPortfolio) {
+    // 选股策略和投票模型不需要股票代码
+    if (!isPortfolio && !isVoting) {
         const code = document.getElementById('stock-code').value.trim();
         if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
             showError('请输入有效的6位股票代码');
@@ -268,13 +271,15 @@ document.getElementById('backtest-form').addEventListener('submit', async functi
         end_date: endDate,
         initial_capital: parseFloat(document.getElementById('initial-capital').value),
     };
-    if (!isPortfolio) {
+    if (!isPortfolio && !isVoting) {
         payload.stock_code = document.getElementById('stock-code').value.trim();
         payload.commission = parseFloat(document.getElementById('commission').value) / 100;
     }
     
-    // 选股策略走组合回测 API
-    const apiUrl = isPortfolio ? '/api/backtest/portfolio/run' : '/api/backtest/run';
+    // 选股策略走组合回测 API，投票模型走投票 API
+    let apiUrl = '/api/backtest/run';
+    if (isPortfolio) apiUrl = '/api/backtest/portfolio/run';
+    else if (isVoting) apiUrl = '/api/backtest/voting/run';
     
     try {
         const resp = await fetch(apiUrl, {

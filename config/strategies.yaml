@@ -96,3 +96,30 @@ strategies:
     description: "选择换手率最低的N只股票，筹码锁定信号。流动性溢价策略。"
     source: "Datar, Naik & Radcliffe (1998). Liquidity and Stock Returns"
     strategy_type: "portfolio"
+
+  # ---- v2.0 A股量化模型 (Composite Models) ----
+
+  - name: "三因子均衡"
+    class_path: "src.models.three_factor.ThreeFactorStrategy"
+    params:
+      n_stocks: 300
+      rebalance_days: 20
+      lookback_days: 252
+      min_amount_wan: 3000
+      min_price: 2.0
+      min_list_days: 250
+    description: "三因子等权组合：小市值(33%)+反转(33%)+低波动(33%)，月度调仓，最多300只等权持有。A股最稳健Alpha组合。"
+    source: "Fama & French (1993); Jegadeesh (1990); Baker, Bradley & Wurgler (2011)"
+    strategy_type: "portfolio"
+
+  - name: "技术指标投票模型"
+    class_path: "src.models.technical_voting.TechnicalVotingModel"
+    params:
+      entry_threshold: 2
+      exit_threshold: -2
+      max_positions: 10
+      single_stop_loss: -0.08
+      portfolio_stop: -0.15
+    description: "5策略投票委员会：双均线+MACD+RSI+布林带+海龟，总分≥+2买入/≤-2卖出，最多持仓10只。"
+    source: "综合投票模型: Appel(1979); Wilder(1978); Bollinger(2001); Faith(2007)"
+    strategy_type: "voting"

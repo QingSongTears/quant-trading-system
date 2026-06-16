@@ -104,7 +104,7 @@ class PortfolioBacktestEngine:
     def _load_all_data(self, start: date, end: date) -> pd.DataFrame:
         """加载全市场 daily_price 数据"""
         query = f"""
-            SELECT dp.code, sb.name, dp.trade_date,
+            SELECT dp.code, sb.name, sb.list_date, dp.trade_date,
                    dp.open, dp.high, dp.low, dp.close,
                    dp.volume, dp.amount, dp.pct_change, dp.turnover
             FROM daily_price dp
@@ -151,6 +151,7 @@ class PortfolioBacktestEngine:
         # 计算因子
         agg_dict = {
             "name": "last",
+            "list_date": "first",
             "close": "last",
             "amount": "mean",      # 日均成交额
             "turnover": "mean",     # 日均换手率
@@ -159,7 +160,7 @@ class PortfolioBacktestEngine:
 
         factors = recent.groupby("code").agg(agg_dict).reset_index()
         factors.columns = [
-            "code", "name", "close",
+            "code", "name", "list_date", "close",
             "avg_amount", "avg_turnover",
             "avg_return", "volatility"
         ]
