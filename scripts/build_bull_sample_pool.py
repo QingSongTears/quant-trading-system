@@ -84,27 +84,72 @@ def build_market_cap_estimation(engine) -> pd.DataFrame:
     """
     按日估算全市场市值
 
-    逻辑: 对每只股票每一天, 市值 ≈ 成交额 / 换手率 * 100 / 1e8
+    优先: 用 turnover 精确计算 (mcap = amount / turnover * 100 / 1e8)
+    回退: 当 turnover 缺失时, 用 amount 代理估算
+           假设日均换手率 3% → mcap ≈ avg_daily_amount / 0.03 * 100 / 1e8
+           即 mcap ≈ avg_amount * 3.33 / 1e4 (亿元)
+           考虑到 A 股实际分布, 调整系数:
+             avg_amount < 5000万 → 小微盘 (<30亿), mcap ≈ avg_amount/1e4 * 20
+             avg_amount 5000万-5亿 → 中盘 (30-500亿), mcap ≈ avg_amount/1e4 * 6
+             avg_amount > 5亿 → 大盘 (>500亿), mcap ≈ avg_amount/1e4 * 2
 
     Returns:
         DataFrame: code, trade_date, market_cap_yi
     """
-    df = pd.read_sql("""
+    # 尝试精确计算 (需要 turnover 数据)
+    df_turnover = pd.read_sql("""
         SELECT code, trade_date, amount, turnover
         FROM daily_price
-        WHERE amount > 0 AND turnover > 0
+        WHERE amount > 0 AND turnover > 0 AND turnover IS NOT NULL
         ORDER BY code, trade_date
     """, engine)
 
-    if df.empty:
+    if not df_turnover.empty:
+        df_turnover["trade_date"] = pd.to_datetime(df_turnover["trade_date"])
+        df_turnover["market_cap_yi"] = df_turnover["amount"] / df_turnover["turnover"] * 100 / 1e8
+        df_turnover = df_turnover[(df_turnover["market_cap_yi"] > 0) & (df_turnover["market_cap_yi"] < 100000)]
+        result_exact = df_turnover[["code", "trade_date", "market_cap_yi"]]
+    else:
+        result_exact = pd.DataFrame(columns=["code", "trade_date", "market_cap_yi"])
+
+    # 回退: 用 amount 代理 (无 turnover 数据时)
+    df_amt = pd.read_sql("""
+        SELECT code, trade_date, amount
+        FROM daily_price
+        WHERE amount > 0
+        ORDER BY code, trade_date
+    """, engine)
+
+    if not df_amt.empty:
+        df_amt["trade_date"] = pd.to_datetime(df_amt["trade_date"])
+        df_amt["avg_amount_wan"] = df_amt["amount"] / 10000  # 元→万元
+
+        # 按成交额分段估算市值
+        def amount_to_mcap(avg_amt_wan):
+            if avg_amt_wan < 3000:
+                return avg_amt_wan * 20 / 1e4   # 小微盘
+            elif avg_amt_wan < 50000:
+                return avg_amt_wan * 6 / 1e4    # 中盘
+            else:
+                return avg_amt_wan * 2 / 1e4    # 大盘
+
+        df_amt["market_cap_yi"] = df_amt["avg_amount_wan"].apply(amount_to_mcap)
+        result_proxy = df_amt[["code", "trade_date", "market_cap_yi"]]
+
+        # 优先用精确值, 缺失时用代理
+        if not result_exact.empty:
+            result = result_exact.copy()
+            print(f"   精确市值: {len(result_exact)}行, 代理: {len(result_proxy)}行")
+        else:
+            result = result_proxy
+            print(f"   ⚠️ 无 turnover 数据, 使用 amount 代理估算市值")
+    else:
+        result = result_exact
+
+    if result.empty:
         return pd.DataFrame(columns=["code", "trade_date", "market_cap_yi"])
 
-    df["trade_date"] = pd.to_datetime(df["trade_date"])
-    df["market_cap_yi"] = df["amount"] / df["turnover"] * 100 / 1e8
-    # 过滤异常值
-    df = df[(df["market_cap_yi"] > 0) & (df["market_cap_yi"] < 100000)]
-
-    return df[["code", "trade_date", "market_cap_yi"]]
+    return result
 
 
 def stage_1_market_cap(
@@ -366,10 +411,13 @@ def stage_3_filter_retail(
 
         # ---- 条件2: 翻倍期间日均换手率 > 20% ----
         if len(doubling_data) >= 20:
-            avg_turnover = doubling_data["turnover"].mean()
-            if avg_turnover > MAX_DAILY_TURNOVER:
-                rejected["换手率>20%"] += 1
-                is_rejected = True
+            turnover_vals = doubling_data["turnover"].dropna()
+            if len(turnover_vals) > 0:
+                avg_turnover = turnover_vals.mean()
+                if avg_turnover > MAX_DAILY_TURNOVER:
+                    rejected["换手率>20%"] += 1
+                    is_rejected = True
+            # 无 turnover 数据时跳过此条件
 
         # ---- 条件3: 一字涨停 >= 7个 ----
         if len(doubling_data) >= 7:

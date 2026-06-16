@@ -1,0 +1,1942 @@
+[
+  {
+    "code": "000032",
+    "name": "深桑达Ａ",
+    "start_date": "2025-01-03",
+    "doubling_date": "2025-02-26",
+    "entry_price": 15.89,
+    "peak_price": 32.5,
+    "max_return": 104.5,
+    "pre_return_pct": -15.0
+  },
+  {
+    "code": "000066",
+    "name": "中国长城",
+    "start_date": "2024-08-01",
+    "doubling_date": "2024-11-01",
+    "entry_price": 8.68,
+    "peak_price": 17.46,
+    "max_return": 101.2,
+    "pre_return_pct": -8.2
+  },
+  {
+    "code": "000657",
+    "name": "中钨高新",
+    "start_date": "2025-10-20",
+    "doubling_date": "2026-01-13",
+    "entry_price": 16.64,
+    "peak_price": 33.55,
+    "max_return": 101.6,
+    "pre_return_pct": 19.9
+  },
+  {
+    "code": "000688",
+    "name": "国城矿业",
+    "start_date": "2025-08-22",
+    "doubling_date": "2025-11-20",
+    "entry_price": 14.41,
+    "peak_price": 29.65,
+    "max_return": 105.8,
+    "pre_return_pct": 16.4
+  },
+  {
+    "code": "000960",
+    "name": "锡业股份",
+    "start_date": "2025-11-24",
+    "doubling_date": "2026-01-28",
+    "entry_price": 22.49,
+    "peak_price": 46.75,
+    "max_return": 107.9,
+    "pre_return_pct": 13.6
+  },
+  {
+    "code": "000962",
+    "name": "东方钽业",
+    "start_date": "2025-07-31",
+    "doubling_date": "2025-10-28",
+    "entry_price": 16.88,
+    "peak_price": 34.5,
+    "max_return": 104.4,
+    "pre_return_pct": 13.0
+  },
+  {
+    "code": "000988",
+    "name": "华工科技",
+    "start_date": "2025-07-02",
+    "doubling_date": "2025-09-22",
+    "entry_price": 45.27,
+    "peak_price": 92.35,
+    "max_return": 104.0,
+    "pre_return_pct": 11.1
+  },
+  {
+    "code": "001309",
+    "name": "德明利\u0000\u0000",
+    "start_date": "2024-01-22",
+    "doubling_date": "2024-03-21",
+    "entry_price": 68.77,
+    "peak_price": 139.73,
+    "max_return": 103.2,
+    "pre_return_pct": null
+  },
+  {
+    "code": "001896",
+    "name": "豫能控股",
+    "start_date": "2025-11-24",
+    "doubling_date": "2026-02-25",
+    "entry_price": 5.41,
+    "peak_price": 11.03,
+    "max_return": 103.9,
+    "pre_return_pct": -4.7
+  },
+  {
+    "code": "002008",
+    "name": "大族激光",
+    "start_date": "2025-11-27",
+    "doubling_date": "2026-03-02",
+    "entry_price": 36.18,
+    "peak_price": 74.62,
+    "max_return": 106.2,
+    "pre_return_pct": 0.2
+  },
+  {
+    "code": "002015",
+    "name": "协鑫能科",
+    "start_date": "2025-04-07",
+    "doubling_date": "2025-07-01",
+    "entry_price": 6.84,
+    "peak_price": 14.26,
+    "max_return": 108.5,
+    "pre_return_pct": 2.0
+  },
+  {
+    "code": "002050",
+    "name": "三花智控",
+    "start_date": "2025-07-31",
+    "doubling_date": "2025-10-29",
+    "entry_price": 26.45,
+    "peak_price": 52.99,
+    "max_return": 100.3,
+    "pre_return_pct": -1.2
+  },
+  {
+    "code": "002080",
+    "name": "中材科技",
+    "start_date": "2025-04-23",
+    "doubling_date": "2025-07-21",
+    "entry_price": 13.94,
+    "peak_price": 28.44,
+    "max_return": 104.0,
+    "pre_return_pct": 12.7
+  },
+  {
+    "code": "002125",
+    "name": "湘潭电化",
+    "start_date": "2024-02-05",
+    "doubling_date": "2024-05-10",
+    "entry_price": 6.7,
+    "peak_price": 14.7,
+    "max_return": 119.4,
+    "pre_return_pct": -30.1
+  },
+  {
+    "code": "002149",
+    "name": "西部材料",
+    "start_date": "2025-09-18",
+    "doubling_date": "2025-12-18",
+    "entry_price": 17.01,
+    "peak_price": 34.29,
+    "max_return": 101.6,
+    "pre_return_pct": -6.9
+  },
+  {
+    "code": "002156",
+    "name": "通富微电",
+    "start_date": "2024-09-13",
+    "doubling_date": "2024-11-11",
+    "entry_price": 18.24,
+    "peak_price": 36.87,
+    "max_return": 102.1,
+    "pre_return_pct": -22.4
+  },
+  {
+    "code": "002353",
+    "name": "杰瑞股份",
+    "start_date": "2025-11-21",
+    "doubling_date": "2026-02-12",
+    "entry_price": 50.89,
+    "peak_price": 103.98,
+    "max_return": 104.3,
+    "pre_return_pct": 13.0
+  },
+  {
+    "code": "002378",
+    "name": "章源钨业",
+    "start_date": "2025-06-19",
+    "doubling_date": "2025-09-02",
+    "entry_price": 7.91,
+    "peak_price": 15.89,
+    "max_return": 100.9,
+    "pre_return_pct": 13.3
+  },
+  {
+    "code": "002384",
+    "name": "东山精密",
+    "start_date": "2024-04-18",
+    "doubling_date": "2024-07-16",
+    "entry_price": 14.24,
+    "peak_price": 28.82,
+    "max_return": 102.4,
+    "pre_return_pct": -11.6
+  },
+  {
+    "code": "002407",
+    "name": "多氟多\u0000\u0000",
+    "start_date": "2025-07-31",
+    "doubling_date": "2025-10-30",
+    "entry_price": 12.42,
+    "peak_price": 26.5,
+    "max_return": 113.4,
+    "pre_return_pct": 7.1
+  },
+  {
+    "code": "002421",
+    "name": "达实智能",
+    "start_date": "2024-09-18",
+    "doubling_date": "2024-12-12",
+    "entry_price": 2.33,
+    "peak_price": 4.68,
+    "max_return": 100.9,
+    "pre_return_pct": 3.5
+  },
+  {
+    "code": "002428",
+    "name": "云南锗业",
+    "start_date": "2024-08-05",
+    "doubling_date": "2024-11-05",
+    "entry_price": 11.7,
+    "peak_price": 25.76,
+    "max_return": 120.2,
+    "pre_return_pct": 15.3
+  },
+  {
+    "code": "002460",
+    "name": "赣锋锂业",
+    "start_date": "2025-07-15",
+    "doubling_date": "2025-10-13",
+    "entry_price": 34.48,
+    "peak_price": 69.75,
+    "max_return": 102.3,
+    "pre_return_pct": 15.4
+  },
+  {
+    "code": "002484",
+    "name": "江海股份",
+    "start_date": "2025-06-20",
+    "doubling_date": "2025-09-01",
+    "entry_price": 18.15,
+    "peak_price": 36.64,
+    "max_return": 101.9,
+    "pre_return_pct": -13.6
+  },
+  {
+    "code": "002558",
+    "name": "巨人网络",
+    "start_date": "2025-04-08",
+    "doubling_date": "2025-07-04",
+    "entry_price": 12.3,
+    "peak_price": 25.14,
+    "max_return": 104.4,
+    "pre_return_pct": 8.2
+  },
+  {
+    "code": "002625",
+    "name": "光启技术",
+    "start_date": "2024-02-02",
+    "doubling_date": "2024-04-01",
+    "entry_price": 11.17,
+    "peak_price": 22.89,
+    "max_return": 104.9,
+    "pre_return_pct": -20.0
+  },
+  {
+    "code": "002636",
+    "name": "金安国纪",
+    "start_date": "2025-04-16",
+    "doubling_date": "2025-07-10",
+    "entry_price": 7.54,
+    "peak_price": 15.15,
+    "max_return": 100.9,
+    "pre_return_pct": 10.4
+  },
+  {
+    "code": "002654",
+    "name": "万润科技",
+    "start_date": "2024-08-02",
+    "doubling_date": "2024-10-31",
+    "entry_price": 9.77,
+    "peak_price": 19.56,
+    "max_return": 100.2,
+    "pre_return_pct": 0.6
+  },
+  {
+    "code": "002709",
+    "name": "天赐材料",
+    "start_date": "2025-07-08",
+    "doubling_date": "2025-09-29",
+    "entry_price": 18.7,
+    "peak_price": 37.59,
+    "max_return": 101.0,
+    "pre_return_pct": 11.0
+  },
+  {
+    "code": "002837",
+    "name": "英维克\u0000\u0000",
+    "start_date": "2025-05-23",
+    "doubling_date": "2025-08-15",
+    "entry_price": 31.5,
+    "peak_price": 63.82,
+    "max_return": 102.6,
+    "pre_return_pct": -37.4
+  },
+  {
+    "code": "002842",
+    "name": "翔鹭钨业",
+    "start_date": "2025-10-28",
+    "doubling_date": "2026-01-21",
+    "entry_price": 11.3,
+    "peak_price": 22.6,
+    "max_return": 100.0,
+    "pre_return_pct": 12.7
+  },
+  {
+    "code": "002851",
+    "name": "麦格米特",
+    "start_date": "2024-08-05",
+    "doubling_date": "2024-10-28",
+    "entry_price": 23.87,
+    "peak_price": 48.06,
+    "max_return": 101.3,
+    "pre_return_pct": 9.9
+  },
+  {
+    "code": "002896",
+    "name": "中大力德",
+    "start_date": "2024-11-18",
+    "doubling_date": "2025-02-18",
+    "entry_price": 29.96,
+    "peak_price": 73.31,
+    "max_return": 144.7,
+    "pre_return_pct": 14.1
+  },
+  {
+    "code": "002916",
+    "name": "深南电路",
+    "start_date": "2025-06-06",
+    "doubling_date": "2025-08-28",
+    "entry_price": 91.88,
+    "peak_price": 186.45,
+    "max_return": 102.9,
+    "pre_return_pct": -29.6
+  },
+  {
+    "code": "002938",
+    "name": "鹏鼎控股",
+    "start_date": "2025-05-22",
+    "doubling_date": "2025-08-13",
+    "entry_price": 28.24,
+    "peak_price": 56.9,
+    "max_return": 101.5,
+    "pre_return_pct": -31.9
+  },
+  {
+    "code": "002980",
+    "name": "华盛昌\u0000\u0000",
+    "start_date": "2025-12-25",
+    "doubling_date": "2026-03-30",
+    "entry_price": 21.18,
+    "peak_price": 43.78,
+    "max_return": 106.7,
+    "pre_return_pct": -17.7
+  },
+  {
+    "code": "003031",
+    "name": "中瓷电子",
+    "start_date": "2026-03-16",
+    "doubling_date": "2026-05-19",
+    "entry_price": 86.03,
+    "peak_price": 172.42,
+    "max_return": 100.4,
+    "pre_return_pct": 16.6
+  },
+  {
+    "code": "300014",
+    "name": "亿纬锂能",
+    "start_date": "2025-07-09",
+    "doubling_date": "2025-09-30",
+    "entry_price": 45.03,
+    "peak_price": 91.0,
+    "max_return": 102.1,
+    "pre_return_pct": 9.6
+  },
+  {
+    "code": "300017",
+    "name": "网宿科技",
+    "start_date": "2025-11-19",
+    "doubling_date": "2026-02-12",
+    "entry_price": 10.8,
+    "peak_price": 22.12,
+    "max_return": 104.8,
+    "pre_return_pct": -12.6
+  },
+  {
+    "code": "300033",
+    "name": "同花顺\u0000\u0000",
+    "start_date": "2024-07-05",
+    "doubling_date": "2024-09-30",
+    "entry_price": 95.6,
+    "peak_price": 193.31,
+    "max_return": 102.2,
+    "pre_return_pct": -26.3
+  },
+  {
+    "code": "300058",
+    "name": "蓝色光标",
+    "start_date": "2024-08-21",
+    "doubling_date": "2024-11-21",
+    "entry_price": 5.19,
+    "peak_price": 10.74,
+    "max_return": 106.9,
+    "pre_return_pct": -11.5
+  },
+  {
+    "code": "300059",
+    "name": "东方财富",
+    "start_date": "2024-07-08",
+    "doubling_date": "2024-10-08",
+    "entry_price": 9.96,
+    "peak_price": 24.36,
+    "max_return": 144.6,
+    "pre_return_pct": -19.0
+  },
+  {
+    "code": "300085",
+    "name": "银之杰\u0000\u0000",
+    "start_date": "2024-07-02",
+    "doubling_date": "2024-09-25",
+    "entry_price": 8.7,
+    "peak_price": 18.98,
+    "max_return": 118.2,
+    "pre_return_pct": -31.5
+  },
+  {
+    "code": "300131",
+    "name": "英唐智控",
+    "start_date": "2024-08-07",
+    "doubling_date": "2024-11-07",
+    "entry_price": 4.28,
+    "peak_price": 8.87,
+    "max_return": 107.2,
+    "pre_return_pct": -8.1
+  },
+  {
+    "code": "300136",
+    "name": "信维通信",
+    "start_date": "2025-09-30",
+    "doubling_date": "2025-12-30",
+    "entry_price": 25.8,
+    "peak_price": 53.0,
+    "max_return": 105.4,
+    "pre_return_pct": 15.6
+  },
+  {
+    "code": "300139",
+    "name": "晓程科技",
+    "start_date": "2024-02-02",
+    "doubling_date": "2024-04-12",
+    "entry_price": 6.94,
+    "peak_price": 14.47,
+    "max_return": 108.5,
+    "pre_return_pct": -28.0
+  },
+  {
+    "code": "300179",
+    "name": "四方达\u0000\u0000",
+    "start_date": "2024-09-04",
+    "doubling_date": "2024-12-05",
+    "entry_price": 6.6,
+    "peak_price": 13.99,
+    "max_return": 112.0,
+    "pre_return_pct": -8.9
+  },
+  {
+    "code": "300184",
+    "name": "力源信息",
+    "start_date": "2024-07-08",
+    "doubling_date": "2024-10-08",
+    "entry_price": 4.38,
+    "peak_price": 9.68,
+    "max_return": 121.0,
+    "pre_return_pct": -15.7
+  },
+  {
+    "code": "300244",
+    "name": "迪安诊断",
+    "start_date": "2025-12-15",
+    "doubling_date": "2026-01-14",
+    "entry_price": 14.71,
+    "peak_price": 29.5,
+    "max_return": 100.5,
+    "pre_return_pct": -13.7
+  },
+  {
+    "code": "300260",
+    "name": "新莱应材",
+    "start_date": "2025-07-14",
+    "doubling_date": "2025-10-13",
+    "entry_price": 31.87,
+    "peak_price": 65.58,
+    "max_return": 105.8,
+    "pre_return_pct": -12.7
+  },
+  {
+    "code": "300274",
+    "name": "阳光电源",
+    "start_date": "2024-07-08",
+    "doubling_date": "2024-10-08",
+    "entry_price": 58.15,
+    "peak_price": 119.19,
+    "max_return": 105.0,
+    "pre_return_pct": -40.3
+  },
+  {
+    "code": "300283",
+    "name": "温州宏丰",
+    "start_date": "2026-02-02",
+    "doubling_date": "2026-05-08",
+    "entry_price": 8.27,
+    "peak_price": 16.98,
+    "max_return": 105.3,
+    "pre_return_pct": 6.8
+  },
+  {
+    "code": "300302",
+    "name": "同有科技",
+    "start_date": "2024-02-07",
+    "doubling_date": "2024-03-22",
+    "entry_price": 7.16,
+    "peak_price": 14.32,
+    "max_return": 100.0,
+    "pre_return_pct": -42.9
+  },
+  {
+    "code": "300323",
+    "name": "华灿光电",
+    "start_date": "2026-02-09",
+    "doubling_date": "2026-05-15",
+    "entry_price": 8.64,
+    "peak_price": 17.63,
+    "max_return": 104.1,
+    "pre_return_pct": 6.9
+  },
+  {
+    "code": "300342",
+    "name": "天银机电",
+    "start_date": "2025-10-15",
+    "doubling_date": "2026-01-08",
+    "entry_price": 17.92,
+    "peak_price": 36.08,
+    "max_return": 101.3,
+    "pre_return_pct": 6.2
+  },
+  {
+    "code": "300390",
+    "name": "天华新能",
+    "start_date": "2025-08-14",
+    "doubling_date": "2025-11-13",
+    "entry_price": 20.3,
+    "peak_price": 48.04,
+    "max_return": 136.7,
+    "pre_return_pct": 12.8
+  },
+  {
+    "code": "300394",
+    "name": "天孚通信",
+    "start_date": "2024-01-10",
+    "doubling_date": "2024-04-12",
+    "entry_price": 83.23,
+    "peak_price": 167.81,
+    "max_return": 101.6,
+    "pre_return_pct": null
+  },
+  {
+    "code": "300395",
+    "name": "菲利华\u0000\u0000",
+    "start_date": "2025-05-22",
+    "doubling_date": "2025-08-13",
+    "entry_price": 45.13,
+    "peak_price": 91.16,
+    "max_return": 102.0,
+    "pre_return_pct": 12.4
+  },
+  {
+    "code": "300442",
+    "name": "润泽科技",
+    "start_date": "2024-09-12",
+    "doubling_date": "2024-12-13",
+    "entry_price": 23.11,
+    "peak_price": 48.11,
+    "max_return": 108.2,
+    "pre_return_pct": -11.3
+  },
+  {
+    "code": "300450",
+    "name": "先导智能",
+    "start_date": "2024-09-18",
+    "doubling_date": "2024-11-20",
+    "entry_price": 13.24,
+    "peak_price": 26.51,
+    "max_return": 100.2,
+    "pre_return_pct": -24.8
+  },
+  {
+    "code": "300475",
+    "name": "香农芯创",
+    "start_date": "2024-02-05",
+    "doubling_date": "2024-03-21",
+    "entry_price": 20.8,
+    "peak_price": 43.94,
+    "max_return": 111.2,
+    "pre_return_pct": -27.5
+  },
+  {
+    "code": "300476",
+    "name": "胜宏科技",
+    "start_date": "2024-01-31",
+    "doubling_date": "2024-04-29",
+    "entry_price": 14.84,
+    "peak_price": 30.58,
+    "max_return": 106.1,
+    "pre_return_pct": -15.4
+  },
+  {
+    "code": "300503",
+    "name": "昊志机电",
+    "start_date": "2024-09-12",
+    "doubling_date": "2024-12-11",
+    "entry_price": 12.44,
+    "peak_price": 25.1,
+    "max_return": 101.8,
+    "pre_return_pct": 0.5
+  },
+  {
+    "code": "300505",
+    "name": "川金诺\u0000\u0000",
+    "start_date": "2024-02-05",
+    "doubling_date": "2024-05-07",
+    "entry_price": 8.69,
+    "peak_price": 18.01,
+    "max_return": 107.2,
+    "pre_return_pct": -43.7
+  },
+  {
+    "code": "300548",
+    "name": "长芯博创",
+    "start_date": "2024-09-20",
+    "doubling_date": "2024-12-19",
+    "entry_price": 17.12,
+    "peak_price": 34.49,
+    "max_return": 101.5,
+    "pre_return_pct": -12.9
+  },
+  {
+    "code": "300567",
+    "name": "精测电子",
+    "start_date": "2025-11-13",
+    "doubling_date": "2026-01-21",
+    "entry_price": 71.4,
+    "peak_price": 151.72,
+    "max_return": 112.5,
+    "pre_return_pct": 17.3
+  },
+  {
+    "code": "300570",
+    "name": "太辰光\u0000\u0000",
+    "start_date": "2024-07-24",
+    "doubling_date": "2024-10-24",
+    "entry_price": 30.47,
+    "peak_price": 66.65,
+    "max_return": 118.7,
+    "pre_return_pct": -25.8
+  },
+  {
+    "code": "300576",
+    "name": "容大感光",
+    "start_date": "2024-09-13",
+    "doubling_date": "2024-11-11",
+    "entry_price": 30.5,
+    "peak_price": 61.6,
+    "max_return": 102.0,
+    "pre_return_pct": -17.3
+  },
+  {
+    "code": "300604",
+    "name": "长川科技",
+    "start_date": "2025-07-03",
+    "doubling_date": "2025-09-24",
+    "entry_price": 44.55,
+    "peak_price": 96.32,
+    "max_return": 116.2,
+    "pre_return_pct": 3.7
+  },
+  {
+    "code": "300620",
+    "name": "光库科技",
+    "start_date": "2025-05-12",
+    "doubling_date": "2025-08-18",
+    "entry_price": 42.61,
+    "peak_price": 97.0,
+    "max_return": 127.6,
+    "pre_return_pct": -14.3
+  },
+  {
+    "code": "300655",
+    "name": "晶瑞电材",
+    "start_date": "2024-08-21",
+    "doubling_date": "2024-11-11",
+    "entry_price": 6.33,
+    "peak_price": 12.7,
+    "max_return": 100.6,
+    "pre_return_pct": -14.4
+  },
+  {
+    "code": "300672",
+    "name": "国科微\u0000\u0000",
+    "start_date": "2025-12-15",
+    "doubling_date": "2026-03-18",
+    "entry_price": 98.9,
+    "peak_price": 198.2,
+    "max_return": 100.4,
+    "pre_return_pct": 10.0
+  },
+  {
+    "code": "300706",
+    "name": "阿石创\u0000\u0000",
+    "start_date": "2025-05-15",
+    "doubling_date": "2025-08-07",
+    "entry_price": 20.5,
+    "peak_price": 47.66,
+    "max_return": 132.5,
+    "pre_return_pct": -8.3
+  },
+  {
+    "code": "300762",
+    "name": "上海瀚讯",
+    "start_date": "2024-02-05",
+    "doubling_date": "2024-05-08",
+    "entry_price": 7.82,
+    "peak_price": 17.0,
+    "max_return": 117.4,
+    "pre_return_pct": -36.9
+  },
+  {
+    "code": "300769",
+    "name": "德方纳米",
+    "start_date": "2024-08-20",
+    "doubling_date": "2024-10-08",
+    "entry_price": 23.67,
+    "peak_price": 47.82,
+    "max_return": 102.0,
+    "pre_return_pct": -28.6
+  },
+  {
+    "code": "300776",
+    "name": "帝尔激光",
+    "start_date": "2024-08-22",
+    "doubling_date": "2024-11-12",
+    "entry_price": 41.29,
+    "peak_price": 83.16,
+    "max_return": 101.4,
+    "pre_return_pct": -19.9
+  },
+  {
+    "code": "300803",
+    "name": "指南针\u0000\u0000",
+    "start_date": "2024-07-05",
+    "doubling_date": "2024-09-30",
+    "entry_price": 34.75,
+    "peak_price": 76.61,
+    "max_return": 120.5,
+    "pre_return_pct": -21.0
+  },
+  {
+    "code": "300806",
+    "name": "斯迪克\u0000\u0000",
+    "start_date": "2025-11-20",
+    "doubling_date": "2026-01-30",
+    "entry_price": 26.7,
+    "peak_price": 58.57,
+    "max_return": 119.4,
+    "pre_return_pct": 4.2
+  },
+  {
+    "code": "300857",
+    "name": "协创数据",
+    "start_date": "2024-09-05",
+    "doubling_date": "2024-12-06",
+    "entry_price": 47.74,
+    "peak_price": 103.99,
+    "max_return": 117.8,
+    "pre_return_pct": -16.6
+  },
+  {
+    "code": "300870",
+    "name": "欧陆通\u0000\u0000",
+    "start_date": "2024-08-19",
+    "doubling_date": "2024-11-19",
+    "entry_price": 36.16,
+    "peak_price": 75.61,
+    "max_return": 109.1,
+    "pre_return_pct": -22.3
+  },
+  {
+    "code": "300953",
+    "name": "震裕科技",
+    "start_date": "2024-02-05",
+    "doubling_date": "2024-05-06",
+    "entry_price": 31.9,
+    "peak_price": 68.5,
+    "max_return": 114.7,
+    "pre_return_pct": -33.7
+  },
+  {
+    "code": "301013",
+    "name": "利和兴\u0000\u0000",
+    "start_date": "2024-02-07",
+    "doubling_date": "2024-03-22",
+    "entry_price": 7.23,
+    "peak_price": 15.3,
+    "max_return": 111.6,
+    "pre_return_pct": -49.7
+  },
+  {
+    "code": "301095",
+    "name": "广立微\u0000\u0000",
+    "start_date": "2024-08-20",
+    "doubling_date": "2024-11-12",
+    "entry_price": 37.38,
+    "peak_price": 75.52,
+    "max_return": 102.0,
+    "pre_return_pct": -23.9
+  },
+  {
+    "code": "301128",
+    "name": "强瑞技术",
+    "start_date": "2024-02-06",
+    "doubling_date": "2024-03-18",
+    "entry_price": 24.8,
+    "peak_price": 49.65,
+    "max_return": 100.2,
+    "pre_return_pct": -43.4
+  },
+  {
+    "code": "301171",
+    "name": "易点天下",
+    "start_date": "2024-08-12",
+    "doubling_date": "2024-11-12",
+    "entry_price": 12.81,
+    "peak_price": 26.53,
+    "max_return": 107.1,
+    "pre_return_pct": -22.6
+  },
+  {
+    "code": "301200",
+    "name": "大族数控",
+    "start_date": "2025-05-08",
+    "doubling_date": "2025-07-31",
+    "entry_price": 38.63,
+    "peak_price": 77.5,
+    "max_return": 100.6,
+    "pre_return_pct": -2.6
+  },
+  {
+    "code": "301205",
+    "name": "联特科技",
+    "start_date": "2025-10-14",
+    "doubling_date": "2025-12-23",
+    "entry_price": 91.27,
+    "peak_price": 186.39,
+    "max_return": 104.2,
+    "pre_return_pct": 9.5
+  },
+  {
+    "code": "301217",
+    "name": "铜冠铜箔",
+    "start_date": "2025-04-11",
+    "doubling_date": "2025-07-09",
+    "entry_price": 9.5,
+    "peak_price": 20.26,
+    "max_return": 113.3,
+    "pre_return_pct": -6.0
+  },
+  {
+    "code": "301236",
+    "name": "软通动力",
+    "start_date": "2024-07-09",
+    "doubling_date": "2024-10-09",
+    "entry_price": 33.98,
+    "peak_price": 69.0,
+    "max_return": 103.1,
+    "pre_return_pct": -25.9
+  },
+  {
+    "code": "301308",
+    "name": "江波龙\u0000\u0000",
+    "start_date": "2025-07-09",
+    "doubling_date": "2025-09-30",
+    "entry_price": 81.98,
+    "peak_price": 178.03,
+    "max_return": 117.2,
+    "pre_return_pct": 9.8
+  },
+  {
+    "code": "301313",
+    "name": "凡拓数创",
+    "start_date": "2026-03-13",
+    "doubling_date": "2026-06-10",
+    "entry_price": 31.78,
+    "peak_price": 69.51,
+    "max_return": 118.7,
+    "pre_return_pct": 16.4
+  },
+  {
+    "code": "301358",
+    "name": "湖南裕能",
+    "start_date": "2024-08-14",
+    "doubling_date": "2024-11-11",
+    "entry_price": 26.04,
+    "peak_price": 52.22,
+    "max_return": 100.5,
+    "pre_return_pct": -29.4
+  },
+  {
+    "code": "301377",
+    "name": "鼎泰高科",
+    "start_date": "2025-04-30",
+    "doubling_date": "2025-07-28",
+    "entry_price": 26.53,
+    "peak_price": 55.0,
+    "max_return": 107.3,
+    "pre_return_pct": 18.9
+  },
+  {
+    "code": "301389",
+    "name": "隆扬电子",
+    "start_date": "2025-04-08",
+    "doubling_date": "2025-07-04",
+    "entry_price": 15.39,
+    "peak_price": 31.92,
+    "max_return": 107.4,
+    "pre_return_pct": 4.6
+  },
+  {
+    "code": "301511",
+    "name": "德福科技",
+    "start_date": "2025-04-07",
+    "doubling_date": "2025-07-03",
+    "entry_price": 11.45,
+    "peak_price": 23.48,
+    "max_return": 105.1,
+    "pre_return_pct": 13.0
+  },
+  {
+    "code": "301526",
+    "name": "国际复材",
+    "start_date": "2025-06-06",
+    "doubling_date": "2025-08-28",
+    "entry_price": 3.77,
+    "peak_price": 7.87,
+    "max_return": 108.8,
+    "pre_return_pct": 10.1
+  },
+  {
+    "code": "301611",
+    "name": "珂玛科技",
+    "start_date": "2024-08-16",
+    "doubling_date": "2024-10-24",
+    "entry_price": 37.46,
+    "peak_price": 80.18,
+    "max_return": 114.0,
+    "pre_return_pct": null
+  },
+  {
+    "code": "600026",
+    "name": "中远海能",
+    "start_date": "2025-11-28",
+    "doubling_date": "2026-03-03",
+    "entry_price": 12.08,
+    "peak_price": 24.9,
+    "max_return": 106.1,
+    "pre_return_pct": 14.7
+  },
+  {
+    "code": "600111",
+    "name": "北方稀土",
+    "start_date": "2025-05-30",
+    "doubling_date": "2025-08-22",
+    "entry_price": 23.27,
+    "peak_price": 47.95,
+    "max_return": 106.1,
+    "pre_return_pct": 1.4
+  },
+  {
+    "code": "600172",
+    "name": "黄河旋风",
+    "start_date": "2024-07-31",
+    "doubling_date": "2024-10-31",
+    "entry_price": 2.03,
+    "peak_price": 4.22,
+    "max_return": 107.9,
+    "pre_return_pct": -30.9
+  },
+  {
+    "code": "600183",
+    "name": "生益科技",
+    "start_date": "2025-06-10",
+    "doubling_date": "2025-09-01",
+    "entry_price": 27.15,
+    "peak_price": 54.87,
+    "max_return": 102.1,
+    "pre_return_pct": -5.5
+  },
+  {
+    "code": "600221",
+    "name": "海航控股",
+    "start_date": "2024-08-07",
+    "doubling_date": "2024-11-07",
+    "entry_price": 1.11,
+    "peak_price": 2.22,
+    "max_return": 100.0,
+    "pre_return_pct": -19.4
+  },
+  {
+    "code": "600259",
+    "name": "中稀有色",
+    "start_date": "2025-11-27",
+    "doubling_date": "2026-03-02",
+    "entry_price": 51.99,
+    "peak_price": 112.29,
+    "max_return": 116.0,
+    "pre_return_pct": -16.3
+  },
+  {
+    "code": "600343",
+    "name": "航天动力",
+    "start_date": "2025-09-05",
+    "doubling_date": "2025-12-05",
+    "entry_price": 13.4,
+    "peak_price": 28.22,
+    "max_return": 110.6,
+    "pre_return_pct": 16.7
+  },
+  {
+    "code": "600353",
+    "name": "旭光电子",
+    "start_date": "2024-09-13",
+    "doubling_date": "2024-10-31",
+    "entry_price": 4.95,
+    "peak_price": 10.1,
+    "max_return": 104.0,
+    "pre_return_pct": -21.0
+  },
+  {
+    "code": "600392",
+    "name": "盛和资源",
+    "start_date": "2025-04-28",
+    "doubling_date": "2025-07-24",
+    "entry_price": 10.34,
+    "peak_price": 20.85,
+    "max_return": 101.6,
+    "pre_return_pct": -4.1
+  },
+  {
+    "code": "600396",
+    "name": "华电辽能",
+    "start_date": "2025-12-17",
+    "doubling_date": "2026-03-20",
+    "entry_price": 2.91,
+    "peak_price": 6.26,
+    "max_return": 115.1,
+    "pre_return_pct": -12.0
+  },
+  {
+    "code": "600418",
+    "name": "江淮汽车",
+    "start_date": "2024-08-14",
+    "doubling_date": "2024-11-12",
+    "entry_price": 19.02,
+    "peak_price": 46.0,
+    "max_return": 141.9,
+    "pre_return_pct": 19.4
+  },
+  {
+    "code": "600482",
+    "name": "中国动力",
+    "start_date": "2025-12-04",
+    "doubling_date": "2026-03-06",
+    "entry_price": 19.47,
+    "peak_price": 39.26,
+    "max_return": 101.6,
+    "pre_return_pct": -11.2
+  },
+  {
+    "code": "600487",
+    "name": "亨通光电",
+    "start_date": "2025-11-17",
+    "doubling_date": "2026-02-10",
+    "entry_price": 20.13,
+    "peak_price": 41.51,
+    "max_return": 106.2,
+    "pre_return_pct": 11.9
+  },
+  {
+    "code": "600498",
+    "name": "烽火通信",
+    "start_date": "2025-11-04",
+    "doubling_date": "2026-01-14",
+    "entry_price": 23.81,
+    "peak_price": 47.86,
+    "max_return": 101.0,
+    "pre_return_pct": 9.9
+  },
+  {
+    "code": "600549",
+    "name": "厦门钨业",
+    "start_date": "2025-11-24",
+    "doubling_date": "2026-01-26",
+    "entry_price": 32.42,
+    "peak_price": 65.51,
+    "max_return": 102.1,
+    "pre_return_pct": 15.6
+  },
+  {
+    "code": "600580",
+    "name": "卧龙电驱",
+    "start_date": "2024-02-02",
+    "doubling_date": "2024-03-21",
+    "entry_price": 9.19,
+    "peak_price": 18.41,
+    "max_return": 100.3,
+    "pre_return_pct": -18.1
+  },
+  {
+    "code": "600641",
+    "name": "先导基电",
+    "start_date": "2024-08-20",
+    "doubling_date": "2024-11-20",
+    "entry_price": 9.88,
+    "peak_price": 19.79,
+    "max_return": 100.3,
+    "pre_return_pct": -19.0
+  },
+  {
+    "code": "600673",
+    "name": "东阳光\u0000\u0000",
+    "start_date": "2025-05-30",
+    "doubling_date": "2025-08-22",
+    "entry_price": 9.47,
+    "peak_price": 18.98,
+    "max_return": 100.4,
+    "pre_return_pct": -12.4
+  },
+  {
+    "code": "600726",
+    "name": "华电能源",
+    "start_date": "2025-12-16",
+    "doubling_date": "2026-03-19",
+    "entry_price": 2.41,
+    "peak_price": 5.02,
+    "max_return": 108.3,
+    "pre_return_pct": -3.9
+  },
+  {
+    "code": "600869",
+    "name": "远东股份",
+    "start_date": "2025-11-21",
+    "doubling_date": "2026-02-24",
+    "entry_price": 6.7,
+    "peak_price": 13.82,
+    "max_return": 106.3,
+    "pre_return_pct": 9.1
+  },
+  {
+    "code": "600875",
+    "name": "东方电气",
+    "start_date": "2025-12-03",
+    "doubling_date": "2026-03-06",
+    "entry_price": 21.19,
+    "peak_price": 44.22,
+    "max_return": 108.7,
+    "pre_return_pct": 9.2
+  },
+  {
+    "code": "600879",
+    "name": "航天电子",
+    "start_date": "2025-10-13",
+    "doubling_date": "2026-01-06",
+    "entry_price": 11.69,
+    "peak_price": 23.93,
+    "max_return": 104.7,
+    "pre_return_pct": 14.5
+  },
+  {
+    "code": "600895",
+    "name": "张江高科",
+    "start_date": "2024-08-20",
+    "doubling_date": "2024-11-11",
+    "entry_price": 17.36,
+    "peak_price": 35.1,
+    "max_return": 102.2,
+    "pre_return_pct": -6.6
+  },
+  {
+    "code": "601127",
+    "name": "赛力斯\u0000\u0000",
+    "start_date": "2024-08-28",
+    "doubling_date": "2024-11-13",
+    "entry_price": 71.36,
+    "peak_price": 144.43,
+    "max_return": 102.4,
+    "pre_return_pct": -13.7
+  },
+  {
+    "code": "601138",
+    "name": "工业富联",
+    "start_date": "2024-01-10",
+    "doubling_date": "2024-03-11",
+    "entry_price": 12.91,
+    "peak_price": 25.82,
+    "max_return": 100.0,
+    "pre_return_pct": null
+  },
+  {
+    "code": "601179",
+    "name": "中国西电",
+    "start_date": "2025-10-24",
+    "doubling_date": "2026-01-19",
+    "entry_price": 7.11,
+    "peak_price": 14.36,
+    "max_return": 102.0,
+    "pre_return_pct": 0.9
+  },
+  {
+    "code": "601208",
+    "name": "东材科技",
+    "start_date": "2025-05-23",
+    "doubling_date": "2025-08-15",
+    "entry_price": 9.22,
+    "peak_price": 19.22,
+    "max_return": 108.5,
+    "pre_return_pct": -4.6
+  },
+  {
+    "code": "601698",
+    "name": "中国卫通",
+    "start_date": "2024-09-18",
+    "doubling_date": "2024-11-13",
+    "entry_price": 14.14,
+    "peak_price": 28.29,
+    "max_return": 100.1,
+    "pre_return_pct": 2.3
+  },
+  {
+    "code": "601727",
+    "name": "上海电气",
+    "start_date": "2024-07-29",
+    "doubling_date": "2024-10-29",
+    "entry_price": 3.8,
+    "peak_price": 7.73,
+    "max_return": 103.4,
+    "pre_return_pct": -11.8
+  },
+  {
+    "code": "601869",
+    "name": "长飞光纤",
+    "start_date": "2025-06-04",
+    "doubling_date": "2025-08-26",
+    "entry_price": 34.17,
+    "peak_price": 71.07,
+    "max_return": 108.0,
+    "pre_return_pct": -10.8
+  },
+  {
+    "code": "601872",
+    "name": "招商轮船",
+    "start_date": "2025-12-08",
+    "doubling_date": "2026-03-03",
+    "entry_price": 8.34,
+    "peak_price": 19.65,
+    "max_return": 135.6,
+    "pre_return_pct": 15.2
+  },
+  {
+    "code": "603005",
+    "name": "晶方科技",
+    "start_date": "2024-09-13",
+    "doubling_date": "2024-11-13",
+    "entry_price": 17.07,
+    "peak_price": 34.49,
+    "max_return": 102.1,
+    "pre_return_pct": -22.9
+  },
+  {
+    "code": "603019",
+    "name": "中科曙光",
+    "start_date": "2024-08-08",
+    "doubling_date": "2024-11-08",
+    "entry_price": 39.16,
+    "peak_price": 79.44,
+    "max_return": 102.9,
+    "pre_return_pct": -10.0
+  },
+  {
+    "code": "603026",
+    "name": "石大胜华",
+    "start_date": "2025-08-13",
+    "doubling_date": "2025-11-12",
+    "entry_price": 38.24,
+    "peak_price": 83.07,
+    "max_return": 117.2,
+    "pre_return_pct": 9.6
+  },
+  {
+    "code": "603063",
+    "name": "禾望电气",
+    "start_date": "2024-09-18",
+    "doubling_date": "2024-11-29",
+    "entry_price": 11.4,
+    "peak_price": 22.94,
+    "max_return": 101.2,
+    "pre_return_pct": -27.7
+  },
+  {
+    "code": "603078",
+    "name": "江化微\u0000\u0000",
+    "start_date": "2024-09-13",
+    "doubling_date": "2024-11-28",
+    "entry_price": 11.42,
+    "peak_price": 22.84,
+    "max_return": 100.0,
+    "pre_return_pct": -15.2
+  },
+  {
+    "code": "603119",
+    "name": "浙江荣泰",
+    "start_date": "2025-06-11",
+    "doubling_date": "2025-09-02",
+    "entry_price": 39.7,
+    "peak_price": 86.27,
+    "max_return": 117.3,
+    "pre_return_pct": 13.2
+  },
+  {
+    "code": "603186",
+    "name": "华正新材",
+    "start_date": "2025-11-21",
+    "doubling_date": "2026-02-13",
+    "entry_price": 38.43,
+    "peak_price": 79.93,
+    "max_return": 108.0,
+    "pre_return_pct": 5.1
+  },
+  {
+    "code": "603228",
+    "name": "景旺电子",
+    "start_date": "2025-04-24",
+    "doubling_date": "2025-07-21",
+    "entry_price": 27.66,
+    "peak_price": 56.98,
+    "max_return": 106.0,
+    "pre_return_pct": -19.3
+  },
+  {
+    "code": "603256",
+    "name": "宏和科技",
+    "start_date": "2025-04-07",
+    "doubling_date": "2025-07-03",
+    "entry_price": 7.78,
+    "peak_price": 17.62,
+    "max_return": 126.5,
+    "pre_return_pct": 6.4
+  },
+  {
+    "code": "603618",
+    "name": "杭电股份",
+    "start_date": "2025-07-04",
+    "doubling_date": "2025-09-23",
+    "entry_price": 6.08,
+    "peak_price": 12.23,
+    "max_return": 101.2,
+    "pre_return_pct": -0.2
+  },
+  {
+    "code": "603629",
+    "name": "利通电子",
+    "start_date": "2025-11-18",
+    "doubling_date": "2026-02-11",
+    "entry_price": 27.23,
+    "peak_price": 57.12,
+    "max_return": 109.8,
+    "pre_return_pct": 10.4
+  },
+  {
+    "code": "603986",
+    "name": "兆易创新",
+    "start_date": "2025-07-28",
+    "doubling_date": "2025-10-27",
+    "entry_price": 120.26,
+    "peak_price": 243.19,
+    "max_return": 102.2,
+    "pre_return_pct": -3.8
+  },
+  {
+    "code": "603993",
+    "name": "洛阳钼业",
+    "start_date": "2025-07-11",
+    "doubling_date": "2025-10-09",
+    "entry_price": 8.12,
+    "peak_price": 17.27,
+    "max_return": 112.7,
+    "pre_return_pct": 17.3
+  },
+  {
+    "code": "605376",
+    "name": "博迁新材",
+    "start_date": "2025-11-17",
+    "doubling_date": "2026-02-10",
+    "entry_price": 49.74,
+    "peak_price": 110.23,
+    "max_return": 121.6,
+    "pre_return_pct": 19.3
+  },
+  {
+    "code": "688002",
+    "name": "睿创微纳",
+    "start_date": "2024-07-24",
+    "doubling_date": "2024-10-21",
+    "entry_price": 25.19,
+    "peak_price": 50.62,
+    "max_return": 101.0,
+    "pre_return_pct": -15.6
+  },
+  {
+    "code": "688012",
+    "name": "中微公司",
+    "start_date": "2024-09-20",
+    "doubling_date": "2024-11-12",
+    "entry_price": 120.51,
+    "peak_price": 246.3,
+    "max_return": 104.4,
+    "pre_return_pct": -13.3
+  },
+  {
+    "code": "688020",
+    "name": "方邦股份",
+    "start_date": "2025-06-03",
+    "doubling_date": "2025-08-25",
+    "entry_price": 32.67,
+    "peak_price": 66.99,
+    "max_return": 105.1,
+    "pre_return_pct": -7.0
+  },
+  {
+    "code": "688025",
+    "name": "杰普特\u0000\u0000",
+    "start_date": "2025-05-09",
+    "doubling_date": "2025-08-01",
+    "entry_price": 50.37,
+    "peak_price": 100.8,
+    "max_return": 100.1,
+    "pre_return_pct": 3.3
+  },
+  {
+    "code": "688048",
+    "name": "长光华芯",
+    "start_date": "2024-08-28",
+    "doubling_date": "2024-11-11",
+    "entry_price": 25.05,
+    "peak_price": 50.38,
+    "max_return": 101.1,
+    "pre_return_pct": -27.9
+  },
+  {
+    "code": "688072",
+    "name": "拓荆科技",
+    "start_date": "2024-09-23",
+    "doubling_date": "2024-11-11",
+    "entry_price": 103.45,
+    "peak_price": 212.45,
+    "max_return": 105.4,
+    "pre_return_pct": -12.0
+  },
+  {
+    "code": "688102",
+    "name": "斯瑞新材",
+    "start_date": "2025-09-16",
+    "doubling_date": "2025-12-16",
+    "entry_price": 15.85,
+    "peak_price": 38.53,
+    "max_return": 143.1,
+    "pre_return_pct": 19.5
+  },
+  {
+    "code": "688110",
+    "name": "东芯股份",
+    "start_date": "2025-05-09",
+    "doubling_date": "2025-07-31",
+    "entry_price": 31.88,
+    "peak_price": 64.76,
+    "max_return": 103.1,
+    "pre_return_pct": 16.6
+  },
+  {
+    "code": "688141",
+    "name": "杰华特\u0000\u0000",
+    "start_date": "2024-09-10",
+    "doubling_date": "2024-12-11",
+    "entry_price": 14.22,
+    "peak_price": 28.45,
+    "max_return": 100.1,
+    "pre_return_pct": -25.9
+  },
+  {
+    "code": "688146",
+    "name": "中船特气",
+    "start_date": "2026-02-03",
+    "doubling_date": "2026-05-11",
+    "entry_price": 43.33,
+    "peak_price": 95.81,
+    "max_return": 121.1,
+    "pre_return_pct": -8.0
+  },
+  {
+    "code": "688167",
+    "name": "炬光科技",
+    "start_date": "2024-08-27",
+    "doubling_date": "2024-11-11",
+    "entry_price": 42.99,
+    "peak_price": 86.12,
+    "max_return": 100.3,
+    "pre_return_pct": -31.1
+  },
+  {
+    "code": "688172",
+    "name": "燕东微\u0000\u0000",
+    "start_date": "2024-08-14",
+    "doubling_date": "2024-11-13",
+    "entry_price": 14.51,
+    "peak_price": 29.25,
+    "max_return": 101.6,
+    "pre_return_pct": -10.5
+  },
+  {
+    "code": "688183",
+    "name": "生益电子",
+    "start_date": "2024-02-20",
+    "doubling_date": "2024-05-20",
+    "entry_price": 7.52,
+    "peak_price": 15.3,
+    "max_return": 103.5,
+    "pre_return_pct": -34.3
+  },
+  {
+    "code": "688195",
+    "name": "腾景科技",
+    "start_date": "2024-08-09",
+    "doubling_date": "2024-11-11",
+    "entry_price": 21.72,
+    "peak_price": 48.95,
+    "max_return": 125.4,
+    "pre_return_pct": -19.7
+  },
+  {
+    "code": "688205",
+    "name": "德科立\u0000\u0000",
+    "start_date": "2024-07-19",
+    "doubling_date": "2024-10-21",
+    "entry_price": 26.71,
+    "peak_price": 57.15,
+    "max_return": 114.0,
+    "pre_return_pct": -29.2
+  },
+  {
+    "code": "688233",
+    "name": "神工股份",
+    "start_date": "2024-08-21",
+    "doubling_date": "2024-11-11",
+    "entry_price": 14.87,
+    "peak_price": 29.95,
+    "max_return": 101.4,
+    "pre_return_pct": -27.0
+  },
+  {
+    "code": "688234",
+    "name": "天岳先进",
+    "start_date": "2026-03-04",
+    "doubling_date": "2026-05-14",
+    "entry_price": 82.37,
+    "peak_price": 169.0,
+    "max_return": 105.2,
+    "pre_return_pct": -4.1
+  },
+  {
+    "code": "688249",
+    "name": "晶合集成",
+    "start_date": "2024-09-05",
+    "doubling_date": "2024-12-05",
+    "entry_price": 14.46,
+    "peak_price": 28.94,
+    "max_return": 100.1,
+    "pre_return_pct": -2.2
+  },
+  {
+    "code": "688256",
+    "name": "寒武纪\u0000\u0000",
+    "start_date": "2024-09-06",
+    "doubling_date": "2024-12-05",
+    "entry_price": 215.18,
+    "peak_price": 570.12,
+    "max_return": 165.0,
+    "pre_return_pct": 3.4
+  },
+  {
+    "code": "688268",
+    "name": "华特气体",
+    "start_date": "2026-01-20",
+    "doubling_date": "2026-04-22",
+    "entry_price": 68.7,
+    "peak_price": 137.9,
+    "max_return": 100.7,
+    "pre_return_pct": 8.3
+  },
+  {
+    "code": "688300",
+    "name": "联瑞新材",
+    "start_date": "2026-02-05",
+    "doubling_date": "2026-05-13",
+    "entry_price": 59.85,
+    "peak_price": 127.21,
+    "max_return": 112.5,
+    "pre_return_pct": 4.6
+  },
+  {
+    "code": "688313",
+    "name": "仕佳光子",
+    "start_date": "2024-08-27",
+    "doubling_date": "2024-11-11",
+    "entry_price": 8.41,
+    "peak_price": 16.9,
+    "max_return": 101.0,
+    "pre_return_pct": -15.1
+  },
+  {
+    "code": "688322",
+    "name": "奥比中光",
+    "start_date": "2024-09-23",
+    "doubling_date": "2024-12-20",
+    "entry_price": 21.53,
+    "peak_price": 43.32,
+    "max_return": 101.2,
+    "pre_return_pct": -15.3
+  },
+  {
+    "code": "688331",
+    "name": "荣昌生物",
+    "start_date": "2025-01-24",
+    "doubling_date": "2025-04-28",
+    "entry_price": 27.89,
+    "peak_price": 55.98,
+    "max_return": 100.7,
+    "pre_return_pct": -9.8
+  },
+  {
+    "code": "688347",
+    "name": "华虹宏力",
+    "start_date": "2024-09-13",
+    "doubling_date": "2024-11-13",
+    "entry_price": 27.08,
+    "peak_price": 54.76,
+    "max_return": 102.2,
+    "pre_return_pct": -28.1
+  },
+  {
+    "code": "688361",
+    "name": "中科飞测",
+    "start_date": "2024-08-09",
+    "doubling_date": "2024-11-11",
+    "entry_price": 56.0,
+    "peak_price": 115.5,
+    "max_return": 106.2,
+    "pre_return_pct": 11.2
+  },
+  {
+    "code": "688362",
+    "name": "甬矽电子",
+    "start_date": "2024-09-13",
+    "doubling_date": "2024-11-13",
+    "entry_price": 16.71,
+    "peak_price": 33.5,
+    "max_return": 100.5,
+    "pre_return_pct": -21.4
+  },
+  {
+    "code": "688388",
+    "name": "嘉元科技",
+    "start_date": "2024-09-13",
+    "doubling_date": "2024-12-12",
+    "entry_price": 8.4,
+    "peak_price": 17.17,
+    "max_return": 104.4,
+    "pre_return_pct": -14.0
+  },
+  {
+    "code": "688403",
+    "name": "汇成股份",
+    "start_date": "2025-07-10",
+    "doubling_date": "2025-10-09",
+    "entry_price": 9.79,
+    "peak_price": 19.61,
+    "max_return": 100.3,
+    "pre_return_pct": 12.8
+  },
+  {
+    "code": "688409",
+    "name": "富创精密",
+    "start_date": "2024-08-12",
+    "doubling_date": "2024-11-08",
+    "entry_price": 36.84,
+    "peak_price": 74.1,
+    "max_return": 101.1,
+    "pre_return_pct": -43.6
+  },
+  {
+    "code": "688411",
+    "name": "海博思创",
+    "start_date": "2025-06-13",
+    "doubling_date": "2025-09-04",
+    "entry_price": 77.88,
+    "peak_price": 156.8,
+    "max_return": 101.3,
+    "pre_return_pct": -7.3
+  },
+  {
+    "code": "688456",
+    "name": "有研粉材",
+    "start_date": "2024-02-05",
+    "doubling_date": "2024-05-13",
+    "entry_price": 17.75,
+    "peak_price": 36.3,
+    "max_return": 104.5,
+    "pre_return_pct": -25.5
+  },
+  {
+    "code": "688498",
+    "name": "源杰科技",
+    "start_date": "2024-08-20",
+    "doubling_date": "2024-10-23",
+    "entry_price": 90.37,
+    "peak_price": 182.99,
+    "max_return": 102.5,
+    "pre_return_pct": -31.5
+  },
+  {
+    "code": "688503",
+    "name": "聚和材料",
+    "start_date": "2024-08-02",
+    "doubling_date": "2024-11-04",
+    "entry_price": 26.99,
+    "peak_price": 56.0,
+    "max_return": 107.5,
+    "pre_return_pct": -51.7
+  },
+  {
+    "code": "688507",
+    "name": "索辰科技",
+    "start_date": "2024-08-28",
+    "doubling_date": "2024-11-11",
+    "entry_price": 40.3,
+    "peak_price": 81.8,
+    "max_return": 103.0,
+    "pre_return_pct": -48.6
+  },
+  {
+    "code": "688519",
+    "name": "南亚新材",
+    "start_date": "2024-02-07",
+    "doubling_date": "2024-03-20",
+    "entry_price": 11.75,
+    "peak_price": 24.5,
+    "max_return": 108.5,
+    "pre_return_pct": -49.6
+  },
+  {
+    "code": "688521",
+    "name": "芯原股份",
+    "start_date": "2024-08-12",
+    "doubling_date": "2024-11-12",
+    "entry_price": 28.83,
+    "peak_price": 59.12,
+    "max_return": 105.1,
+    "pre_return_pct": -1.2
+  },
+  {
+    "code": "688525",
+    "name": "佰维存储",
+    "start_date": "2024-02-05",
+    "doubling_date": "2024-03-21",
+    "entry_price": 28.0,
+    "peak_price": 57.59,
+    "max_return": 105.7,
+    "pre_return_pct": -38.5
+  },
+  {
+    "code": "688531",
+    "name": "日联科技",
+    "start_date": "2026-01-29",
+    "doubling_date": "2026-05-20",
+    "entry_price": 71.51,
+    "peak_price": 160.0,
+    "max_return": 123.7,
+    "pre_return_pct": 12.5
+  },
+  {
+    "code": "688536",
+    "name": "XD思瑞浦",
+    "start_date": "2025-01-15",
+    "doubling_date": "2025-04-17",
+    "entry_price": 85.36,
+    "peak_price": 186.47,
+    "max_return": 118.5,
+    "pre_return_pct": -26.7
+  },
+  {
+    "code": "688549",
+    "name": "中巨芯\u0000\u0000",
+    "start_date": "2024-08-22",
+    "doubling_date": "2024-11-11",
+    "entry_price": 5.65,
+    "peak_price": 11.43,
+    "max_return": 102.3,
+    "pre_return_pct": -14.2
+  },
+  {
+    "code": "688627",
+    "name": "精智达\u0000\u0000",
+    "start_date": "2024-08-08",
+    "doubling_date": "2024-11-08",
+    "entry_price": 43.53,
+    "peak_price": 89.0,
+    "max_return": 104.5,
+    "pre_return_pct": -14.9
+  },
+  {
+    "code": "688629",
+    "name": "华丰科技",
+    "start_date": "2024-02-05",
+    "doubling_date": "2024-03-22",
+    "entry_price": 16.01,
+    "peak_price": 33.69,
+    "max_return": 110.4,
+    "pre_return_pct": -17.8
+  },
+  {
+    "code": "688630",
+    "name": "芯碁微装",
+    "start_date": "2025-05-21",
+    "doubling_date": "2025-08-13",
+    "entry_price": 71.0,
+    "peak_price": 144.0,
+    "max_return": 102.8,
+    "pre_return_pct": 9.3
+  },
+  {
+    "code": "688662",
+    "name": "富信科技",
+    "start_date": "2024-08-12",
+    "doubling_date": "2024-10-31",
+    "entry_price": 21.21,
+    "peak_price": 42.5,
+    "max_return": 100.4,
+    "pre_return_pct": -15.7
+  },
+  {
+    "code": "688668",
+    "name": "鼎通科技",
+    "start_date": "2024-01-31",
+    "doubling_date": "2024-03-22",
+    "entry_price": 34.26,
+    "peak_price": 71.98,
+    "max_return": 110.1,
+    "pre_return_pct": -31.0
+  },
+  {
+    "code": "688700",
+    "name": "东威科技",
+    "start_date": "2024-09-09",
+    "doubling_date": "2024-11-13",
+    "entry_price": 18.75,
+    "peak_price": 37.57,
+    "max_return": 100.4,
+    "pre_return_pct": -34.9
+  },
+  {
+    "code": "688702",
+    "name": "盛科通信",
+    "start_date": "2024-08-15",
+    "doubling_date": "2024-11-11",
+    "entry_price": 39.51,
+    "peak_price": 79.85,
+    "max_return": 102.1,
+    "pre_return_pct": 10.5
+  },
+  {
+    "code": "688766",
+    "name": "普冉股份",
+    "start_date": "2024-09-12",
+    "doubling_date": "2024-12-13",
+    "entry_price": 60.95,
+    "peak_price": 123.48,
+    "max_return": 102.6,
+    "pre_return_pct": -37.1
+  },
+  {
+    "code": "688772",
+    "name": "珠海冠宇",
+    "start_date": "2025-07-31",
+    "doubling_date": "2025-10-30",
+    "entry_price": 13.5,
+    "peak_price": 28.59,
+    "max_return": 111.8,
+    "pre_return_pct": 1.3
+  },
+  {
+    "code": "688783",
+    "name": "西安奕材",
+    "start_date": "2026-03-16",
+    "doubling_date": "2026-06-11",
+    "entry_price": 23.9,
+    "peak_price": 49.76,
+    "max_return": 108.2,
+    "pre_return_pct": -4.9
+  },
+  {
+    "code": "688981",
+    "name": "中芯国际",
+    "start_date": "2024-07-25",
+    "doubling_date": "2024-10-21",
+    "entry_price": 48.7,
+    "peak_price": 97.48,
+    "max_return": 100.2,
+    "pre_return_pct": 16.1
+  }
+]

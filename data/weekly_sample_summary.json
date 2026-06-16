@@ -1,0 +1,13 @@
+{
+  "model_version": "v2-潜伏反转",
+  "total_samples": 31200,
+  "valid_samples": 30898,
+  "date_range": [
+    "2024-06-07",
+    "2026-06-01"
+  ],
+  "weeks_sampled": 104,
+  "stocks_per_week": 300,
+  "elapsed_minutes": 1.9,
+  "timestamp": "2026-06-16T21:46:01.879672"
+}

@@ -1,0 +1,96 @@
+{
+  "model": "v3-极端反转",
+  "version_history": {
+    "v1": "强势追涨 — 牛股评分反而更低 ❌",
+    "v2": "潜伏反转 — 温和信号不如极端信号 ❌",
+    "v3": "极端反转 — 深度回调+底背离 ✅"
+  },
+  "key_metrics": {
+    "total_samples": 31200,
+    "valid_samples": 29396,
+    "weeks": 104,
+    "date_range": "2024-06-07 ~ 2026-06-01",
+    "total_vs_ret60d_corr": 0.048,
+    "q4_vs_q1_ret60d_gap_pp": 4.45,
+    "bull_vs_random_total_gap": 1.09
+  },
+  "top_signals_60d": [
+    {
+      "dim": "macd",
+      "score": 3,
+      "desc": "底背离/即将金叉",
+      "avg_return_pct": 16.1,
+      "win_rate_pct": 68.9
+    },
+    {
+      "dim": "pullback",
+      "score": 2,
+      "desc": "极端回调>25%",
+      "avg_return_pct": 12.6,
+      "win_rate_pct": 62.1
+    },
+    {
+      "dim": "ma_trend",
+      "score": 2,
+      "desc": "水下初转",
+      "avg_return_pct": 12.2,
+      "win_rate_pct": 66.9
+    },
+    {
+      "dim": "ma_trend",
+      "score": 3,
+      "desc": "极端空头+初转",
+      "avg_return_pct": 11.7,
+      "win_rate_pct": 64.3
+    },
+    {
+      "dim": "pullback",
+      "score": 3,
+      "desc": "深度回调15-25%",
+      "avg_return_pct": 10.7,
+      "win_rate_pct": 60.8
+    }
+  ],
+  "regime_performance": {
+    "bull_total_corr_60d": 0.067,
+    "bear_total_corr_60d": 0.055,
+    "neutral_total_corr_60d": 0.078
+  },
+  "dimension_ranking": [
+    {
+      "dim": "macd",
+      "avg_corr": 0.044,
+      "status": "strong_positive"
+    },
+    {
+      "dim": "pullback",
+      "avg_corr": 0.042,
+      "status": "strong_positive"
+    },
+    {
+      "dim": "bollinger",
+      "avg_corr": 0.021,
+      "status": "positive"
+    },
+    {
+      "dim": "ma_trend",
+      "avg_corr": 0.013,
+      "status": "positive"
+    },
+    {
+      "dim": "rsi",
+      "avg_corr": 0.01,
+      "status": "weak_positive"
+    },
+    {
+      "dim": "breakout",
+      "avg_corr": -0.003,
+      "status": "neutral"
+    },
+    {
+      "dim": "volume_price",
+      "avg_corr": -0.006,
+      "status": "needs_improvement"
+    }
+  ]
+}
