@@ -1,0 +1,4 @@
+strategy,total_return,annual_return,sharpe,max_drawdown,win_rate,total_trades,calmar
+v6_reversal,15.94,15.22,0.54,-21.99,19.62,132,0.69
+small_cap,12.72,12.16,0.44,-30.96,49.62,13,0.39
+reversal,70.37,66.59,1.56,-22.98,50.77,13,2.9

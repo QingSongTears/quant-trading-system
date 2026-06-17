@@ -73,14 +73,26 @@ class PortfolioBacktestEngine:
         """
         logger.info(f"组合回测: {strategy.name} | {start_date} ~ {end_date} | 资金={initial_capital:,.0f}")
 
-        # Step 1: 加载全市场数据
-        all_data = self._load_all_data(start_date, end_date)
+        # Step 1: 加载全市场数据（含 lookback 预备数据）
+        # _build_universe 需要 start_date 之前的数据计算因子
+        lookback_buffer = timedelta(days=strategy.lookback_days * 2)  # 2倍缓冲确保足够
+        data_start = start_date - lookback_buffer
+        all_data = self._load_all_data(data_start, end_date)
         if all_data.empty:
-            raise ValueError(f"在 [{start_date}, {end_date}] 范围内无数据")
+            raise ValueError(f"在 [{data_start}, {end_date}] 范围内无数据")
 
-        # Step 2: 计算每个调仓日的因子和选股
+        # 截断回测范围内的交易日（预备数据只用于因子计算）
+        backtest_dates = sorted(
+            all_data[all_data["trade_date"] >= pd.Timestamp(start_date)]["trade_date"].unique()
+        )
+        if len(backtest_dates) == 0:
+            raise ValueError(f"在 [{start_date}, {end_date}] 范围内无交易日")
+
+        # Step 2: 计算每个调仓日的因子和选股（仅回测区间）
         rebalance_dates = self._get_rebalance_dates(all_data, strategy.rebalance_days)
-        logger.info(f"共 {len(rebalance_dates)} 个调仓日")
+        # 过滤：只保留 >= start_date 的调仓日
+        rebalance_dates = [d for d in rebalance_dates if d >= pd.Timestamp(start_date)]
+        logger.info(f"共 {len(rebalance_dates)} 个调仓日 (回测区间内)")
 
         # Step 3: 模拟组合净值曲线
         equity_curve, rebalance_details = self._simulate_portfolio(
@@ -104,7 +116,7 @@ class PortfolioBacktestEngine:
     def _load_all_data(self, start: date, end: date) -> pd.DataFrame:
         """加载全市场 daily_price 数据"""
         query = f"""
-            SELECT dp.code, sb.name, sb.list_date, dp.trade_date,
+            SELECT dp.code, sb.name, sb.list_date, sb.mcap_yi, dp.trade_date,
                    dp.open, dp.high, dp.low, dp.close,
                    dp.volume, dp.amount, dp.pct_change, dp.turnover
             FROM daily_price dp
@@ -152,6 +164,7 @@ class PortfolioBacktestEngine:
         agg_dict = {
             "name": "last",
             "list_date": "first",
+            "mcap_yi": "last",      # 从 stock_basic 获取市值
             "close": "last",
             "amount": "mean",      # 日均成交额
             "turnover": "mean",     # 日均换手率
@@ -160,7 +173,7 @@ class PortfolioBacktestEngine:
 
         factors = recent.groupby("code").agg(agg_dict).reset_index()
         factors.columns = [
-            "code", "name", "list_date", "close",
+            "code", "name", "list_date", "mcap_from_db", "close",
             "avg_amount", "avg_turnover",
             "avg_return", "volatility"
         ]
@@ -168,15 +181,20 @@ class PortfolioBacktestEngine:
         # 日均成交额 (元→万元)
         factors["avg_amount_wan"] = factors["avg_amount"] / 10000
 
-        # 估算总市值 (亿元) = 日均成交额(元) / 日均换手率(%) * 100 / 100000000
-        # 市值 ≈ 成交额 / 换手率 * 100 (因为换手率是百分比)
-        valid_turnover = factors["avg_turnover"] > 0.01  # 换手率 > 0.01% 避免除零
+        # 估算总市值 (亿元)
+        # 优先使用 stock_basic.mcap_yi (来自实时行情数据)
+        # 回退: 成交额/换手率*100/1e8 (需要换手率数据)
+        valid_turnover = factors["avg_turnover"].notna() & (factors["avg_turnover"] > 0.01)
+        factors["market_cap_yi"] = None
         factors.loc[valid_turnover, "market_cap_yi"] = (
             factors.loc[valid_turnover, "avg_amount"]
             / factors.loc[valid_turnover, "avg_turnover"]
             * 100 / 100000000
         )
-        factors.loc[~valid_turnover, "market_cap_yi"] = np.nan
+        # 回退到 DB 中的市值数据
+        has_db_mcap = factors["mcap_from_db"].notna() & (factors["mcap_from_db"] > 0)
+        no_calc_mcap = factors["market_cap_yi"].isna()
+        factors.loc[no_calc_mcap & has_db_mcap, "market_cap_yi"] = factors.loc[no_calc_mcap & has_db_mcap, "mcap_from_db"]
 
         # 近N日累计收益率
         factors["return_Nd"] = (
@@ -187,6 +205,7 @@ class PortfolioBacktestEngine:
         factors["volatility_Nd"] = factors["volatility"]
 
         # 清理
+        factors = factors.drop(columns=["mcap_from_db"], errors="ignore")
         factors = factors.dropna(subset=["close", "avg_amount_wan"])
         factors = factors[factors["close"] > 0]
 
@@ -227,37 +246,8 @@ class PortfolioBacktestEngine:
             if dt.date() < start_date or dt.date() > end_date:
                 continue
 
-            # 检查是否调仓日
-            if dt in rebalance_dates:
-                # 构建股票池
-                universe = self._build_universe(all_data, dt, strategy.lookback_days, strategy)
-                if not universe.empty:
-                    # 过滤
-                    filtered = strategy.filter_universe(universe)
-                    # 选股
-                    selected = strategy.select(dt, filtered)
-
-                    # 调仓: 卖出旧持仓 + 买入新选股
-                    if set(selected) != set(holdings):
-                        # 计算交易成本
-                        sell_cost = self._calc_transaction_cost(equity, is_sell=True) if holdings else 0
-                        buy_cost = self._calc_transaction_cost(equity, is_sell=False)
-
-                        equity -= (sell_cost + buy_cost)
-
-                        rebalance_details.append({
-                            "date": str(dt.date()),
-                            "action": "rebalance",
-                            "previous_holdings": holdings[:],
-                            "new_holdings": selected[:],
-                            "n_new": len(selected),
-                            "equity_before_rebalance": equity + sell_cost + buy_cost,
-                            "transaction_cost": sell_cost + buy_cost,
-                        })
-
-                        holdings = selected
-
-            # 计算当日组合收益 (等权)
+            # ---- 先结算当日收益：基于现有持仓（调仓日前一天选的股） ----
+            # T+1 逻辑：今天赚的是昨天选的股票的收益
             if holdings:
                 day_returns = []
                 pct_row = returns_pivot.loc[returns_pivot.index == dt]
@@ -278,6 +268,30 @@ class PortfolioBacktestEngine:
                 equity *= (1 + avg_return)
 
             portfolio_equity[dt] = equity
+
+            # ---- 调仓：计算明日开始的持仓 ----
+            if dt in rebalance_dates:
+                universe = self._build_universe(all_data, dt, strategy.lookback_days, strategy)
+                if not universe.empty:
+                    filtered = strategy.filter_universe(universe)
+                    selected = strategy.select(dt, filtered)
+
+                    if set(selected) != set(holdings):
+                        sell_cost = self._calc_transaction_cost(equity, is_sell=True) if holdings else 0
+                        buy_cost = self._calc_transaction_cost(equity, is_sell=False)
+                        equity -= (sell_cost + buy_cost)
+
+                        rebalance_details.append({
+                            "date": str(dt.date()),
+                            "action": "rebalance",
+                            "previous_holdings": holdings[:],
+                            "new_holdings": selected[:],
+                            "n_new": len(selected),
+                            "equity_before_rebalance": equity + sell_cost + buy_cost,
+                            "transaction_cost": sell_cost + buy_cost,
+                        })
+
+                        holdings = selected
 
         equity_series = pd.Series(portfolio_equity)
         equity_series.index = pd.to_datetime(equity_series.index)
