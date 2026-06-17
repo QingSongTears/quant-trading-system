@@ -170,6 +170,9 @@
                 <h5 class="section-title">
                     <i class="bi bi-trophy"></i> 全部模型对比
                     <small class="text-muted fw-normal" id="compare-subtitle"></small>
+                    <span class="badge bg-indigo-soft text-indigo ms-2 d-none" id="compare-progress-badge">
+                        完成 <span id="compare-progress">0/0</span>
+                    </span>
                 </h5>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle" id="compare-table">
@@ -670,50 +673,112 @@ async function compareAll() {
     const start = $('start-date').value;
     const end = $('end-date').value;
     const capital = parseFloat($('capital').value);
+    const commission = parseFloat($('commission').value) / 100;
+    const stampDuty = parseFloat($('stamp-duty').value) / 100;
     if (!code || !start || !end) return;
+    if (state.isLoading) return;
 
-    setLoading(true);
+    setCompareLoading(true);
     $('result-empty').classList.add('d-none');
     $('result-content').classList.add('d-none');
     $('compare-section').classList.remove('d-none');
     $('compare-subtitle').textContent = `${code} · ${start} ~ ${end}`;
 
-    try {
-        const res = await fetch(`/api/models/summary?stock_code=${code}&start_date=${start}&end_date=${end}`);
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error);
-        renderCompare(data.data);
-    } catch(e) {
-        $('compare-body').innerHTML = `<tr><td colspan="8" class="text-center text-danger py-3">对比失败: ${e.message}</td></tr>`;
-    } finally {
-        setLoading(false);
+    // Get only single-stock models (signal type)
+    const signalModels = state.models.filter(m => m.strategy_type === 'signal');
+    const total = signalModels.length;
+    let completed = 0;
+    const results = [];
+
+    $('compare-body').innerHTML = signalModels.map(m => `
+        <tr id="cr-${slugify(m.name)}">
+            <td class="fw-semibold">${esc(m.name)}</td>
+            <td colspan="7" class="text-muted small">
+                <span class="spinner-border spinner-border-sm me-1"></span>等待中...
+            </td>
+        </tr>
+    `).join('');
+
+    // Run all models in parallel
+    const promises = signalModels.map(async (m) => {
+        try {
+            const res = await fetch('/api/backtest/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    strategy_name: m.name, stock_code: code,
+                    start_date: start, end_date: end, initial_capital: capital,
+                    commission, stamp_duty, slippage: 0.01,
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                results.push({ ...data.report, strategy_name: m.name });
+            } else {
+                results.push({ strategy_name: m.name, error: data.error || data.detail || '失败' });
+            }
+        } catch(e) {
+            results.push({ strategy_name: m.name, error: e.message });
+        }
+        completed++;
+        updateCompareProgress(m.name, results[results.length-1], completed, total);
+    });
+
+    await Promise.allSettled(promises);
+    state.compareResults = results;
+    renderCompare(results);
+    setCompareLoading(false);
+}
+
+function updateCompareProgress(modelName, result, done, total) {
+    const row = $(`cr-${slugify(modelName)}`);
+    if (!row) return;
+    if (result.error) {
+        row.innerHTML = `<td class="fw-semibold">${esc(modelName)}</td>
+            <td colspan="7" class="text-danger small">❌ ${esc(result.error)}</td>`;
+    } else {
+        const tr = result.total_return || 0;
+        row.innerHTML = `
+            <td class="fw-semibold">${esc(modelName)}</td>
+            <td class="${tr>0?'profit':'loss'}">${(tr>0?'+':'')+tr.toFixed(2)}%</td>
+            <td>${result.annual_return!=null?result.annual_return.toFixed(2)+'%':'-'}</td>
+            <td>${result.sharpe_ratio!=null?result.sharpe_ratio.toFixed(2):'-'}</td>
+            <td class="loss">${result.max_drawdown!=null?result.max_drawdown.toFixed(2)+'%':'-'}</td>
+            <td>${result.win_rate!=null?result.win_rate.toFixed(1)+'%':'-'}</td>
+            <td>${result.total_trades||0}</td>
+            <td class="${(result.excess_return||0)>0?'profit':'loss'}">${result.excess_return!=null?(result.excess_return>0?'+':'')+result.excess_return.toFixed(2)+'%':'-'}</td>
+        `;
     }
+    $('compare-progress').textContent = `${done}/${total}`;
 }
 
 function renderCompare(models) {
-    const withData = models.filter(m => m.has_data !== false);
+    const withData = models.filter(m => !m.error);
     if (withData.length === 0) {
-        $('compare-body').innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">暂无对比数据，请先运行各模型回测</td></tr>';
+        $('compare-body').innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">所有模型回测均失败，请检查数据和参数</td></tr>';
         return;
     }
 
+    // Sort by total return descending
+    withData.sort((a,b) => (b.total_return||0) - (a.total_return||0));
+
     $('compare-body').innerHTML = withData.map((m,i) => `
-        <tr onclick="highlightCompare(${i})" data-idx="${i}">
-            <td class="fw-semibold">${esc(m.strategy_name)}</td>
-            <td class="${m.total_return>0?'profit':'loss'}">${(m.total_return>0?'+':'')+m.total_return.toFixed(2)}%</td>
+        <tr onclick="highlightCompare(${i})" data-idx="${i}" class="${i===0?'table-success':''}">
+            <td class="fw-semibold">${i===0?'👑 ':''}${esc(m.strategy_name)}</td>
+            <td class="${m.total_return>0?'profit':'loss'} fw-semibold">${(m.total_return>0?'+':'')+m.total_return.toFixed(2)}%</td>
             <td>${m.annual_return!=null?m.annual_return.toFixed(2)+'%':'-'}</td>
             <td>${m.sharpe_ratio!=null?m.sharpe_ratio.toFixed(2):'-'}</td>
             <td class="loss">${m.max_drawdown!=null?m.max_drawdown.toFixed(2)+'%':'-'}</td>
             <td>${m.win_rate!=null?m.win_rate.toFixed(1)+'%':'-'}</td>
             <td>${m.total_trades||0}</td>
-            <td class="${m.excess_return>0?'profit':'loss'}">${m.excess_return!=null?(m.excess_return>0?'+':'')+m.excess_return.toFixed(2)+'%':'-'}</td>
+            <td class="${(m.excess_return||0)>0?'profit':'loss'}">${m.excess_return!=null?(m.excess_return>0?'+':'')+m.excess_return.toFixed(2)+'%':'-'}</td>
         </tr>
     `).join('');
 
-    // 净值叠加图 — 简单柱状图展示
+    // Bar chart showing all models
     const dom = $('compare-chart');
     if (state.compareChart) state.compareChart.dispose();
-    if (!dom.clientWidth) { setTimeout(() => renderCompare(models), 100); return; }
+    if (!dom.clientWidth) { setTimeout(() => renderCompare(models), 200); return; }
     const chart = echarts.init(dom);
     state.compareChart = chart;
 
@@ -723,24 +788,24 @@ function renderCompare(models) {
     const drawdowns = withData.map(m => Math.abs(m.max_drawdown||0));
 
     chart.setOption({
-        title: { text: '各模型绩效速览', left: 'center', textStyle: { fontSize: 14, fontWeight: 600 } },
-        tooltip: { trigger: 'axis' },
+        title: { text: '全部模型绩效速览', subtext: '按总收益率降序排列', left: 'center',
+                 textStyle: { fontSize: 15, fontWeight: 700 } },
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
         legend: { bottom: 0, textStyle: { fontSize: 11 } },
-        grid: { left: '3%', right: '4%', bottom: '14%', top: '15%', containLabel: true },
-        xAxis: { type: 'category', data: names, axisLabel: { rotate: 20, fontSize: 10 } },
+        grid: { left: '3%', right: '4%', bottom: '14%', top: '22%', containLabel: true },
+        xAxis: { type: 'category', data: names, axisLabel: { rotate: 30, fontSize: 10, fontWeight: 'bold' } },
         yAxis: [
-            { type: 'value', name: '收益率%', axisLabel: { formatter: '{value}%' } },
+            { type: 'value', name: '%', axisLabel: { formatter: '{value}%' } },
             { type: 'value', name: '比率', axisLabel: { formatter: '{value}' } },
         ],
         series: [
             { name: '总收益', type: 'bar', data: returns,
-              itemStyle: { color: params => params.value>=0?'#22c55e':'#ef4444',
-                           borderRadius: [6,6,0,0] },
-              barWidth: '50%' },
+              itemStyle: { color: p => p.value>=0?'#22c55e':'#ef4444', borderRadius: [8,8,0,0] },
+              barWidth: '35%', emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.15)' } } },
             { name: '夏普比率', type: 'bar', data: sharpes, yAxisIndex: 1,
-              itemStyle: { color: '#6366f1', borderRadius: [6,6,0,0] }, barWidth: '50%' },
+              itemStyle: { color: '#6366f1', borderRadius: [8,8,0,0] }, barWidth: '35%' },
             { name: '最大回撤', type: 'bar', data: drawdowns, yAxisIndex: 0,
-              itemStyle: { color: '#f59e0b', borderRadius: [6,6,0,0] }, barWidth: '50%' },
+              itemStyle: { color: '#f59e0b', borderRadius: [8,8,0,0] }, barWidth: '35%' },
         ],
     });
     window.addEventListener('resize', () => chart.resize());
@@ -806,7 +871,6 @@ async function loadHistoryResult(id, strategyName, stockCode, stockName) {
 function setLoading(loading) {
     state.isLoading = loading;
     const btn = $('btn-run');
-    const icon = $('compare-section');
     if (loading) {
         btn.classList.add('btn-loading');
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>回测中...';
@@ -818,6 +882,26 @@ function setLoading(loading) {
         btn.innerHTML = '<i class="bi bi-play-fill"></i> 开始回测';
         $('result-loading').classList.add('d-none');
     }
+}
+
+function setCompareLoading(loading) {
+    state.isLoading = loading;
+    const btn = $('btn-compare-all');
+    const badge = $('compare-progress-badge');
+    if (loading) {
+        btn.classList.add('btn-loading');
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>对比中...';
+        badge.classList.remove('d-none');
+        $('compare-progress').textContent = '0/0';
+    } else {
+        btn.classList.remove('btn-loading');
+        btn.innerHTML = '<i class="bi bi-lightning-fill"></i> 一键对比全部模型';
+        badge.classList.add('d-none');
+    }
+}
+
+function slugify(str) {
+    return String(str).replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_').slice(0, 40);
 }
 
 function hideResults() {
