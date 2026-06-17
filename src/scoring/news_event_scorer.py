@@ -313,13 +313,71 @@ class NewsEventScorer:
             "error": None,
         }
 
+    def _get_bulk_announcements(
+        self, codes: List[str], as_of_date: str
+    ) -> Dict[str, pd.DataFrame]:
+        """批量加载所有股票的公告数据"""
+        if not codes:
+            return {}
+        codes_str = "', '".join(codes)
+        query = f"""
+            SELECT code, title, date FROM announcements
+            WHERE code IN ('{codes_str}')
+              AND date <= '{as_of_date}'
+            ORDER BY code, date DESC
+        """
+        try:
+            df = pd.read_sql(query, self.engine)
+        except Exception:
+            return {c: pd.DataFrame(columns=["title", "date"]) for c in codes}
+
+        result = {}
+        for code in codes:
+            code_df = df[df["code"] == code] if not df.empty else pd.DataFrame(columns=["title", "date"])
+            result[code] = code_df
+        return result
+
+    def _score_from_data(
+        self, code: str, as_of_date: str,
+        announcements_df: pd.DataFrame
+    ) -> Dict[str, Any]:
+        """从已加载的数据评分（不查询DB）"""
+        sub_scores = {
+            "density": self._score_density(announcements_df),
+            "positive_type": self._score_positive_type(announcements_df),
+            "earnings_window": self._score_earnings_window(announcements_df, as_of_date),
+            "risk_avoidance": self._score_risk_avoidance(announcements_df),
+            "research_attention": self._score_research_attention(code, as_of_date),
+            "rating_momentum": self._score_rating_momentum(code, as_of_date),
+        }
+        sub_scores["event_composite"] = self._score_event_composite(sub_scores)
+
+        total = sum(sub_scores.values())
+        weighted = round(total / 21 * 20, 1)
+
+        return {
+            "code": code,
+            "as_of_date": as_of_date,
+            "total": total,
+            "weighted": weighted,
+            "sub_scores": sub_scores,
+            "error": None,
+        }
+
     def batch_score(
         self, codes: List[str], as_of_date: Optional[str] = None, verbose: bool = False
     ) -> "pd.DataFrame":
         import pandas as pd
+        if not codes:
+            return pd.DataFrame()
+
+        # 批量加载公告数据（一次查询替代N次）
+        bulk_announcements = self._get_bulk_announcements(codes, as_of_date)
+
         results = []
-        for i, code in enumerate(codes):
-            r = self.score(code, as_of_date)
+        for code in codes:
+            ann_df = bulk_announcements.get(code, pd.DataFrame(columns=["title", "date"]))
+            r = self._score_from_data(code, as_of_date, ann_df)
             if r["error"] is None:
                 results.append({
                     "code": code,
@@ -328,6 +386,4 @@ class NewsEventScorer:
                     "weighted": r["weighted"],
                     **{f"news_{k}": v for k, v in r["sub_scores"].items()},
                 })
-            if verbose and (i + 1) % 50 == 0:
-                print(f"  ... news_event {i + 1}/{len(codes)}")
         return pd.DataFrame(results)
