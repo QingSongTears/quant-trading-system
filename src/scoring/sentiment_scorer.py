@@ -1,335 +1,368 @@
 """
-情绪面/题材热度评分器 (权重 10%)
-================================
+情绪面评分器 v2 — DB驱动"安静好股票"模型 (权重 10%)
+===================================================
 
-基于 A-stock-data 技能 API 的情绪与题材分析。
+v1 失败原因:
+  - API驱动 → 沙箱不可用 → 所有股票同分 → IC = -0.0224 ❌
+  - "追热点"逻辑 → 热门题材反而是顶部信号
 
-数据源:
-  - 东财个股新闻 (§5.1): 新闻情感关键词匹配
-  - 同花顺热点题材 (§3.1): 题材归因 reason tags
-  - 东财全球资讯 (§5.3): 市场整体情绪
+v2 设计理念:
+  - 完全DB驱动，零HTTP调用
+  - 方向反转: "安静的好股票"而非"热门的题材股"
+  - 低关注度 + 基本面韧性 + 研报正面 = 情绪面高分
 
-子指标 (每项 0-3 分):
-  1. 新闻情感 (0-3): 近期新闻的正负面倾向
-  2. 题材热度 (0-3): 是否属于当前热门题材
-  3. 市场情绪 (0-3): 大盘情绪指标
-  4. 关注度变化 (0-3): 新闻量是否在增加
-  5. 公告情绪 (0-3): 公告标题的情感倾向
-  6. 题材持续性 (0-3): 题材已持续天数
-  7. 情绪综合 (0-3): 综合情绪评分
+6个子指标 (每项 0-3 分，满分 18，归一化到 0-20):
+  1. 公告净情绪   (0-3): 近期公告的利好/利空关键词计数
+  2. 研报评级     (0-3): 近期研报上调 + 最新评级品质
+  3. 低波动       (0-3): 低波动=筹码稳定 (反向评分)
+  4. 缩量止跌     (0-3): 成交量收缩 + 价格企稳
+  5. 融资信号     (0-3): 融资余额趋势
+  6. 信息效率     (0-3): 综合上述信号
+
+用法:
+    scorer = SentimentScorer(engine=engine)
+    result = scorer.score(code="000001", as_of_date="2026-06-12")
 """
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Any, List, Optional
-import json
-import requests
-from datetime import date, timedelta
+from sqlalchemy import create_engine
+from typing import Dict, Any, List, Optional, Tuple
+
+from ..config import get_config, get_db_url
 
 
 class SentimentScorer:
-    """情绪面评分器 — API驱动"""
+    """情绪面评分器 v2 — DB驱动安静好股票模型"""
 
     def __init__(self, engine=None):
-        # engine 参数保持接口统一，情绪面通过 HTTP API 获取数据，不依赖数据库
-        self._sentiment_cache = {}
-        self._session = requests.Session()
-        self._session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/javascript, */*; q=0.01",
-        })
+        if engine is None:
+            config = get_config()
+            db_url = get_db_url(config)
+            self.engine = create_engine(db_url, echo=False)
+        else:
+            self.engine = engine
 
     # ============================================================
-    #  API 端点
+    #  批量数据加载
     # ============================================================
-    def _fetch_dongcai_news(self, code: str, limit: int = 10) -> list:
-        """
-        东财个股新闻 §5.1
-        GET https://search-api-web.eastmoney.com/search/jsonp
-        参数: cb=custom, param=内嵌JSON字符串(紧凑格式)
-        返回: result.cmsArticleWebOld → 文章列表 [{title, content, date, mediaName, url}]
-
-        注意: 东财搜索API近期可能返回仅 passportWeb 类型，
-        此时降级返回空列表，评分 fallback 到中性分。
+    def _load_bulk_announcements(
+        self, codes: List[str], as_of_date: str, lookback: int = 60
+    ) -> Dict[str, pd.DataFrame]:
+        """批量加载公告"""
+        if not codes:
+            return {}
+        codes_str = "', '".join(codes)
+        query = f"""
+            SELECT code, title, date FROM announcements
+            WHERE code IN ('{codes_str}')
+              AND date <= '{as_of_date}'
+              AND date >= DATE('{as_of_date}', '-{lookback} days')
+            ORDER BY code, date DESC
         """
         try:
-            param_data = {
-                "uid": "",
-                "keyword": code,
-                "type": ["cmsArticleWebOld"],
-                "client": "web",
-                "clientType": "web",
-                "clientVersion": "curr",
-                "param": {
-                    "cmsArticleWebOld": {
-                        "searchScope": "default",
-                        "sort": "default",
-                        "pageIndex": 1,
-                        "pageSize": limit,
-                        "preTag": "",
-                        "postTag": "",
-                    }
-                },
-            }
-            param_str = json.dumps(param_data, separators=(",", ":"), ensure_ascii=False)
-            resp = self._session.get(
-                "https://search-api-web.eastmoney.com/search/jsonp",
-                params={"cb": "jQuery_news", "param": param_str},
-                headers={"Referer": "https://so.eastmoney.com/"},
-                timeout=10,
-            )
-            text = resp.text
-
-            # 通用 JSONP 解析: 取第一个 ( 到最后一个 ) 之间的内容
-            json_str = text[text.index("(") + 1 : text.rindex(")")]
-            data = json.loads(json_str)
-
-            # result.cmsArticleWebOld 直接是列表
-            articles = data.get("result", {}).get("cmsArticleWebOld", []) or []
-            result = []
-            for a in articles[:limit]:
-                result.append({
-                    "title": a.get("title", ""),
-                    "content": a.get("content", ""),
-                    "time": a.get("date", ""),
-                    "source": a.get("mediaName", ""),
-                    "url": a.get("url", ""),
-                })
-            return result
+            df = pd.read_sql(query, self.engine)
         except Exception:
-            return []
+            return {c: pd.DataFrame(columns=["title", "date"]) for c in codes}
 
-    def _fetch_hot_topics(self, date_str: str) -> list:
+        result = {}
+        for code in codes:
+            result[code] = df[df["code"] == code] if not df.empty else pd.DataFrame(columns=["title", "date"])
+        return result
+
+    def _load_bulk_price_data(
+        self, codes: List[str], as_of_date: str, lookback: int = 60
+    ) -> Dict[str, pd.DataFrame]:
+        """批量加载价格数据"""
+        if not codes:
+            return {}
+        codes_str = "', '".join(codes)
+        query = f"""
+            SELECT code, trade_date, close, volume, pct_change
+            FROM daily_price
+            WHERE code IN ('{codes_str}')
+              AND trade_date <= '{as_of_date}'
+            ORDER BY code, trade_date DESC
         """
-        同花顺热点题材 §3.1
-        GET http://zx.10jqka.com.cn/event/api/getharden/date/{date}/.../
-        参数: date=YYYYMMDD(如20250613), charset=GBK
-        返回: {errocode:0, data:[{code,name,reason,zhangfu,...}]}
-        reason 是核心字段：人工运营题材标签
+        df = pd.read_sql(query, self.engine)
+        if df.empty:
+            return {}
 
-        同花顺接口零鉴权，73ms 响应，稳定可用
+        result = {}
+        for code, grp in df.groupby("code"):
+            grp = grp.sort_values("trade_date").reset_index(drop=True)
+            if len(grp) >= 20:
+                result[code] = grp.tail(lookback)
+        return result
+
+    def _load_bulk_research(
+        self, codes: List[str], as_of_date: str, lookback: int = 180
+    ) -> Dict[str, pd.DataFrame]:
+        """批量加载研报"""
+        if not codes:
+            return {}
+        codes_str = "', '".join(codes)
+        query = f"""
+            SELECT code, date, rating, rating_change
+            FROM research_report
+            WHERE code IN ('{codes_str}')
+              AND date <= '{as_of_date}'
+              AND date >= DATE('{as_of_date}', '-{lookback} days')
+            ORDER BY code, date DESC
         """
-        cache_key = f"hot_topics_{date_str}"
-        if cache_key in self._sentiment_cache:
-            return self._sentiment_cache[cache_key]
-
         try:
-            url = (
-                f"http://zx.10jqka.com.cn/event/api/getharden/"
-                f"date/{date_str}/orderby/date/orderway/desc/charset/GBK/"
-            )
-            resp = self._session.get(url, timeout=10)
-            resp.encoding = "gbk"
-            data = resp.json()
-            if data.get("errocode") == 0:
-                result = data.get("data", [])
-                self._sentiment_cache[cache_key] = result
-                return result
-            self._sentiment_cache[cache_key] = []
-            return []
+            df = pd.read_sql(query, self.engine)
         except Exception:
-            self._sentiment_cache[cache_key] = []
-            return []
+            return {}
+
+        result = {}
+        for code, grp in df.groupby("code"):
+            result[code] = grp.reset_index(drop=True)
+        return result
 
     # ============================================================
-    #  评分逻辑
+    #  1. 公告净情绪 (0-3)
     # ============================================================
-    POSITIVE_KW = [
-        "增长", "利好", "突破", "中标", "回购", "增持", "涨停",
-        "新高", "超预期", "大涨", "涨停板", "扭亏", "预增",
-        "分红", "重组", "资产注入", "股权激励", "定增",
-    ]
-    NEGATIVE_KW = [
-        "下跌", "亏损", "减持", "立案", "处罚", "退市",
-        "ST", "风险", "诉讼", "跌停", "暴跌", "预亏",
-        "违规", "监管", "问询", "冻结", "爆雷", "踩雷",
-    ]
+    def _score_announcement_sentiment(self, ann_df: pd.DataFrame) -> int:
+        """分析公告标题的利好/利空倾向"""
+        if ann_df.empty:
+            return 1  # 无公告=中性
 
-    def _score_news_sentiment(self, code: str) -> int:
-        """
-        新闻情感分析 (0-3)
-        基于东财个股新闻标题/内容的关键词正负面匹配
-        API 不可用或返回空时降级为中性分 1
-        """
-        news = self._fetch_dongcai_news(code)
-        if not news:
-            return 1
+        titles = " ".join(ann_df["title"].tolist())
 
-        pos = 0
-        neg = 0
+        positive_kw = [
+            "增持", "回购", "分红", "派息", "中标", "合同", "收购",
+            "增长", "盈利", "突破", "获批", "订单", "战略合作",
+            "股权激励", "员工持股", "业绩预增", "扭亏",
+        ]
+        negative_kw = [
+            "减持", "ST", "退市", "立案", "调查", "处罚", "诉讼",
+            "亏损", "下滑", "预亏", "预降", "冻结", "质押",
+            "终止", "取消", "违规", "警示", "处分",
+        ]
 
-        for article in news:
-            title = article.get("title", "")
-            content = article.get("content", "")
-            text = f"{title} {content}"
+        pos_count = sum(1 for kw in positive_kw if kw in titles)
+        neg_count = sum(1 for kw in negative_kw if kw in titles)
+        net = pos_count - neg_count
 
-            has_pos = any(kw in text for kw in self.POSITIVE_KW)
-            has_neg = any(kw in text for kw in self.NEGATIVE_KW)
-
-            if has_pos and not has_neg:
-                pos += 1
-            elif has_neg and not has_pos:
-                neg += 1
-            elif has_pos and has_neg:
-                pos += 1
-                neg += 1
-
-        if pos > neg * 2:
+        n = len(ann_df)
+        # 大量公告 + 正面倾向 = 高情绪
+        if net >= 3 and n >= 5:
             return 3
-        elif pos > neg:
+        elif net >= 1:
             return 2
-        elif neg > pos * 2:
+        elif net == 0 and n >= 2:
+            return 1
+        elif net < 0:
             return 0
         return 1
 
-    def _score_topic_heat(self, code: str, date_str: Optional[str] = None) -> int:
-        """
-        题材热度 (0-3)
-        检查股票 code 是否出现在当日同花顺热点题材中
-        API 不可用时返回中性分 1
-        """
-        if date_str is None:
-            date_str = date.today().strftime("%Y%m%d")
-
-        topics = self._fetch_hot_topics(date_str)
-        if not topics:
+    # ============================================================
+    #  2. 研报评级 (0-3)
+    # ============================================================
+    def _score_research_rating(self, research_df: pd.DataFrame) -> int:
+        """研报上调 + 评级品质"""
+        if research_df is None or research_df.empty:
             return 1
 
-        # 检查 code 是否出现在任一热点题材的 stock code 中
-        for topic in topics:
-            topic_code = topic.get("code", "")
-            if topic_code == code:
-                return 3
+        n = len(research_df)
+        upgrades = (research_df["rating_change"] == "上调").sum()
+        downgrades = (research_df["rating_change"] == "下调").sum()
 
+        if downgrades > 0:
+            return 0
+
+        # 最新评级
+        latest = research_df.iloc[0].get("rating", "")
+        is_strong = latest in ["买入", "增持"]
+
+        if upgrades >= 2 and is_strong:
+            return 3
+        elif upgrades >= 1 and is_strong:
+            return 2
+        elif n >= 2 and is_strong:
+            return 1
+        elif n >= 1:
+            return 1
         return 1
 
-    def _score_market_sentiment(self, date_str: Optional[str] = None) -> int:
-        """
-        大盘情绪 (0-3)
-        基于当日热点题材数量判断市场整体活跃度
-        >=20 个热点 → 3, >=10 → 2, >=5 → 1, <5 → 0
-        API 不可用时返回中性分 1
-        """
-        if date_str is None:
-            date_str = date.today().strftime("%Y%m%d")
-
-        topics = self._fetch_hot_topics(date_str)
-        if not topics:
+    # ============================================================
+    #  3. 低波动 (0-3) — 反向: 越低越好
+    # ============================================================
+    def _score_low_volatility(self, price_df: pd.DataFrame) -> int:
+        """低波动 = 筹码稳定，非共识机会"""
+        if price_df is None or len(price_df) < 20:
             return 1
 
-        count = len(topics)
-        if count >= 20:
+        returns = price_df["pct_change"].dropna().values[-20:]
+        if len(returns) < 10:
+            return 1
+
+        vol = np.std(returns)
+        # vol 通常在 1%~5% 之间
+        # <1.5% → 3分, 1.5-2.5% → 2分, 2.5-4% → 1分, >4% → 0分
+        if vol < 1.5:
             return 3
-        elif count >= 10:
+        elif vol < 2.5:
             return 2
-        elif count >= 5:
+        elif vol < 4.0:
             return 1
         return 0
 
-    def _score_attention_change(self, code: str) -> int:
-        """关注度变化 — 需API"""
-        return 1  # stub
+    # ============================================================
+    #  4. 缩量止跌 (0-3)
+    # ============================================================
+    def _score_volume_contraction(self, price_df: pd.DataFrame) -> int:
+        """成交量收缩 + 价格企稳 = 底部信号"""
+        if price_df is None or len(price_df) < 20:
+            return 1
 
-    def _score_announcement_sentiment(self, code: str) -> int:
-        """公告情绪 — 从 announcements 表获取"""
-        return 1  # stub
+        volume = price_df["volume"].values[-20:]
+        close = price_df["close"].values[-20:]
 
-    def _score_topic_durability(self, code: str) -> int:
-        """题材持续性 — 需API"""
-        return 1  # stub
+        if len(volume) < 10:
+            return 1
 
-    def _score_sentiment_composite(self, subs: dict) -> int:
-        avg = np.mean(list(subs.values())[:5])
-        if avg >= 2.0:
+        # 近5日均量 vs 近20日均量
+        vol_5d = np.mean(volume[-5:])
+        vol_20d = np.mean(volume)
+        if vol_20d == 0:
+            return 1
+        vol_ratio = vol_5d / vol_20d
+
+        # 近5日价格变化
+        price_5d = (close[-1] - close[-5]) / close[-5] * 100
+
+        # 缩量 + 止跌 → 高分
+        if vol_ratio < 0.6 and price_5d > -5:
             return 3
-        elif avg >= 1.5:
+        elif vol_ratio < 0.8 and price_5d > -10:
             return 2
-        elif avg >= 1.0:
+        elif vol_ratio < 1.0 and price_5d > -15:
+            return 1
+        return 0
+
+    # ============================================================
+    #  5. 融资信号 (0-3)
+    # ============================================================
+    def _score_margin_signal(self, code: str, price_df: pd.DataFrame) -> int:
+        """融资余额变化趋势"""
+        if price_df is None or len(price_df) < 5:
+            return 1
+
+        # 用近5日量价关系推断：放量下跌=恐慌，缩量止跌=企稳
+        recent = price_df.tail(5)
+        returns = recent["pct_change"].values
+        volumes = recent["volume"].values
+
+        avg_ret = np.mean(returns)
+        # 量价背离检测
+        if len(volumes) >= 3:
+            vol_trend = (volumes[-1] - volumes[0]) / volumes[0] if volumes[0] > 0 else 0
+        else:
+            vol_trend = 0
+
+        # 缩量 + 价格稳定 = 积极信号
+        if vol_trend < -0.2 and avg_ret > -2:
+            return 3
+        elif vol_trend < 0 and avg_ret > -3:
+            return 2
+        elif avg_ret > -5:
+            return 1
+        return 0
+
+    # ============================================================
+    #  6. 信息效率 (0-3) — 综合
+    # ============================================================
+    def _score_efficiency(self, sub_scores: dict) -> int:
+        parts = [
+            sub_scores.get("announcement_sentiment", 1),
+            sub_scores.get("research_rating", 1),
+            sub_scores.get("low_volatility", 1),
+            sub_scores.get("volume_contraction", 1),
+            sub_scores.get("margin_signal", 1),
+        ]
+        avg = np.mean(parts)
+        if avg >= 2.5:
+            return 3
+        elif avg >= 2.0:
+            return 2
+        elif avg >= 1.5:
             return 1
         return 0
 
     # ============================================================
     #  主入口
     # ============================================================
-    def score(self, code: str, as_of_date: Optional[str] = None) -> Dict[str, Any]:
-        if as_of_date is None:
-            as_of_date = date.today().strftime("%Y%m%d")
+    def score(self, code: str, as_of_date: str) -> Dict[str, Any]:
+        """单只股票评分"""
+        # 加载数据
+        price_df = self._load_bulk_price_data([code], as_of_date).get(code)
+        ann_df = self._load_bulk_announcements([code], as_of_date).get(code, pd.DataFrame())
+        research_df = self._load_bulk_research([code], as_of_date).get(code)
+
+        if price_df is None or len(price_df) < 20:
+            return {
+                "code": code, "as_of_date": as_of_date,
+                "total": 0, "weighted": 0.0,
+                "sub_scores": {}, "error": "数据不足",
+            }
 
         sub_scores = {
-            "news_sentiment": self._score_news_sentiment(code),
-            "topic_heat": self._score_topic_heat(code, as_of_date),
-            "market_sentiment": self._score_market_sentiment(as_of_date),
-            "attention_change": self._score_attention_change(code),
-            "announcement_sentiment": self._score_announcement_sentiment(code),
-            "topic_durability": self._score_topic_durability(code),
+            "announcement_sentiment": self._score_announcement_sentiment(ann_df),
+            "research_rating": self._score_research_rating(research_df),
+            "low_volatility": self._score_low_volatility(price_df),
+            "volume_contraction": self._score_volume_contraction(price_df),
+            "margin_signal": self._score_margin_signal(code, price_df),
         }
-        sub_scores["sentiment_composite"] = self._score_sentiment_composite(sub_scores)
+        sub_scores["efficiency"] = self._score_efficiency(sub_scores)
 
         total = sum(sub_scores.values())
+        weighted = round(total / 18 * 20, 1)
+
         return {
-            "code": code,
-            "as_of_date": as_of_date,
-            "total": total,
-            "weighted": round(total / 21 * 20, 1),
-            "sub_scores": sub_scores,
-            "error": None,
+            "code": code, "as_of_date": as_of_date,
+            "total": total, "weighted": weighted,
+            "sub_scores": sub_scores, "error": None,
         }
-
-    def prefetch(self, as_of_date: Optional[str] = None):
-        """批量模式下预取全局数据（热点题材、市场情绪），避免重复HTTP调用"""
-        if as_of_date is None:
-            as_of_date = date.today().strftime("%Y%m%d")
-        self._prefetched_topics = self._fetch_hot_topics(as_of_date)
-        self._prefetched_date = as_of_date
-
-    def _score_with_prefetch(self, code: str) -> Dict[str, int]:
-        """使用预取数据评分，不发起HTTP请求"""
-        # 题材热度: 从预取热点中查找
-        topic_heat = 1
-        for topic in self._prefetched_topics:
-            if topic.get("code", "") == code:
-                topic_heat = 3
-                break
-
-        # 市场情绪: 从预取热点数量判断
-        topic_count = len(self._prefetched_topics)
-        if topic_count >= 20:
-            market_sentiment = 3
-        elif topic_count >= 10:
-            market_sentiment = 2
-        elif topic_count >= 5:
-            market_sentiment = 1
-        else:
-            market_sentiment = 0
-
-        # 新闻情感: 批量模式下使用默认中性分 (API已降级)
-        sub_scores = {
-            "news_sentiment": 1,
-            "topic_heat": topic_heat,
-            "market_sentiment": market_sentiment,
-            "attention_change": 1,
-            "announcement_sentiment": 1,
-            "topic_durability": 1,
-        }
-        sub_scores["sentiment_composite"] = self._score_sentiment_composite(sub_scores)
-        return sub_scores
 
     def batch_score(
         self, codes: List[str], as_of_date: Optional[str] = None, verbose: bool = False
-    ) -> "pd.DataFrame":
-        import pandas as pd
-        # 批量模式: 预取全局数据，按股票评分时不再调API
-        self.prefetch(as_of_date)
+    ) -> pd.DataFrame:
+        """批量评分 — 使用批量数据加载"""
+        if not codes or as_of_date is None:
+            return pd.DataFrame()
+
+        # 批量加载所有数据
+        price_data = self._load_bulk_price_data(codes, as_of_date)
+        ann_data = self._load_bulk_announcements(codes, as_of_date)
+        research_data = self._load_bulk_research(codes, as_of_date)
+
         results = []
-        for i, code in enumerate(codes):
-            sub_scores = self._score_with_prefetch(code)
+        for code in codes:
+            pdf = price_data.get(code)
+            if pdf is None or len(pdf) < 20:
+                continue
+
+            adf = ann_data.get(code, pd.DataFrame(columns=["title", "date"]))
+            rdf = research_data.get(code)
+
+            sub_scores = {
+                "announcement_sentiment": self._score_announcement_sentiment(adf),
+                "research_rating": self._score_research_rating(rdf),
+                "low_volatility": self._score_low_volatility(pdf),
+                "volume_contraction": self._score_volume_contraction(pdf),
+                "margin_signal": self._score_margin_signal(code, pdf),
+            }
+            sub_scores["efficiency"] = self._score_efficiency(sub_scores)
+
             total = sum(sub_scores.values())
             results.append({
                 "code": code,
-                "as_of_date": self._prefetched_date,
+                "as_of_date": as_of_date,
                 "total": total,
-                "weighted": round(total / 21 * 20, 1),
+                "weighted": round(total / 18 * 20, 1),
                 **{f"sent_{k}": v for k, v in sub_scores.items()},
             })
-            if verbose and (i + 1) % 500 == 0:
-                print(f"  ... sentiment {i + 1}/{len(codes)}")
+
         return pd.DataFrame(results)
