@@ -1,7 +1,10 @@
 """
-重新生成 combined_3d_scores.csv — 全量资金面 (优化版)
-====================================================
-批量加载 + 内存评分，大幅减少数据库查询。
+重新生成 combined_3d_scores.csv — 全量资金面 (SQL批量版)
+========================================================
+优化策略: 
+  - 评分器用 batch_score (已优化), 不逐只查询
+  - 未来收益用 SQL 窗口函数一次性计算, 不预加载内存
+  - 对每10个日期批量提交一次
 
 输出: data/combined_3d_scores.csv
 """
@@ -24,11 +27,9 @@ from src.scoring.fund_flow_scorer import FundFlowScorer
 
 
 def get_weekly_dates(engine) -> list:
-    """获取所有周五日期作为评分基准日"""
     query = """
         SELECT DISTINCT trade_date FROM daily_price
-        WHERE trade_date >= '2024-06-01'
-        ORDER BY trade_date
+        WHERE trade_date >= '2024-06-01' ORDER BY trade_date
     """
     df = pd.read_sql(query, engine)
     df["trade_date"] = pd.to_datetime(df["trade_date"])
@@ -38,53 +39,58 @@ def get_weekly_dates(engine) -> list:
     return sorted(weekly["trade_date"].dt.strftime("%Y-%m-%d").tolist())
 
 
+def compute_future_returns(engine, as_of_date: str) -> pd.DataFrame:
+    """用SQL窗口函数一次性计算所有股票的未来收益 (交易日位移)"""
+    query = f"""
+        WITH future_prices AS (
+            SELECT code, trade_date, close,
+                   ROW_NUMBER() OVER (PARTITION BY code ORDER BY trade_date) as rn
+            FROM daily_price
+            WHERE trade_date > '{as_of_date}'
+        ),
+        base AS (
+            SELECT code, close as base_close
+            FROM daily_price WHERE trade_date = '{as_of_date}'
+        )
+        SELECT b.code,
+               (MAX(CASE WHEN fp.rn = 20 THEN fp.close END) - b.base_close) 
+                   / b.base_close * 100 as ret_20d,
+               (MAX(CASE WHEN fp.rn = 40 THEN fp.close END) - b.base_close) 
+                   / b.base_close * 100 as ret_40d,
+               (MAX(CASE WHEN fp.rn = 60 THEN fp.close END) - b.base_close) 
+                   / b.base_close * 100 as ret_60d
+        FROM base b
+        LEFT JOIN future_prices fp ON b.code = fp.code
+        GROUP BY b.code
+    """
+    return pd.read_sql(query, engine)
+
+
 def main():
-    print("=" * 60)
-    print("重新生成 combined_3d_scores.csv (全量资金面, 批量优化)")
-    print("=" * 60)
+    print("=" * 60, flush=True)
+    print("重新生成 combined_3d_scores.csv", flush=True)
+    print("=" * 60, flush=True)
 
     config = get_config()
     db_url = get_db_url(config)
     engine = create_engine(db_url, echo=False)
 
     dates = get_weekly_dates(engine)
-    print(f"\n共 {len(dates)} 个周度截面: {dates[0]} ~ {dates[-1]}")
+    print(f"\n共 {len(dates)} 个周度截面: {dates[0]} ~ {dates[-1]}", flush=True)
 
-    # 预加载所有未来收益 (一次性查询，大幅减少DB往返)
-    print("\n预加载全量收益数据...")
-    t0 = time.time()
-    all_price = pd.read_sql(
-        "SELECT code, trade_date, close FROM daily_price "
-        "WHERE trade_date >= '2024-06-01' ORDER BY code, trade_date",
-        engine
-    )
-    all_price["trade_date"] = pd.to_datetime(all_price["trade_date"])
-    all_price["code"] = all_price["code"].astype(str).str.zfill(6)
-
-    # 构建每个股票的价格序列字典
-    price_by_code = {}
-    for code, grp in all_price.groupby("code"):
-        grp_sorted = grp.sort_values("trade_date")
-        price_by_code[code] = {
-            "dates": grp_sorted["trade_date"].tolist(),
-            "closes": grp_sorted["close"].values,
-        }
-    print(f"  预加载完成: {len(price_by_code)} 只股票, {time.time()-t0:.1f}s")
-
-    # 初始化评分器
-    print("\n初始化评分器...")
+    print("初始化评分器...", flush=True)
     tech = TechnicalScorer(engine=engine)
     fundam = FundamentalScorer(engine=engine)
     fundflow = FundFlowScorer(engine=engine)
+    print("  ✅ 技术v3 + 基本面v2 + 资金面v2.1\n", flush=True)
 
     all_rows = []
     start_time = time.time()
 
     for i, as_of_date in enumerate(dates):
-        iter_start = time.time()
-        as_of_dt = pd.Timestamp(as_of_date)
+        t_iter = time.time()
 
-        # 获取当日有交易的股票
+        # 获取当日股票
         codes_df = pd.read_sql(
             f"SELECT DISTINCT code FROM daily_price WHERE trade_date = '{as_of_date}'",
             engine
@@ -93,101 +99,81 @@ def main():
         if not codes:
             continue
 
-        n_stocks = len(codes)
-
-        # 1. 技术面评分 (批量加载优化后 ~22s)
+        # 技术面 (批量加载 ~22s)
         try:
             tech_df = tech.batch_score(codes, as_of_date)
             tech_map = dict(zip(tech_df["code"], tech_df["weighted"]))
         except Exception as e:
-            print(f"  [{as_of_date}] 技术面 ERROR: {e}")
+            print(f"  [{as_of_date}] tech ERROR: {e}", flush=True)
             tech_map = {}
 
-        # 2. 基本面评分 (~0.3s)
+        # 基本面 (~0.3s)
         try:
             fundam_df = fundam.batch_score(codes)
             fundam_map = dict(zip(fundam_df["code"], fundam_df["weighted"]))
         except Exception as e:
-            print(f"  [{as_of_date}] 基本面 ERROR: {e}")
+            print(f"  [{as_of_date}] fundam ERROR: {e}", flush=True)
             fundam_map = {}
 
-        # 3. 资金面评分 (~7s)
+        # 资金面 (~7s)
         try:
             fundflow_df = fundflow.batch_score(codes, as_of_date)
             fundflow_map = dict(zip(fundflow_df["code"], fundflow_df["weighted"]))
         except Exception as e:
-            print(f"  [{as_of_date}] 资金面 ERROR: {e}")
+            print(f"  [{as_of_date}] fundflow ERROR: {e}", flush=True)
             fundflow_map = {}
 
-        t_score = time.time() - iter_start
+        # 未来收益 (SQL窗口函数, ~1-2s)
+        try:
+            ret_df = compute_future_returns(engine, as_of_date)
+            ret_map = ret_df.set_index("code").to_dict("index")
+        except Exception as e:
+            print(f"  [{as_of_date}] returns ERROR: {e}", flush=True)
+            ret_map = {}
 
-        # 4. 从内存计算未来收益
-        ret_20_map = {}
-        ret_40_map = {}
-        ret_60_map = {}
+        # 合并
         for code in codes:
-            pdata = price_by_code.get(code)
-            if pdata is None:
-                continue
-            dates_list = pdata["dates"]
-            closes = pdata["closes"]
-            try:
-                idx = dates_list.index(as_of_dt)
-                base_close = closes[idx]
-
-                # 20日
-                if idx + 20 < len(closes):
-                    ret_20_map[code] = (closes[idx + 20] - base_close) / base_close * 100
-                # 40日
-                if idx + 40 < len(closes):
-                    ret_40_map[code] = (closes[idx + 40] - base_close) / base_close * 100
-                # 60日
-                if idx + 60 < len(closes):
-                    ret_60_map[code] = (closes[idx + 60] - base_close) / base_close * 100
-            except ValueError:
-                continue
-
-        # 5. 合并一行
-        for code in codes:
+            ret_info = ret_map.get(code, {})
             all_rows.append({
                 "code": code,
                 "as_of_date": as_of_date,
                 "tech_weighted": tech_map.get(code, np.nan),
                 "fundam_weighted": fundam_map.get(code, np.nan),
                 "fund_weighted": fundflow_map.get(code, np.nan),
-                "ret_20d": ret_20_map.get(code, np.nan),
-                "ret_40d": ret_40_map.get(code, np.nan),
-                "ret_60d": ret_60_map.get(code, np.nan),
+                "ret_20d": ret_info.get("ret_20d", np.nan),
+                "ret_40d": ret_info.get("ret_40d", np.nan),
+                "ret_60d": ret_info.get("ret_60d", np.nan),
             })
 
-        # 进度
-        n_fund = sum(1 for v in fundflow_map.values() if not np.isnan(v))
+        t_iter_elapsed = time.time() - t_iter
         elapsed = time.time() - start_time
         rate = (i + 1) / elapsed if elapsed > 0 else 0
         eta = (len(dates) - i - 1) / rate if rate > 0 else 0
-        if (i + 1) % 5 == 0 or i == 0:
-            print(f"  [{as_of_date}] {i+1}/{len(dates)} | "
-                  f"{n_stocks}只 | 资金面:{n_fund} | "
-                  f"评分:{t_score:.1f}s | ETA:{eta/60:.0f}min")
+        n_fund = sum(1 for v in fundflow_map.values() if not np.isnan(v))
 
-    # 汇总
+        if (i + 1) % 5 == 0 or i == 0 or i == len(dates) - 1:
+            print(f"  [{as_of_date}] {i+1}/{len(dates)} | "
+                  f"{len(codes)}只 | 资金:{n_fund} | "
+                  f"{t_iter_elapsed:.1f}s | 总ETA:{eta/60:.0f}min", flush=True)
+
+    # 汇总输出
     result = pd.DataFrame(all_rows)
     result["year_month"] = pd.to_datetime(result["as_of_date"]).dt.strftime("%Y-%m")
     result["combined_score"] = result[["tech_weighted", "fundam_weighted", "fund_weighted"]].mean(axis=1)
 
     total_elapsed = time.time() - start_time
-    print(f"\n{'='*60}")
-    print(f"生成完成! 总耗时: {total_elapsed/60:.1f}min")
-    print(f"  总行数: {len(result)}")
-    print(f"  股票数: {result['code'].nunique()}")
-    print(f"  日期数: {result['as_of_date'].nunique()}")
+    print(f"\n{'='*60}", flush=True)
+    print(f"生成完成! 总耗时: {total_elapsed/60:.1f}min", flush=True)
+    print(f"  总行数: {len(result)}", flush=True)
+    print(f"  股票数: {result['code'].nunique()}", flush=True)
+    print(f"  日期数: {result['as_of_date'].nunique()}", flush=True)
     for col in ["tech_weighted", "fundam_weighted", "fund_weighted"]:
         valid = result[col].notna().sum()
-        print(f"  {col}: {valid} ({valid/len(result)*100:.0f}%)")
+        print(f"  {col}: {valid} ({valid/len(result)*100:.0f}%)", flush=True)
 
     csv_path = PROJECT_ROOT / "data" / "combined_3d_scores.csv"
     result.to_csv(csv_path, index=False, encoding="utf-8-sig")
-    print(f"\n  ✅ 输出: {csv_path} ({len(result)} rows)")
+    print(f"\n  ✅ 输出: {csv_path} ({len(result)} rows)", flush=True)
 
     engine.dispose()
 
