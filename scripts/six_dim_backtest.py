@@ -216,6 +216,9 @@ def main():
         valid = df_sample.dropna(subset=[col, "ret_60d"])
         if len(valid) > 50:
             ic = valid[col].corr(valid["ret_60d"], method="spearman")
+            if pd.isna(ic):
+                print(f"  {label:15s}  IC=NaN (常数/无变化)")
+                continue
             bar = "█" * max(1, int(abs(ic) * 200))
             print(f"  {label:15s}  IC={ic:+.4f}  {bar}")
 
