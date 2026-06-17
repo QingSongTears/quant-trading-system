@@ -37,6 +37,10 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
     5. 评分排名: RSI得分+BB得分+回撤得分+反转强度+量比+ATR惩罚
     """
 
+    # 类级别缓存（多策略实例共享预计算结果）
+    _class_cache: dict = {}
+    _own_cache: bool = False
+
     name: str = "v6_reversal"
     description: str = (
         "V6 超卖反转 — RSI超卖+BB挤压+60日深回撤 → 反转确认 "
@@ -77,11 +81,13 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
     ATR_PENALTY_PER_PCT: float = 2.0
 
     def __init__(self, **kwargs):
-        # 应用自定义参数
+        # 应用自定义参数（支持大小写）
         for k, v in kwargs.items():
-            attr = k.upper()
-            if hasattr(self, attr):
-                setattr(self, attr, v)
+            # 先试原样，再试大写
+            for attr_name in (k, k.upper()):
+                if hasattr(self.__class__, attr_name):
+                    setattr(self, attr_name, v)
+                    break
 
         # 初始化数据库连接
         config = get_config()
@@ -89,7 +95,15 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
         self.engine = create_engine(db_url, echo=False)
 
         # 指标缓存: {date_str: DataFrame(index=code)}
-        self._indicator_cache: dict = {}
+        # 类级别共享，多策略实例仅预计算一次
+        self._indicator_cache: dict = V6ReversalSelectionStrategy._class_cache
+        self._own_cache = False  # 标记是否本实例创建的
+
+    @classmethod
+    def clear_cache(cls):
+        """清除类级别缓存"""
+        cls._class_cache = {}
+        cls._own_cache = False
 
     def precompute_all(self, start_date, end_date):
         """

@@ -52,31 +52,50 @@ class FundamentalScorer:
         self._load_data()
 
     def _load_data(self):
-        """加载全量财务数据并预计算分位数"""
+        """加载全量财务数据并预计算分位数
+        适配新DB schema:
+          finance_snapshot_v2: roe/eps/debt_ratio/bps/total_equity/total_revenue/net_profit/list_date_raw/shares
+          dividend_data: 从分红表JOIN取最新pre_tax_bonus
+        """
         self.df = pd.read_sql(
-            "SELECT code, roe, eps, debt_ratio, bps, dividend, "
-            "total_equity, revenue, net_profit, list_date, shares "
-            "FROM finance_snapshot_v2",
+            "SELECT f.code, f.roe, f.eps, f.debt_ratio, f.bps, "
+            "f.total_equity, f.total_revenue as revenue, f.net_profit, "
+            "f.list_date_raw, f.shares, "
+            "COALESCE(d.pre_tax_bonus, 0) as dividend "
+            "FROM finance_snapshot_v2 f "
+            "LEFT JOIN ("
+            "  SELECT code, pre_tax_bonus FROM dividend_data "
+            "  WHERE (code, ex_div_date) IN ("
+            "    SELECT code, MAX(ex_div_date) FROM dividend_data GROUP BY code"
+            "  )"
+            ") d ON f.code = d.code",
             self.engine
         )
         self.df = self.df.set_index("code")
 
-        # 衍生指标
-        self.df["pe_proxy"] = (
-            self.df["total_equity"] / self.df["net_profit"].replace(0, np.nan)
-        ).clip(-500, 500)
-        self.df["roe_v"] = self.df["roe"].clip(0, 50)
-        self.df["debt_v"] = self.df["debt_ratio"].clip(0, 3000)
-        self.df["log_size"] = np.log10(self.df["total_equity"].replace(0, np.nan))
-        self.df["list_years"] = (2026 - self.df["list_date"] // 10000).clip(0, 35)
+        # 衍生指标（clip处理极端值）
+        net_profit_abs = self.df["net_profit"].replace(0, np.nan).abs()
+        equity_v = self.df["total_equity"].clip(lower=1e4)
+        self.df["pe_proxy"] = (equity_v / net_profit_abs).clip(-500, 500)
+        self.df["roe_v"] = self.df["roe"].clip(-1, 1)  # -100%~100%
+        self.df["debt_v"] = self.df["debt_ratio"].clip(0, 1)
+        self.df["log_size"] = np.log10(equity_v)
+        # list_date_raw → YYYYMMDD → 取前4位年份
+        raw = self.df["list_date_raw"]
+        self.df["list_years"] = np.where(
+            raw.notna() & (raw != ""),
+            (2026 - raw.astype(str).str[:4].astype(float)).clip(0, 35),
+            10
+        )
 
         # 预计算分位数
         self._pct = {}
         for col in ["roe_v", "pe_proxy", "log_size", "list_years", "debt_v", "dividend"]:
             vals = self.df[col].dropna()
-            self._pct[col] = {
-                p: np.percentile(vals, p) for p in [10, 20, 30, 40, 50, 60, 70, 80, 90]
-            }
+            if len(vals) > 0:
+                self._pct[col] = {
+                    p: np.percentile(vals, p) for p in [10, 20, 30, 40, 50, 60, 70, 80, 90]
+                }
 
     # ============================================================
     #  1. ROE质量 (0-3) — 高ROE = 持续竞争优势
@@ -213,11 +232,11 @@ class FundamentalScorer:
         if pd.isna(debt_ratio):
             return 1
         pct = self._pct.get("debt_v", {})
-        if debt_ratio <= pct.get(30, 300):
+        if debt_ratio <= pct.get(30, 0.3):
             return 3
-        elif debt_ratio <= pct.get(50, 500):
+        elif debt_ratio <= pct.get(50, 0.5):
             return 2
-        elif debt_ratio <= pct.get(70, 900):
+        elif debt_ratio <= pct.get(70, 0.7):
             return 1
         return 0
 
@@ -237,10 +256,10 @@ class FundamentalScorer:
         pct_roe = self._pct.get("roe_v", {})
         pct_debt = self._pct.get("debt_v", {})
 
-        high_roe = (not pd.isna(roe) and roe >= pct_roe.get(50, 1.5))
-        low_debt = (not pd.isna(debt_ratio) and debt_ratio <= pct_debt.get(50, 500))
-        mid_roe = (not pd.isna(roe) and roe >= pct_roe.get(25, 0.5))
-        mid_debt = (not pd.isna(debt_ratio) and debt_ratio <= pct_debt.get(75, 1000))
+        high_roe = (not pd.isna(roe) and roe >= pct_roe.get(50, 0.05))
+        low_debt = (not pd.isna(debt_ratio) and debt_ratio <= pct_debt.get(50, 0.5))
+        mid_roe = (not pd.isna(roe) and roe >= pct_roe.get(25, 0.01))
+        mid_debt = (not pd.isna(debt_ratio) and debt_ratio <= pct_debt.get(75, 0.75))
 
         if high_roe and low_debt:
             return 3

@@ -1,0 +1,4 @@
+strategy,annual_return,max_drawdown,sharpe,win_rate,total_trades,calmar,total_return
+v6 (纯信号),15.22,-21.99,0.54,19.62,132,0.69,15.94
+v6+技术面(6:4),15.22,-21.99,0.54,19.62,132,0.69,15.94
+v6+技术面(5:5),14.2,-21.99,0.51,19.62,132,0.65,14.87

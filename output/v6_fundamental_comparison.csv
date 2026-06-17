@@ -1,0 +1,3 @@
+strategy,annual_return_pct,sharpe_ratio,max_drawdown_pct,total_trades,win_rate_pct,volatility_pct
+Pure V6,-1.88,-9.24,-2.68,32,0.0,0.42
+V6+Fundamental,-1.88,-9.24,-2.68,32,0.0,0.42

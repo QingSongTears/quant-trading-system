@@ -32,8 +32,5 @@ Thumbs.db
 # 数据缓存
 data/*.csv
 data/*.parquet
-
-# 环境变量
-.env
-.env.local
+data/raw/
 data/quant.db
