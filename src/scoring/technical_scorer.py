@@ -570,19 +570,39 @@ class TechnicalScorer:
             codes_and_dates = codes
         else:
             codes_and_dates = [(c, as_of_date) for c in codes]
+
+        # 按日期分组，批量加载价格数据
+        from collections import defaultdict
+        date_codes = defaultdict(list)
+        for code, dt in codes_and_dates:
+            date_codes[dt].append(code)
+
         results = []
-        for i, (code, dt) in enumerate(codes_and_dates):
-            r = self.score(code, dt)
-            if r["error"] is None and r["sub_scores"]:
+        for dt, code_list in date_codes.items():
+            bulk_data = self._load_bulk_price_data(code_list, dt)
+            for code in code_list:
+                df = bulk_data.get(code)
+                if df is None or len(df) < 60:
+                    continue
+                sub = {
+                    "ma_trend": self._score_ma_trend(df),
+                    "macd": self._score_macd(df),
+                    "rsi": self._score_rsi(df),
+                    "bollinger": self._score_bollinger(df),
+                    "volume_price": self._score_volume_price(df),
+                    "breakout": self._score_breakout(df),
+                    "pullback": self._score_pullback(df),
+                }
+                total = sum(sub.values())
                 results.append({
                     "code": code,
                     "as_of_date": dt,
-                    "total": r["total"],
-                    "weighted": r["weighted"],
-                    **{f"tech_{k}": v for k, v in r["sub_scores"].items()},
+                    "total": total,
+                    "weighted": round(total / 21 * 20, 1),
+                    **{f"tech_{k}": v for k, v in sub.items()},
                 })
-            if verbose and (i + 1) % 50 == 0:
-                print(f"  ... 已评分 {i + 1}/{len(codes_and_dates)}")
+            if verbose:
+                print(f"  [{dt}] 技术面: {len(bulk_data)}只")
         return pd.DataFrame(results)
 
     def sample_daily(
