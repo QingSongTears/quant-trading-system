@@ -57,43 +57,44 @@ class NewsEventScorer:
         except:
             return pd.DataFrame(columns=["title", "date"])
 
-    def _load_research_data(self, code: str, as_of_date: str, lookback: int = 90) -> pd.DataFrame:
-        """加载指定股票的研报数据（近 N 天）
-
-        Args:
-            code: 股票代码 (6位字符串, 如 '000001')
-            as_of_date: 截止日期 (YYYY-MM-DD)
-            lookback: 回溯天数
-
-        Returns:
-            DataFrame with columns: code, market, name, date, org, title, rating, rating_change
-        """
+    def _load_research_cache(self):
+        """首次加载研报全量数据到 dict（按code索引），避免重复 DataFrame 过滤"""
         global _research_cache
+        if _research_cache is not None:
+            return
 
-        # 首次加载全量数据到缓存
-        if _research_cache is None:
-            try:
-                _research_cache = pd.read_sql(
-                    "SELECT code, market, name, date, org, title, rating, rating_change "
-                    "FROM research_report ORDER BY code, date DESC",
-                    self.engine
-                )
-            except Exception:
-                return pd.DataFrame()
+        try:
+            df = pd.read_sql(
+                "SELECT code, market, name, date, org, title, rating, rating_change "
+                "FROM research_report ORDER BY code, date DESC",
+                self.engine
+            )
+        except Exception:
+            _research_cache = {}
+            return
 
-        if _research_cache is None or _research_cache.empty:
+        if df.empty:
+            _research_cache = {}
+            return
+
+        # 按 code 分组存入 dict（快速 O(1) 查找）
+        _research_cache = {}
+        for code, grp in df.groupby("code"):
+            _research_cache[code] = grp.reset_index(drop=True)
+
+    def _load_research_data(self, code: str, as_of_date: str, lookback: int = 90) -> pd.DataFrame:
+        """从预索引缓存获取研报数据"""
+        global _research_cache
+        self._load_research_cache()
+
+        if not _research_cache or code not in _research_cache:
             return pd.DataFrame()
 
-        # 计算日期边界
+        stock_df = _research_cache[code]
         cutoff = (pd.to_datetime(as_of_date) - pd.Timedelta(days=lookback)).strftime("%Y-%m-%d")
 
-        # 筛选: 同股票 + 日期范围内
-        mask = (
-            (_research_cache["code"] == code)
-            & (_research_cache["date"] >= cutoff)
-            & (_research_cache["date"] <= as_of_date)
-        )
-        return _research_cache[mask].copy()
+        mask = (stock_df["date"] >= cutoff) & (stock_df["date"] <= as_of_date)
+        return stock_df[mask]
 
     # ============================================================
     #  1. 公告密集度 (0-3)
