@@ -1,2 +1,4 @@
+A股全市场数据/kline_daily.csv filter=lfs diff=lfs merge=lfs -text
+A股全市场数据/technical_indicators.csv filter=lfs diff=lfs merge=lfs -text
 A股全市场数据/raw/technical_indicators/tech_indicators_2025.csv filter=lfs diff=lfs merge=lfs -text
 A股全市场数据/raw/technical_indicators/tech_indicators_2024.csv filter=lfs diff=lfs merge=lfs -text
