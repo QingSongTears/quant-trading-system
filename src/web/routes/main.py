@@ -228,3 +228,15 @@ async def compare_page(
         "all_backtests": repo.get_recent_backtests(limit=50),
     })
     return templates.TemplateResponse(request, "compare.html", ctx)
+
+
+@router.get("/workbench", response_class=HTMLResponse)
+async def workbench_page(request: Request):
+    """交互式回测工作台"""
+    repo = DataRepository()
+    ctx = _get_global_context()
+    ctx.update({
+        "all_backtests": repo.get_recent_backtests(limit=30),
+        "strategies": repo.get_all_strategies() if hasattr(repo, 'get_all_strategies') else [],
+    })
+    return templates.TemplateResponse(request, "workbench.html", ctx)

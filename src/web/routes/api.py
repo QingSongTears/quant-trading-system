@@ -406,6 +406,77 @@ async def get_strategies():
     return {"success": True, "data": config.get("strategies", [])}
 
 
+# ===== 模型汇总 API =====
+
+@router.get("/models/summary")
+async def get_models_summary(
+    stock_code: str = Query(..., min_length=6, max_length=6),
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+):
+    """
+    对指定股票+区间，返回所有模型最近回测结果摘要。
+    用于工作台"一键对比"功能。
+    """
+    from ...config import load_strategies
+    strategies_config = load_strategies()
+    models = strategies_config.get("strategies", [])
+
+    repo = DataRepository()
+    session = repo.get_session()
+    try:
+        from ...models.database import BacktestResult, StrategyConfig
+        summaries = []
+        for s in models:
+            strategy_record = session.query(StrategyConfig).filter_by(
+                name=s["name"]
+            ).first()
+            if not strategy_record:
+                # 尝试直接用名称模糊匹配
+                strategy_record = session.query(StrategyConfig).filter(
+                    StrategyConfig.name.like(f"%{s['name']}%")
+                ).first()
+
+            if strategy_record:
+                result = session.query(BacktestResult).filter(
+                    BacktestResult.strategy_id == strategy_record.id,
+                    BacktestResult.stock_code == stock_code,
+                ).order_by(BacktestResult.created_at.desc()).first()
+
+                if result:
+                    summaries.append({
+                        "strategy_name": s["name"],
+                        "strategy_type": s.get("strategy_type", "signal"),
+                        "total_return": result.total_return,
+                        "annual_return": result.annual_return,
+                        "sharpe_ratio": result.sharpe_ratio,
+                        "max_drawdown": result.max_drawdown,
+                        "win_rate": result.win_rate,
+                        "total_trades": result.total_trades,
+                        "excess_return": result.excess_return,
+                        "result_id": result.id,
+                        "created_at": str(result.created_at),
+                    })
+                else:
+                    summaries.append({
+                        "strategy_name": s["name"],
+                        "strategy_type": s.get("strategy_type", "signal"),
+                        "has_data": False,
+                        "result_id": None,
+                    })
+            else:
+                summaries.append({
+                    "strategy_name": s["name"],
+                    "strategy_type": s.get("strategy_type", "signal"),
+                    "has_data": False,
+                    "result_id": None,
+                })
+
+        return {"success": True, "data": summaries}
+    finally:
+        session.close()
+
+
 # ===== 回测结果 API =====
 
 @router.get("/backtest/results")

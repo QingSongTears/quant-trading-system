@@ -1,0 +1,836 @@
+{% extends "base.html" %}
+{% block title %}回测工作台 - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-4">
+    <div>
+        <h2 class="mb-1"><i class="bi bi-tools"></i> 回测工作台</h2>
+        <p class="text-muted mb-0">选择模型 → 设定参数 → 实时回测 → 多模型对比，一站式完成</p>
+    </div>
+    <div class="ms-auto">
+        <span class="badge bg-indigo-soft text-indigo px-3 py-2 fs-6">
+            <i class="bi bi-cpu"></i> 已加载 <strong id="model-count">-</strong> 个模型
+        </span>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- ========== 左侧：配置面板 ========== -->
+    <div class="col-lg-4">
+        <div class="card p-4 sticky-lg-top" style="top: 80px; z-index: 10;">
+            <h5 class="section-title mb-3"><i class="bi bi-sliders"></i> 回测配置</h5>
+
+            <!-- 模型选择 -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold small text-secondary">🎯 选择模型</label>
+                <select id="model-select" class="form-select form-select-lg">
+                    <option value="">-- 请先选择模型 --</option>
+                </select>
+                <div id="model-desc" class="form-text small text-muted mt-1"></div>
+            </div>
+
+            <!-- 股票搜索 -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold small text-secondary">🔍 股票代码/名称</label>
+                <div class="position-relative">
+                    <input type="text" id="stock-input" class="form-control form-control-lg"
+                           placeholder="输入代码或名称搜索..."
+                           autocomplete="off">
+                    <div id="stock-suggestions" class="list-group position-absolute w-100 shadow-sm"
+                         style="display:none; z-index:1050; max-height:240px; overflow-y:auto;"></div>
+                </div>
+                <input type="hidden" id="stock-code" value="">
+                <input type="hidden" id="stock-name" value="">
+            </div>
+
+            <!-- 日期范围 -->
+            <div class="row g-2 mb-3">
+                <div class="col-6">
+                    <label class="form-label fw-semibold small text-secondary">📅 开始日期</label>
+                    <input type="date" id="start-date" class="form-control" value="2024-01-01">
+                </div>
+                <div class="col-6">
+                    <label class="form-label fw-semibold small text-secondary">📅 结束日期</label>
+                    <input type="date" id="end-date" class="form-control" value="2024-12-31">
+                </div>
+            </div>
+
+            <!-- 资金 & 费用 -->
+            <div class="row g-2 mb-3">
+                <div class="col-6">
+                    <label class="form-label fw-semibold small text-secondary">💰 初始资金</label>
+                    <div class="input-group">
+                        <span class="input-group-text">¥</span>
+                        <input type="number" id="capital" class="form-control" value="100000" step="10000" min="10000">
+                    </div>
+                </div>
+                <div class="col-3">
+                    <label class="form-label fw-semibold small text-secondary">佣金%</label>
+                    <input type="number" id="commission" class="form-control" value="0.03" step="0.01" min="0">
+                </div>
+                <div class="col-3">
+                    <label class="form-label fw-semibold small text-secondary">印花税%</label>
+                    <input type="number" id="stamp-duty" class="form-control" value="0.05" step="0.01" min="0">
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="d-grid gap-2">
+                <button id="btn-run" class="btn btn-primary btn-lg" onclick="runBacktest()" disabled>
+                    <i class="bi bi-play-fill"></i> 开始回测
+                </button>
+                <button id="btn-compare-all" class="btn btn-outline-indigo" onclick="compareAll()" disabled>
+                    <i class="bi bi-lightning-fill"></i> 一键对比全部模型
+                </button>
+            </div>
+
+            <!-- 状态提示 -->
+            <div id="config-status" class="mt-3 small text-muted text-center"></div>
+        </div>
+
+        <!-- 历史回测列表 -->
+        <div class="card p-4 mt-3">
+            <h5 class="section-title mb-3"><i class="bi bi-clock-history"></i> 最近回测</h5>
+            <div class="table-responsive" style="max-height:300px; overflow-y:auto;">
+                <table class="table table-sm table-hover mb-0 small">
+                    <thead class="table-light sticky-top">
+                        <tr><th>模型</th><th>股票</th><th>收益</th><th>时间</th></tr>
+                    </thead>
+                    <tbody id="history-table">
+                        <tr><td colspan="4" class="text-center text-muted py-3">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 右侧：结果面板 ========== -->
+    <div class="col-lg-8">
+        <!-- 空状态 -->
+        <div id="result-empty" class="card p-5 text-center">
+            <div class="py-5">
+                <i class="bi bi-arrow-left-circle text-muted" style="font-size:3rem;"></i>
+                <h4 class="text-muted mt-3">配置参数后点击"开始回测"</h4>
+                <p class="text-muted small">支持单模型回测和全部模型一键对比</p>
+            </div>
+        </div>
+
+        <!-- 加载骨架屏 -->
+        <div id="result-loading" class="d-none">
+            <div class="row g-3 mb-4">
+                <div class="col-6 col-md"><div class="card p-3 skeleton" style="height:90px;"></div></div>
+                <div class="col-6 col-md"><div class="card p-3 skeleton" style="height:90px;"></div></div>
+                <div class="col-6 col-md"><div class="card p-3 skeleton" style="height:90px;"></div></div>
+                <div class="col-6 col-md"><div class="card p-3 skeleton" style="height:90px;"></div></div>
+                <div class="col-6 col-md"><div class="card p-3 skeleton" style="height:90px;"></div></div>
+            </div>
+            <div class="card p-4 mb-4 skeleton" style="height:420px;"></div>
+            <div class="card p-4 skeleton" style="height:200px;"></div>
+        </div>
+
+        <!-- 回测结果 -->
+        <div id="result-content" class="d-none">
+            <!-- 指标卡片 -->
+            <div class="row g-3 mb-4" id="metrics-cards"></div>
+
+            <!-- 净值曲线 -->
+            <div class="card p-4 mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="section-title mb-0">📈 净值曲线</h5>
+                    <span class="badge bg-light text-dark small" id="chart-benchmark"></span>
+                </div>
+                <div id="equity-chart" class="chart-container" style="height:420px;"></div>
+            </div>
+
+            <!-- 交易明细 -->
+            <div class="card p-4 mb-4">
+                <h5 class="section-title">📋 交易明细</h5>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle" id="trades-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th><th>买入日期</th><th>买入价</th>
+                                <th>卖出日期</th><th>卖出价</th><th>持仓天数</th>
+                                <th>收益</th><th>收益率</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trades-body"></tbody>
+                    </table>
+                </div>
+                <div id="trades-empty" class="text-center text-muted py-4 d-none">
+                    <i class="bi bi-inbox" style="font-size:2rem;"></i>
+                    <p class="mt-2">该区间内无交易信号</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 多模型对比区 ===== -->
+        <div id="compare-section" class="d-none mt-4">
+            <div class="card p-4 mb-4">
+                <h5 class="section-title">
+                    <i class="bi bi-trophy"></i> 全部模型对比
+                    <small class="text-muted fw-normal" id="compare-subtitle"></small>
+                </h5>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle" id="compare-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>模型</th><th>总收益</th><th>年化</th><th>夏普</th>
+                                <th>最大回撤</th><th>胜率</th><th>交易次数</th><th>超额收益</th>
+                            </tr>
+                        </thead>
+                        <tbody id="compare-body"></tbody>
+                    </table>
+                </div>
+                <div id="compare-empty" class="text-center text-muted py-4 d-none">
+                    <p>尚无对比数据，请先运行回测</p>
+                </div>
+            </div>
+
+            <!-- 净值叠加图 -->
+            <div class="card p-4">
+                <h5 class="section-title">📊 净值叠加对比</h5>
+                <div id="compare-chart" class="chart-container" style="height:450px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+    /* ---- Design Tokens ---- */
+    :root {
+        --indigo: #6366f1;
+        --indigo-light: #eef2ff;
+        --green-bg: rgba(34,197,94,0.07);
+        --red-bg: rgba(239,68,68,0.07);
+    }
+    .bg-indigo-soft { background: var(--indigo-light); }
+    .text-indigo { color: var(--indigo); }
+    .btn-outline-indigo {
+        color: var(--indigo); border-color: var(--indigo);
+    }
+    .btn-outline-indigo:hover {
+        background: var(--indigo); color: #fff;
+    }
+
+    /* ---- Skeleton Loading ---- */
+    .skeleton {
+        background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+    }
+    @keyframes shimmer {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+
+    /* ---- Card Animations ---- */
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(16px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-in {
+        animation: fadeInUp 0.4s ease-out forwards;
+    }
+
+    /* ---- Metric Cards ---- */
+    .metric-card {
+        border-radius: 14px; border: 1px solid #e5e7eb;
+        padding: 1rem; text-align: center;
+        transition: transform 0.2s, box-shadow 0.2s;
+        background: #fff;
+    }
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+    }
+    .metric-card .m-value {
+        font-size: 1.6rem; font-weight: 700; line-height: 1.2;
+    }
+    .metric-card .m-label {
+        font-size: 0.72rem; color: #64748b; text-transform: uppercase;
+        letter-spacing: 0.5px; margin-top: 2px;
+    }
+    .metric-card .m-icon {
+        font-size: 1.1rem; margin-right: 4px;
+    }
+    .m-profit { color: #22c55e; }
+    .m-loss { color: #ef4444; }
+
+    /* ---- Trade Table ---- */
+    .trade-profit { background: var(--green-bg) !important; }
+    .trade-loss { background: var(--red-bg) !important; }
+    #trades-table tbody tr { transition: background 0.15s; cursor: pointer; }
+    #trades-table tbody tr:hover { background: #f8fafc !important; }
+
+    /* ---- Compare Table ---- */
+    #compare-table tbody tr { cursor: pointer; transition: background 0.15s; }
+    #compare-table tbody tr:hover { background: var(--indigo-light) !important; }
+    #compare-table tbody tr.selected { background: #ddd6fe !important; font-weight: 600; }
+
+    /* ---- Stock Suggestions ---- */
+    #stock-suggestions .list-group-item {
+        cursor: pointer; transition: background 0.12s;
+    }
+    #stock-suggestions .list-group-item:hover {
+        background: var(--indigo-light);
+    }
+
+    /* ---- Loading spinner in button ---- */
+    .btn-loading {
+        pointer-events: none; opacity: 0.75;
+    }
+
+    /* Compare overlay chart legend */
+    .compare-legend {
+        display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center;
+        padding: 8px 0; font-size: 0.82rem;
+    }
+    .compare-legend span {
+        cursor: pointer; padding: 2px 10px; border-radius: 12px;
+        transition: background 0.15s;
+    }
+    .compare-legend span:hover { background: #f1f5f9; }
+</style>
+
+<script>
+// ==================== 全局状态 ====================
+const CHART_COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#f97316'];
+const state = {
+    models: [],
+    selectedModel: null,
+    stock: null,
+    lastResult: null,
+    isLoading: false,
+    equityChart: null,
+    compareChart: null,
+};
+
+// ==================== DOM Ref ====================
+const $ = id => document.getElementById(id);
+
+// ==================== 初始化 ====================
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadModels();
+    await loadHistory();
+    setupStockSearch();
+    setupFormWatchers();
+});
+
+async function loadModels() {
+    try {
+        const res = await fetch('/api/strategies');
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        state.models = data.data;
+        const select = $('model-select');
+        data.data.forEach((m, i) => {
+            const opt = document.createElement('option');
+            opt.value = m.name;
+            opt.textContent = `${m.name} ${m.strategy_type === 'portfolio' ? '📦' : m.strategy_type === 'voting' ? '🗳️' : '📈'}`;
+            opt.dataset.type = m.strategy_type || 'signal';
+            opt.dataset.desc = m.description || '';
+            select.appendChild(opt);
+        });
+        $('model-count').textContent = data.data.length;
+    } catch(e) {
+        $('model-count').textContent = '加载失败';
+    }
+}
+
+async function loadHistory() {
+    try {
+        const res = await fetch('/api/backtest/results?limit=20');
+        const data = await res.json();
+        const tbody = $('history-table');
+        if (!data.data?.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">暂无历史记录</td></tr>';
+            return;
+        }
+        tbody.innerHTML = data.data.map(r => `
+            <tr onclick="loadHistoryResult('${r.id}','${r.strategy_name}','${r.stock_code}','${r.stock_name||''}')"
+                style="cursor:pointer;" title="点击回填配置">
+                <td class="text-nowrap">${esc(r.strategy_name)}</td>
+                <td><span class="stock-tag">${esc(r.stock_code)}</span> ${esc(r.stock_name||'')}</td>
+                <td class="${r.total_return>0?'profit':'loss'}">${r.total_return!=null?(r.total_return>0?'+':'')+r.total_return.toFixed(2)+'%':'-'}</td>
+                <td class="text-muted small">${r.created_at?.slice(0,16)||''}</td>
+            </tr>
+        `).join('');
+    } catch(e) { /* ignore */ }
+}
+
+// ==================== 股票搜索 ====================
+let searchTimer = null;
+function setupStockSearch() {
+    const input = $('stock-input');
+    const suggestions = $('stock-suggestions');
+
+    input.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        const q = input.value.trim();
+        if (q.length < 1) { suggestions.style.display = 'none'; return; }
+        searchTimer = setTimeout(async () => {
+            try {
+                const res = await fetch(`/api/data/search?q=${encodeURIComponent(q)}`);
+                const data = await res.json();
+                if (!data.data?.length) {
+                    suggestions.innerHTML = '<div class="list-group-item text-muted small">无匹配结果</div>';
+                    suggestions.style.display = 'block';
+                    return;
+                }
+                suggestions.innerHTML = data.data.slice(0,10).map(s => `
+                    <div class="list-group-item list-group-item-action py-2 px-3"
+                         onclick="selectStock('${esc(s.code)}','${esc(s.name)}')">
+                        <span class="stock-tag me-2">${esc(s.code)}</span>${esc(s.name)}
+                        ${s.industry ? `<span class="text-muted small ms-2">${esc(s.industry)}</span>` : ''}
+                    </div>
+                `).join('');
+                suggestions.style.display = 'block';
+            } catch(e) { /* ignore */ }
+        }, 200);
+    });
+
+    document.addEventListener('click', e => {
+        if (!e.target.closest('#stock-suggestions') && !e.target.closest('#stock-input')) {
+            suggestions.style.display = 'none';
+        }
+    });
+}
+
+function selectStock(code, name) {
+    state.stock = { code, name };
+    $('stock-input').value = `${code} ${name}`;
+    $('stock-code').value = code;
+    $('stock-name').value = name;
+    $('stock-suggestions').style.display = 'none';
+    updateConfigStatus();
+}
+
+// ==================== 表单监听 ====================
+function setupFormWatchers() {
+    $('model-select').addEventListener('change', () => {
+        const sel = $('model-select');
+        const opt = sel.options[sel.selectedIndex];
+        state.selectedModel = sel.value ? {
+            name: sel.value,
+            type: opt.dataset.type,
+            desc: opt.dataset.desc,
+        } : null;
+        $('model-desc').textContent = state.selectedModel?.desc || '';
+        updateConfigStatus();
+    });
+
+    ['stock-code','start-date','end-date','capital'].forEach(id => {
+        $(id).addEventListener('change', updateConfigStatus);
+        $(id).addEventListener('input', updateConfigStatus);
+    });
+
+    // 股票输入框失去焦点时自动提取代码
+    $('stock-input').addEventListener('blur', () => {
+        const v = $('stock-input').value.trim();
+        const m = v.match(/^(\d{6})/);
+        if (m && !$('stock-code').value) {
+            selectStock(m[1], v.slice(7).trim() || m[1]);
+        }
+    });
+}
+
+function updateConfigStatus() {
+    const model = state.selectedModel;
+    const code = $('stock-code').value || state.stock?.code;
+    const start = $('start-date').value;
+    const end = $('end-date').value;
+    const cap = parseInt($('capital').value);
+
+    const parts = [];
+    if (!model) parts.push('请选择模型');
+    if (!code) parts.push('请搜索股票');
+    if (!start || !end) parts.push('请选择日期');
+    if (isNaN(cap) || cap < 10000) parts.push('资金≥1万');
+    if (start && end && start >= end) parts.push('结束日期需晚于开始日期');
+
+    const ready = parts.length === 0;
+    $('btn-run').disabled = !ready;
+    $('btn-compare-all').disabled = !ready || !code;
+    $('config-status').textContent = ready ? '✅ 配置完整，可以回测' : `⚠️ ${parts.join(' · ')}`;
+}
+
+// ==================== 回测执行 ====================
+async function runBacktest() {
+    if (state.isLoading) return;
+    const model = state.selectedModel;
+    const code = $('stock-code').value;
+    const start = $('start-date').value;
+    const end = $('end-date').value;
+    const capital = parseFloat($('capital').value);
+    const commission = parseFloat($('commission').value) / 100;
+    const stampDuty = parseFloat($('stamp-duty').value) / 100;
+
+    if (!model || !code) return;
+
+    setLoading(true);
+    hideResults();
+
+    try {
+        const apiUrl = model.type === 'portfolio' ? '/api/backtest/portfolio/run'
+                     : model.type === 'voting' ? '/api/backtest/voting/run'
+                     : '/api/backtest/run';
+
+        const body = model.type === 'voting' ? {
+            start_date: start, end_date: end, initial_capital: capital, max_stocks: 50
+        } : model.type === 'portfolio' ? {
+            strategy_name: model.name, start_date: start, end_date: end, initial_capital: capital
+        } : {
+            strategy_name: model.name, stock_code: code,
+            start_date: start, end_date: end, initial_capital: capital,
+            commission, stamp_duty, slippage: 0.01
+        };
+
+        const res = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || data.detail || '回测失败');
+
+        state.lastResult = data;
+        renderResults(data.report);
+        $('result-empty').classList.add('d-none');
+        $('result-content').classList.remove('d-none');
+    } catch(e) {
+        alert('回测失败: ' + e.message);
+    } finally {
+        setLoading(false);
+    }
+}
+
+// ==================== 结果渲染 ====================
+function renderResults(report) {
+    renderMetrics(report);
+    renderEquityChart(report);
+    renderTrades(report);
+    $('compare-section').classList.add('d-none');
+}
+
+function renderMetrics(r) {
+    const cards = [
+        { icon:'📈', label:'总收益率', value:r.total_return, fmt:'pct', cls:true },
+        { icon:'📅', label:'年化收益', value:r.annual_return, fmt:'pct' },
+        { icon:'⚖️', label:'夏普比率', value:r.sharpe_ratio, fmt:'.2f' },
+        { icon:'📉', label:'最大回撤', value:r.max_drawdown, fmt:'pct', cls:true, invert:true },
+        { icon:'🎯', label:'胜率', value:r.win_rate, fmt:'pct' },
+    ];
+    $('metrics-cards').innerHTML = cards.map((c,i) => {
+        let v = c.value;
+        let display = '-';
+        if (v != null) {
+            if (c.fmt === 'pct') display = (v>0?'+':'') + v.toFixed(2) + '%';
+            else display = v.toFixed(2);
+        }
+        let colorClass = '';
+        if (c.cls && v != null) {
+            colorClass = c.invert ? (v < 0 ? 'm-profit' : 'm-loss') : (v > 0 ? 'm-profit' : 'm-loss');
+        }
+        return `<div class="col-6 col-md">
+            <div class="metric-card animate-in" style="animation-delay:${i*0.06}s">
+                <div class="m-label"><span class="m-icon">${c.icon}</span>${c.label}</div>
+                <div class="m-value ${colorClass}">${display}</div>
+            </div>
+        </div>`;
+    }).join('');
+
+    // 基准信息
+    if (r.benchmark_return != null) {
+        $('chart-benchmark').textContent = `沪深300: ${(r.benchmark_return>0?'+':'')}${r.benchmark_return.toFixed(2)}% | 超额: ${(r.excess_return>0?'+':'')}${(r.excess_return||0).toFixed(2)}%`;
+    }
+}
+
+function renderEquityChart(report) {
+    const dom = $('equity-chart');
+    if (state.equityChart) state.equityChart.dispose();
+    if (!dom.clientWidth) { setTimeout(() => renderEquityChart(report), 100); return; }
+
+    const chart = echarts.init(dom);
+    state.equityChart = chart;
+
+    // 解析净值数据
+    let equityData = report._equity || report.equity_curve || [];
+    let benchmarkData = report._benchmark || [];
+    let tradesDetail = report.trades_detail || [];
+
+    // 如果是 JSON 字符串
+    if (typeof equityData === 'string') {
+        try { equityData = JSON.parse(equityData); } catch(e) { equityData = []; }
+    }
+    if (typeof benchmarkData === 'string') {
+        try { benchmarkData = JSON.parse(benchmarkData); } catch(e) { benchmarkData = []; }
+    }
+    if (typeof tradesDetail === 'string') {
+        try { tradesDetail = JSON.parse(tradesDetail); } catch(e) { tradesDetail = []; }
+    }
+
+    const dates = equityData.map ? equityData.map((_,i) => i) : [];
+    const series = [{
+        name: '策略净值',
+        type: 'line',
+        data: Array.isArray(equityData) ? equityData : Object.values(equityData||{}),
+        smooth: true,
+        lineStyle: { color: CHART_COLORS[0], width: 2.5 },
+        areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[
+            {offset:0, color:'rgba(99,102,241,0.25)'},
+            {offset:1, color:'rgba(99,102,241,0.02)'}
+        ])},
+        symbol: 'none',
+    }];
+
+    // 买卖点标注
+    const buyPoints = [], sellPoints = [];
+    if (Array.isArray(tradesDetail)) {
+        tradesDetail.forEach(t => {
+            if (t.entry_date && t.entry_price != null) buyPoints.push({name:'买入',coord:[t.entry_date,t.entry_price]});
+            if (t.exit_date && t.exit_price != null) sellPoints.push({name:'卖出',coord:[t.exit_date,t.exit_price]});
+        });
+    }
+
+    if (buyPoints.length) series.push({
+        name: '买入', type: 'scatter',
+        data: buyPoints, symbolSize: 10,
+        itemStyle: { color: '#22c55e', borderColor:'#fff', borderWidth:2 },
+    });
+    if (sellPoints.length) series.push({
+        name: '卖出', type: 'scatter',
+        data: sellPoints, symbolSize: 10,
+        itemStyle: { color: '#ef4444', borderColor:'#fff', borderWidth:2 },
+    });
+
+    // 基准
+    const benchValues = Array.isArray(benchmarkData) ? benchmarkData : Object.values(benchmarkData||{});
+    if (benchValues.length > 0) {
+        series.push({
+            name: '沪深300', type: 'line', data: benchValues,
+            lineStyle: { color: '#94a3b8', width: 1.5, type: 'dashed' },
+            symbol: 'none',
+        });
+    }
+
+    chart.setOption({
+        tooltip: { trigger: 'axis' },
+        legend: { bottom: 0, textStyle: { fontSize: 12 } },
+        grid: { left: '3%', right: '4%', bottom: '12%', top: '5%', containLabel: true },
+        xAxis: { type: 'category', data: dates, axisLabel: { fontSize: 10 } },
+        yAxis: { type: 'value', axisLabel: { formatter: v => (v/10000).toFixed(0)+'万' } },
+        dataZoom: [{ type: 'inside' }, { type: 'slider', bottom: 24, height: 20 }],
+        series,
+    });
+
+    window.addEventListener('resize', () => chart.resize());
+}
+
+function renderTrades(report) {
+    let trades = report.trades_detail;
+    if (typeof trades === 'string') {
+        try { trades = JSON.parse(trades); } catch(e) { trades = []; }
+    }
+    if (!Array.isArray(trades) || trades.length === 0) {
+        $('trades-body').innerHTML = '';
+        $('trades-empty').classList.remove('d-none');
+        $('trades-table').querySelector('thead').classList.add('d-none');
+        return;
+    }
+    $('trades-empty').classList.add('d-none');
+    $('trades-table').querySelector('thead').classList.remove('d-none');
+
+    $('trades-body').innerHTML = trades.map((t,i) => {
+        const pnl = t.pnl || 0;
+        const retPct = t.return_pct || 0;
+        const entryDate = (t.entry_date||'').slice(0,10);
+        const exitDate = (t.exit_date||'').slice(0,10);
+        const days = entryDate && exitDate
+            ? Math.round((new Date(exitDate)-new Date(entryDate))/(86400000))
+            : '-';
+        return `<tr class="${retPct>=0?'trade-profit':'trade-loss'}">
+            <td>${i+1}</td>
+            <td>${entryDate||'-'}</td><td>${t.entry_price?.toFixed(2)||'-'}</td>
+            <td>${exitDate||'-'}</td><td>${t.exit_price?.toFixed(2)||'-'}</td>
+            <td>${days}</td>
+            <td class="${pnl>=0?'profit':'loss'}">${pnl>=0?'+':''}${pnl.toFixed(2)}</td>
+            <td class="${retPct>=0?'profit':'loss'} fw-semibold">${retPct>=0?'+':''}${retPct.toFixed(2)}%</td>
+        </tr>`;
+    }).join('');
+}
+
+// ==================== 一键对比 ====================
+async function compareAll() {
+    const code = $('stock-code').value;
+    const start = $('start-date').value;
+    const end = $('end-date').value;
+    const capital = parseFloat($('capital').value);
+    if (!code || !start || !end) return;
+
+    setLoading(true);
+    $('result-empty').classList.add('d-none');
+    $('result-content').classList.add('d-none');
+    $('compare-section').classList.remove('d-none');
+    $('compare-subtitle').textContent = `${code} · ${start} ~ ${end}`;
+
+    try {
+        const res = await fetch(`/api/models/summary?stock_code=${code}&start_date=${start}&end_date=${end}`);
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        renderCompare(data.data);
+    } catch(e) {
+        $('compare-body').innerHTML = `<tr><td colspan="8" class="text-center text-danger py-3">对比失败: ${e.message}</td></tr>`;
+    } finally {
+        setLoading(false);
+    }
+}
+
+function renderCompare(models) {
+    const withData = models.filter(m => m.has_data !== false);
+    if (withData.length === 0) {
+        $('compare-body').innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">暂无对比数据，请先运行各模型回测</td></tr>';
+        return;
+    }
+
+    $('compare-body').innerHTML = withData.map((m,i) => `
+        <tr onclick="highlightCompare(${i})" data-idx="${i}">
+            <td class="fw-semibold">${esc(m.strategy_name)}</td>
+            <td class="${m.total_return>0?'profit':'loss'}">${(m.total_return>0?'+':'')+m.total_return.toFixed(2)}%</td>
+            <td>${m.annual_return!=null?m.annual_return.toFixed(2)+'%':'-'}</td>
+            <td>${m.sharpe_ratio!=null?m.sharpe_ratio.toFixed(2):'-'}</td>
+            <td class="loss">${m.max_drawdown!=null?m.max_drawdown.toFixed(2)+'%':'-'}</td>
+            <td>${m.win_rate!=null?m.win_rate.toFixed(1)+'%':'-'}</td>
+            <td>${m.total_trades||0}</td>
+            <td class="${m.excess_return>0?'profit':'loss'}">${m.excess_return!=null?(m.excess_return>0?'+':'')+m.excess_return.toFixed(2)+'%':'-'}</td>
+        </tr>
+    `).join('');
+
+    // 净值叠加图 — 简单柱状图展示
+    const dom = $('compare-chart');
+    if (state.compareChart) state.compareChart.dispose();
+    if (!dom.clientWidth) { setTimeout(() => renderCompare(models), 100); return; }
+    const chart = echarts.init(dom);
+    state.compareChart = chart;
+
+    const names = withData.map(m => m.strategy_name);
+    const returns = withData.map(m => m.total_return||0);
+    const sharpes = withData.map(m => m.sharpe_ratio||0);
+    const drawdowns = withData.map(m => Math.abs(m.max_drawdown||0));
+
+    chart.setOption({
+        title: { text: '各模型绩效速览', left: 'center', textStyle: { fontSize: 14, fontWeight: 600 } },
+        tooltip: { trigger: 'axis' },
+        legend: { bottom: 0, textStyle: { fontSize: 11 } },
+        grid: { left: '3%', right: '4%', bottom: '14%', top: '15%', containLabel: true },
+        xAxis: { type: 'category', data: names, axisLabel: { rotate: 20, fontSize: 10 } },
+        yAxis: [
+            { type: 'value', name: '收益率%', axisLabel: { formatter: '{value}%' } },
+            { type: 'value', name: '比率', axisLabel: { formatter: '{value}' } },
+        ],
+        series: [
+            { name: '总收益', type: 'bar', data: returns,
+              itemStyle: { color: params => params.value>=0?'#22c55e':'#ef4444',
+                           borderRadius: [6,6,0,0] },
+              barWidth: '50%' },
+            { name: '夏普比率', type: 'bar', data: sharpes, yAxisIndex: 1,
+              itemStyle: { color: '#6366f1', borderRadius: [6,6,0,0] }, barWidth: '50%' },
+            { name: '最大回撤', type: 'bar', data: drawdowns, yAxisIndex: 0,
+              itemStyle: { color: '#f59e0b', borderRadius: [6,6,0,0] }, barWidth: '50%' },
+        ],
+    });
+    window.addEventListener('resize', () => chart.resize());
+}
+
+function highlightCompare(idx) {
+    document.querySelectorAll('#compare-table tbody tr').forEach(r => r.classList.remove('selected'));
+    const row = document.querySelector(`#compare-table tbody tr[data-idx="${idx}"]`);
+    if (row) row.classList.add('selected');
+}
+
+// ==================== 历史回填 ====================
+async function loadHistoryResult(id, strategyName, stockCode, stockName) {
+    $('model-select').value = strategyName;
+    $('model-select').dispatchEvent(new Event('change'));
+    selectStock(stockCode, stockName);
+
+    try {
+        const res = await fetch(`/api/backtest/results?limit=50`);
+        const data = await res.json();
+        const found = data.data?.find(r => String(r.id) === String(id));
+        if (!found) return;
+
+        // 直接用 summary 数据显示（无交易明细时尝试请求详情）
+        state.lastResult = { report: {
+            total_return: found.total_return,
+            annual_return: found.annual_return,
+            sharpe_ratio: found.sharpe_ratio,
+            max_drawdown: found.max_drawdown,
+            win_rate: found.win_rate,
+            total_trades: found.total_trades,
+            trades_detail: [],
+        }};
+
+        renderMetrics(state.lastResult.report);
+        // 尝试加载完整结果（带交易明细和净值曲线）
+        try {
+            const detailRes = await fetch(`/api/backtest/run`, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    strategy_name: strategyName,
+                    stock_code: stockCode,
+                    start_date: $('start-date').value,
+                    end_date: $('end-date').value,
+                    initial_capital: parseFloat($('capital').value),
+                }),
+            });
+            const detail = await detailRes.json();
+            if (detail.success) {
+                state.lastResult = detail;
+                renderEquityChart(detail.report);
+                renderTrades(detail.report);
+            }
+        } catch(e) { /* use summary only */ }
+
+        $('result-empty').classList.add('d-none');
+        $('result-content').classList.remove('d-none');
+    } catch(e) { /* ignore */ }
+}
+
+// ==================== 工具函数 ====================
+function setLoading(loading) {
+    state.isLoading = loading;
+    const btn = $('btn-run');
+    const icon = $('compare-section');
+    if (loading) {
+        btn.classList.add('btn-loading');
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>回测中...';
+        $('result-loading').classList.remove('d-none');
+        $('result-content').classList.add('d-none');
+        $('result-empty').classList.add('d-none');
+    } else {
+        btn.classList.remove('btn-loading');
+        btn.innerHTML = '<i class="bi bi-play-fill"></i> 开始回测';
+        $('result-loading').classList.add('d-none');
+    }
+}
+
+function hideResults() {
+    $('result-content').classList.add('d-none');
+    $('result-empty').classList.add('d-none');
+    $('compare-section').classList.add('d-none');
+    if (state.equityChart) { state.equityChart.dispose(); state.equityChart = null; }
+    if (state.compareChart) { state.compareChart.dispose(); state.compareChart = null; }
+}
+
+function esc(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+{% endblock %}
