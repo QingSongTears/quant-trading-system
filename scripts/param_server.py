@@ -296,6 +296,49 @@ def api_stop():
     return jsonify({"ok": ok, "msg": msg, "task": task.snapshot()})
 
 
+@app.route("/api/stock/<code>")
+def api_stock(code):
+    """查询单只股票的历史评分与收益"""
+    code = str(code).zfill(6)
+    stock_data = [r for r in records if r.get("code") == code]
+    if not stock_data:
+        return jsonify({"error": f"未找到股票 {code}"}), 404
+
+    # 按日期排序
+    stock_data.sort(key=lambda x: x.get("as_of_date", ""))
+
+    # 分离评分序列和收益序列
+    dates = [r["as_of_date"] for r in stock_data]
+    scores = {
+        "技术面": [r.get("tech_weighted") for r in stock_data],
+        "基本面": [r.get("fundam_weighted") for r in stock_data],
+        "资金面": [r.get("fund_weighted") for r in stock_data],
+        "机构面": [r.get("institutional_weighted") for r in stock_data],
+        "情绪面": [r.get("sentiment_weighted") for r in stock_data],
+        "新闻面": [r.get("news_event_weighted") for r in stock_data],
+        "筹码面": [r.get("chip_weighted") for r in stock_data],
+    }
+    returns = {
+        "20日": [r.get("ret_20d") for r in stock_data],
+        "40日": [r.get("ret_40d") for r in stock_data],
+        "60日": [r.get("ret_60d") for r in stock_data],
+    }
+
+    # 计算综合评分
+    combined = []
+    for r in stock_data:
+        vals = [r.get(d) or 0 for d in dim_cols]
+        combined.append(round(sum(vals)/len(vals), 1))
+
+    return jsonify({
+        "code": code,
+        "dates": dates,
+        "scores": scores,
+        "returns": returns,
+        "combined": combined,
+    })
+
+
 if __name__ == "__main__":
     load_data()
     app.run(host="0.0.0.0", port=8081, debug=False)

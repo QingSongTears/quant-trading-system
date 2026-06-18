@@ -129,6 +129,15 @@ th[data-tip]:hover::after { font-weight:400; }
       <h3>📋 预设方案</h3>
       <div id="presetList"></div>
     </div>
+    <!-- 单股查询 -->
+    <div class="panel">
+      <h3>🔍 单股历史评分</h3>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <input type="text" id="stockCode" placeholder="输入代码如 000001" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:#111318;color:var(--text);font-size:0.82rem" onkeydown="if(event.key==='Enter')loadStock()">
+        <button class="btn btn-primary" onclick="loadStock()">查询</button>
+      </div>
+      <p style="font-size:0.68rem;color:var(--dim)">查看单只股票过去2年的七维评分走势与收益关系</p>
+    </div>
   </aside>
 
   <!-- 右侧：结果 -->
@@ -159,6 +168,14 @@ th[data-tip]:hover::after { font-weight:400; }
     <div class="panel">
       <h3>📊 各维度独立 IC</h3>
       <div id="dimICs" style="font-size:0.78rem;color:var(--dim)">👆 点击运行回测查看</div>
+    </div>
+
+    <!-- 单股走势图 -->
+    <div class="panel" id="stockPanel">
+      <h3>📈 单股评分走势 <span id="stockTitle" style="font-weight:400;color:var(--dim);font-size:0.8rem"></span></h3>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px" id="dimToggles"></div>
+      <canvas id="stockChart" width="800" height="300" style="width:100%;border-radius:6px;background:#111318"></canvas>
+      <div style="display:flex;gap:12px;margin-top:8px;font-size:0.7rem;color:var(--dim);flex-wrap:wrap" id="stockStats"></div>
     </div>
   </section>
 </main>
@@ -458,6 +475,121 @@ document.getElementById('presetList').innerHTML = `
   <div class="preset-item" onclick="preset('equal')"><span>⚖️ 七维等权</span><span class="ic pos">IC +0.083</span></div>
   <div style="margin-top:12px;color:var(--red);font-size:0.72rem">⚠ 筹码面 IC=-0.139, 建议权重=0</div>
 `;
+
+// ── 单股查询 ──
+const DIM_COLORS = ['#4fc3f7','#66bb6a','#ffa726','#ef5350','#ab47bc','#26c6da','#78909c'];
+let stockChartData = null;
+let visibleDims = {};
+
+async function loadStock() {
+  let code = document.getElementById('stockCode').value.trim();
+  if (!code) return;
+  try {
+    let r = await fetch(API+'/stock/'+code);
+    if (!r.ok) { alert('未找到该股票 ('+code+')'); return; }
+    let data = await r.json();
+    stockChartData = data;
+    document.getElementById('stockTitle').textContent = data.code;
+    document.getElementById('stockPanel').style.display = 'block';
+    buildDimToggles(data);
+    drawChart();
+    computeStockStats(data);
+  } catch(e) { alert('查询失败: '+e.message); }
+}
+
+function buildDimToggles(data) {
+  let dims = Object.keys(data.scores);
+  let html = '';
+  dims.forEach((d,i) => {
+    if (visibleDims[d] === undefined) visibleDims[d] = true;
+    let chk = visibleDims[d] ? 'checked' : '';
+    html += `<label style="font-size:0.72rem;cursor:pointer;display:flex;align-items:center;gap:4px">
+      <input type="checkbox" ${chk} onchange="visibleDims['${d}']=this.checked;drawChart()" style="accent-color:${DIM_COLORS[i]}">
+      <span style="color:${DIM_COLORS[i]}">${d}</span></label>`;
+  });
+  document.getElementById('dimToggles').innerHTML = html;
+}
+
+function drawChart() {
+  let canvas = document.getElementById('stockChart');
+  let ctx = canvas.getContext('2d');
+  let dpr = window.devicePixelRatio || 1;
+  let rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = 300 * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = '300px';
+  ctx.scale(dpr, dpr);
+  let W = rect.width, H = 300;
+  ctx.clearRect(0, 0, W, H);
+  if (!stockChartData) return;
+
+  let data = stockChartData;
+  let dates = data.dates;
+  let n = dates.length;
+  if (n < 2) return;
+
+  let pad = {l:50, r:20, t:20, b:40};
+  let cw = W - pad.l - pad.r, ch = H - pad.t - pad.b;
+
+  let allVals = [];
+  let dimNames = Object.keys(data.scores);
+  dimNames.forEach(d => { if (visibleDims[d]) allVals = allVals.concat(data.scores[d].filter(v=>v!=null)); });
+  if (allVals.length === 0) return;
+
+  let minV = Math.min(...allVals), maxV = Math.max(...allVals);
+  let range = maxV - minV || 1;
+  minV -= range * 0.05; maxV += range * 0.05;
+
+  ctx.strokeStyle = '#1a1d27'; ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    let y = pad.t + (ch/4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W-pad.r, y); ctx.stroke();
+    ctx.fillStyle = '#555'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText((maxV - (range/4) * i).toFixed(1), pad.l-6, y+4);
+  }
+  ctx.fillStyle = '#555'; ctx.textAlign = 'center';
+  let step = Math.max(1, Math.floor(n/8));
+  for (let i = 0; i < n; i += step) {
+    let x = pad.l + (cw/(n-1)) * i;
+    ctx.fillText(dates[i].slice(2), x, H-pad.b+16);
+  }
+
+  dimNames.forEach((d, di) => {
+    if (!visibleDims[d]) return;
+    let vals = data.scores[d];
+    ctx.strokeStyle = DIM_COLORS[di]; ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < n; i++) {
+      let v = vals[i];
+      if (v == null) { started = false; continue; }
+      let x = pad.l + (cw/(n-1)) * i;
+      let y = pad.t + ch - ((v - minV) / (maxV-minV)) * ch;
+      if (!started) { ctx.moveTo(x,y); started = true; }
+      else { ctx.lineTo(x,y); }
+    }
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = '#888'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('评分 (0-20)', pad.l, pad.t-6);
+}
+
+function computeStockStats(data) {
+  let html = '';
+  let dims = Object.keys(data.scores);
+  dims.forEach((d, di) => {
+    let vals = data.scores[d].filter(v => v != null);
+    if (vals.length < 2) return;
+    let latest = vals[vals.length-1];
+    let avg = (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1);
+    let trend = vals[vals.length-1] - vals[Math.max(0,vals.length-4)];
+    let sign = trend > 0.5 ? '↑' : trend < -0.5 ? '↓' : '→';
+    html += `<span style="color:${DIM_COLORS[di]}">${d}: 最新${latest.toFixed(1)}/均值${avg} ${sign}</span>`;
+  });
+  document.getElementById('stockStats').innerHTML = html;
+}
 
 window.onload = init;
 </script>
