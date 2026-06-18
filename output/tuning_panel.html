@@ -38,6 +38,23 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
 .btn-green { background:#1b3a1b; color:var(--green); }
 .btn-ghost { background:transparent; border:1px solid var(--border); color:var(--dim); }
 .btn-period.active { background:var(--accent); color:#000; border-color:var(--accent); }
+
+/* ── Tab 页签 ── */
+.tabs { display:flex; gap:0; background:var(--card); border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:0; }
+.tab-btn { padding:10px 20px; border:none; background:transparent; color:var(--dim); cursor:pointer; font-size:0.85rem; transition:all .2s; border-bottom:2px solid transparent; }
+.tab-btn:hover { color:var(--text); background:#1e2130; }
+.tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); background:#1a1d2e; }
+.tab-panel { display:none; }
+.tab-panel.active { display:contents; }
+
+/* ── 回测面板 ── */
+.bt-metrics { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; }
+.bt-chart-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
+@media (max-width:900px) { .bt-chart-row { grid-template-columns:1fr; } }
+.signal-row { display:flex; gap:8px; align-items:center; padding:4px 8px; margin:2px 0; border-radius:4px; font-size:0.72rem; }
+.signal-row.buy { background:#0d2818; color:var(--green); }
+.signal-row.sell { background:#281818; color:var(--red); }
+.threshold-slider { width:100%; margin:8px 0; }
 .control-bar { display:flex; gap:6px; align-items:center; }
 .progress-bar { flex:1; height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
 .progress-fill { height:100%; background:var(--accent); border-radius:3px; transition:width .3s; }
@@ -104,7 +121,13 @@ th[data-tip]:hover::after { font-weight:400; }
   </div>
 </header>
 
-<main>
+<div class="tabs" style="max-width:1400px; margin:0 auto; border-radius:0; border-top:none">
+  <button class="tab-btn active" onclick="switchTab('tuning')">📊 参数调优</button>
+  <button class="tab-btn" onclick="switchTab('stock')">📈 单股分析</button>
+  <button class="tab-btn" onclick="switchTab('backtest')">💰 策略回测</button>
+</div>
+
+<main class="tab-panel active" id="tab-tuning">
   <!-- 左侧：参数面板 -->
   <aside>
     <div class="panel">
@@ -202,6 +225,34 @@ th[data-tip]:hover::after { font-weight:400; }
         <span id="klineSource" style="font-size:0.65rem;margin-left:8px;padding:2px 6px;border-radius:4px;background:var(--border);color:var(--dim)"></span>
       </h3>
       <canvas id="klineChart" width="800" height="280" style="width:100%;border-radius:6px;background:#111318"></canvas>
+    </div>
+  </section>
+</main>
+
+<!-- 策略回测 Tab -->
+<main class="tab-panel" id="tab-backtest" style="max-width:1400px; margin:20px auto; padding:0 20px;">
+  <section>
+    <div class="panel">
+      <h3>💰 单股策略回测 <span id="btTitle" style="font-weight:400;color:var(--dim);font-size:0.8rem"></span></h3>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+        <input type="text" id="btStockCode" placeholder="股票代码" style="width:100px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:#111318;color:var(--text);font-size:0.82rem" onkeydown="if(event.key==='Enter')runStockBacktest()">
+        <select id="btStrategy" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:#111318;color:var(--text);font-size:0.82rem">
+          <option value="score">七维评分策略</option>
+        </select>
+        <button class="btn btn-primary" onclick="runStockBacktest()">▶ 运行回测</button>
+      </div>
+      <div style="margin-bottom:8px;font-size:0.75rem;color:var(--dim)">
+        <span data-tip="评分≥此值买入, <此值卖出">信号阈值</span>:
+        <span id="btThreshold" style="font-weight:600;color:var(--accent)"></span>
+        <input type="range" class="dim-slider" id="btThresholdSlider" min="4" max="16" step="0.5" value="8" style="width:200px;margin:0 8px" oninput="document.getElementById('btThresholdVal').textContent=this.value">
+        <span id="btThresholdVal">8</span>
+        <button class="btn btn-ghost" onclick="runStockBacktest()" style="font-size:0.65rem;padding:2px 6px;margin-left:8px">重新计算</button>
+      </div>
+      <div class="bt-metrics" id="btMetrics"></div>
+      <div class="bt-chart-row">
+        <div><canvas id="btEquityChart" width="400" height="250" style="width:100%;border-radius:6px;background:#111318"></canvas></div>
+        <div style="max-height:250px;overflow-y:auto"><div id="btSignals"></div></div>
+      </div>
     </div>
   </section>
 </main>
@@ -814,6 +865,96 @@ function drawKline(data) {
   }
   ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textAlign = 'right';
   ctx.fillText('VOL', pad.l-6, volBase - volH/2);
+}
+
+// ── Tab 页签 ──
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.tab-btn[onclick*="${name}"]`).classList.add('active');
+  document.querySelectorAll('.tab-panel').forEach(p => { p.classList.remove('active'); p.style.display='none'; });
+  let panel = document.getElementById('tab-'+name);
+  if (panel) {
+    panel.classList.add('active');
+    panel.style.display = name==='stock'?'grid':'block';
+  }
+  if (name==='backtest') setTimeout(() => { if (btData) drawBtEquity(); }, 100);
+  if (name==='stock') setTimeout(() => { if (stockChartData) { drawChart(); drawKline(stockKlineData); } }, 100);
+}
+
+// ── 单股策略回测 ──
+let btData = null;
+async function runStockBacktest() {
+  let code = document.getElementById('btStockCode').value.trim();
+  if (!code) { alert('请输入股票代码'); return; }
+  let th = document.getElementById('btThresholdSlider').value;
+  try {
+    let r = await fetch(API+'/stock/'+code+'/backtest?threshold='+th);
+    if (!r.ok) { alert('回测失败'); return; }
+    btData = await r.json();
+    document.getElementById('btTitle').textContent = btData.code;
+    document.getElementById('btThreshold').textContent = btData.threshold;
+    document.getElementById('btThresholdSlider').value = btData.threshold;
+    document.getElementById('btThresholdVal').textContent = btData.threshold;
+    renderBtResults(btData);
+    drawBtEquity();
+  } catch(e) { alert('回测失败: '+e.message); }
+}
+function renderBtResults(data) {
+  let cls = data.excessReturn > 0 ? 'best' : '';
+  document.getElementById('btMetrics').innerHTML = `
+    <div class="metric ${cls}"><div class="val">${data.totalReturn>0?'+':''}${data.totalReturn}%</div><div class="lbl">策略总收益</div></div>
+    <div class="metric"><div class="val">${data.bhReturn>0?'+':''}${data.bhReturn}%</div><div class="lbl">买入持有收益</div></div>
+    <div class="metric"><div class="val" style="color:${data.excessReturn>0?'var(--green)':'var(--red)'}">${data.excessReturn>0?'+':''}${data.excessReturn}%</div><div class="lbl">超额收益</div></div>
+    <div class="metric"><div class="val">${data.trades}</div><div class="lbl">交易次数</div></div>
+    <div class="metric"><div class="val">${data.winRate}%</div><div class="lbl">胜率</div></div>
+    <div class="metric"><div class="val">${data.avgReturn>0?'+':''}${data.avgReturn}%</div><div class="lbl">平均/笔</div></div>`;
+  let sh = '<h4 style="font-size:0.75rem;margin-bottom:6px">📋 买卖信号</h4>';
+  if (data.signals && data.signals.length) {
+    data.signals.forEach(s => {
+      let c = s.type==='buy'?'buy':'sell';
+      let ret = s.return!==undefined ? ` → ${s.return>0?'+':''}${s.return}%` : '';
+      sh += `<div class="signal-row ${c}">${s.type==='buy'?'🟢买':'🔴卖'} @${s.price} (评分${s.score})${ret}</div>`;
+    });
+  } else sh += '<div style="font-size:0.7rem;color:var(--dim)">无信号</div>';
+  document.getElementById('btSignals').innerHTML = sh;
+}
+function drawBtEquity() {
+  if (!btData) return;
+  let canvas = document.getElementById('btEquityChart');
+  let ctx = canvas.getContext('2d');
+  let dpr = window.devicePixelRatio||1, rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width*dpr; canvas.height = 250*dpr;
+  canvas.style.width = rect.width+'px'; canvas.style.height = '250px';
+  ctx.scale(dpr, dpr);
+  let W = rect.width, H = 250, pad = {l:45,r:15,t:15,b:35};
+  ctx.clearRect(0,0,W,H);
+  let s=btData.equityCurve, b=btData.bhCurve;
+  if (!s||s.length<2) return;
+  let n = s.length, cw = W-pad.l-pad.r, ch = H-pad.t-pad.b;
+  let allV = s.map(v=>v.value).concat(b.map(v=>v.value));
+  let minV = Math.min(...allV), maxV = Math.max(...allV), rng = maxV-minV||1;
+  minV -= rng*.05; maxV += rng*.05;
+  ctx.strokeStyle='#1a1d27'; ctx.lineWidth=.5;
+  for (let i=0;i<=4;i++) {
+    let y = pad.t+(ch/4)*i;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px monospace'; ctx.textAlign='right';
+    ctx.fillText(Math.round(maxV-(rng/4)*i), pad.l-5, y+3);
+  }
+  let dl = (data,color,dash) => {
+    ctx.strokeStyle=color; ctx.lineWidth=2;
+    if(dash)ctx.setLineDash([4,2]);else ctx.setLineDash([]);
+    ctx.beginPath();
+    for(let i=0;i<data.length;i++){
+      let x=pad.l+(cw/(n-1))*i, y=pad.t+ch-((data[i].value-minV)/(maxV-minV))*ch;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  };
+  dl(b,'#555',true); dl(s,'#4fc3f7',false);
+  ctx.fillStyle='#4fc3f7'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('策略',pad.l+5,pad.t+12);
+  ctx.fillStyle='#555'; ctx.fillText('持有',pad.l+45,pad.t+12);
 }
 
 window.onload = init;
