@@ -168,6 +168,17 @@ th[data-tip]:hover::after { font-weight:400; }
       <h3>📋 预设方案</h3>
       <div id="presetList"></div>
     </div>
+    <!-- 参数扫描 -->
+    <div class="panel">
+      <h3>🔬 参数网格扫描</h3>
+      <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">
+        <button class="btn btn-ghost" onclick="runScan('fast')" style="font-size:0.68rem;padding:3px 10px" data-tip="0/1二分扫描, ~128组合, 秒级完成">⚡快速</button>
+        <button class="btn btn-ghost" onclick="runScan('medium')" style="font-size:0.68rem;padding:3px 10px" data-tip="0/0.5/1三步扫描, ~2187组合">📐标准</button>
+        <button class="btn btn-ghost" onclick="runScan('full')" style="font-size:0.68rem;padding:3px 10px" data-tip="0/0.25/0.5/0.75/1五步扫描, ~78125组合, 较慢">🔬精细</button>
+      </div>
+      <div id="scanStatus" style="font-size:0.65rem;color:var(--dim);min-height:16px"></div>
+      <div id="scanResults" style="font-size:0.68rem"></div>
+    </div>
   </aside>
 
   <!-- 右侧：结果 -->
@@ -198,6 +209,11 @@ th[data-tip]:hover::after { font-weight:400; }
     <div class="panel">
       <h3>📊 各维度独立 IC</h3>
       <div id="dimICs" style="font-size:0.78rem;color:var(--dim)">👆 点击运行回测查看</div>
+    </div>
+
+    <div class="panel">
+      <h3>🏭 行业 IC 分析 <span style="font-size:0.65rem;color:var(--dim)" id="industryCombo"></span></h3>
+      <div id="industryICs" style="font-size:0.72rem;color:var(--dim)">👆 点击运行回测查看行业暴露</div>
     </div>
 
   </section>
@@ -592,6 +608,46 @@ function renderResults(data) {
   }
   dhtml += '</div>';
   document.getElementById('dimICs').innerHTML = dhtml;
+
+  // 行业IC
+  if (data.industryICs && data.industryICs.length > 0) {
+    document.getElementById('industryCombo').textContent = `(${data.bestCombo})`;
+    let ihtml = '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:stretch">';
+    // 排序: IC最高前15 + IC最低后5
+    let top15 = data.industryICs.slice(0, 15);
+    let bottom5 = data.industryICs.slice(-5);
+    let shown = [...top15];
+    // top15已经是按IC降序排列的
+    ihtml += '<div style="flex:1;min-width:280px"><div style="font-size:0.65rem;color:var(--dim);margin-bottom:4px">📈 IC最高行业 (评分最有效)</div>';
+    shown.forEach(ind => {
+      if (ind.ic == null) return;
+      let color = ind.ic >= 0.05 ? 'var(--green)' : (ind.ic > 0 ? 'var(--yellow)' : 'var(--red)');
+      let barW = Math.abs(ind.ic) * 150;
+      ihtml += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:0.7rem">
+        <span style="width:70px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ind.industry}">${ind.industry}</span>
+        <span style="display:inline-block;width:${barW}px;height:8px;border-radius:2px;background:${color};opacity:0.7;min-width:2px"></span>
+        <span style="font-family:monospace;color:${color};width:50px">${ind.ic>=0?'+':''}${ind.ic.toFixed(3)}</span>
+        <span style="font-size:0.6rem;color:var(--dim)">n=${ind.n}</span>
+      </div>`;
+    });
+    ihtml += '</div>';
+    // 最低5个
+    ihtml += '<div style="flex:1;min-width:280px"><div style="font-size:0.65rem;color:var(--dim);margin-bottom:4px">📉 IC最低行业 (评分失效/反向)</div>';
+    let reversed = [...data.industryICs].reverse().slice(0, 15);
+    reversed.forEach(ind => {
+      if (ind.ic == null) return;
+      let color = ind.ic >= 0.05 ? 'var(--green)' : (ind.ic > 0 ? 'var(--yellow)' : 'var(--red)');
+      let barW = Math.abs(ind.ic) * 150;
+      ihtml += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:0.7rem">
+        <span style="width:70px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ind.industry}">${ind.industry}</span>
+        <span style="display:inline-block;width:${barW}px;height:8px;border-radius:2px;background:${color};opacity:0.7;min-width:2px"></span>
+        <span style="font-family:monospace;color:${color};width:50px">${ind.ic>=0?'+':''}${ind.ic.toFixed(3)}</span>
+        <span style="font-size:0.6rem;color:var(--dim)">n=${ind.n}</span>
+      </div>`;
+    });
+    ihtml += '</div></div>';
+    document.getElementById('industryICs').innerHTML = ihtml;
+  }
 }
 
 // ── 预设列表 ──
@@ -601,6 +657,54 @@ document.getElementById('presetList').innerHTML = `
   <div class="preset-item" onclick="preset('equal')"><span>⚖️ 七维等权</span><span class="ic pos">IC +0.083</span></div>
   <div style="margin-top:12px;color:var(--red);font-size:0.72rem">⚠ 筹码面 IC=-0.139, 建议权重=0</div>
 `;
+
+// ── 参数扫描 ──
+async function runScan(mode) {
+  document.getElementById('scanStatus').innerHTML = '<span class="spinner"></span>扫描中...';
+  document.getElementById('scanResults').innerHTML = '';
+  try {
+    let r = await fetch(API+'/scan', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({mode:mode})
+    });
+    let d = await r.json();
+    if (d.error) { document.getElementById('scanStatus').textContent = '❌ '+d.error; return; }
+    document.getElementById('scanStatus').textContent = `✅ 扫描 ${d.totalCombos.toLocaleString()} 组合, 最优IC=${d.bestIC!=null?(d.bestIC>=0?'+':'')+d.bestIC.toFixed(4):'N/A'}`;
+
+    // Top 10 结果
+    let html = '<div style="margin-top:6px;font-size:0.65rem;color:var(--dim)">🏆 Top 10 组合</div>';
+    d.topResults.slice(0,10).forEach((r,i) => {
+      let color = r.ic>=0?'var(--green)':'var(--red)';
+      html += `<div class="preset-item" onclick="applyScanWeights('${JSON.stringify(r.weights).replace(/"/g,'&quot;')}')" style="cursor:pointer">
+        <span>#${i+1} ${Object.entries(r.weights).map(([k,v])=>v.toFixed(1)).join('/')}</span>
+        <span class="ic" style="color:${color}">IC ${r.ic>=0?'+':''}${r.ic.toFixed(4)}</span>
+      </div>`;
+    });
+
+    // 维度重要性
+    html += '<div style="margin-top:8px;font-size:0.65rem;color:var(--dim)">📊 维度重要性(非零权重率)</div>';
+    let sorted = Object.entries(d.dimImportance||{}).sort((a,b)=>b[1].nonZeroRate-a[1].nonZeroRate);
+    sorted.forEach(([did, info]) => {
+      let barW = info.nonZeroRate;
+      html += `<div style="display:flex;align-items:center;gap:4px;padding:1px 0;font-size:0.62rem">
+        <span style="width:55px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dimConfig.find(dc=>dc.id===did)?.name||did}</span>
+        <span style="display:inline-block;width:${barW}px;height:6px;border-radius:2px;background:var(--accent);opacity:0.6"></span>
+        <span style="color:var(--accent)">${info.nonZeroRate}%</span>
+      </div>`;
+    });
+    document.getElementById('scanResults').innerHTML = html;
+  } catch(e) { document.getElementById('scanStatus').textContent = '❌ '+e.message; }
+}
+
+function applyScanWeights(weightsJson) {
+  let w = JSON.parse(weightsJson);
+  for (let id in w) {
+    weights[id] = w[id];
+    let sl = document.getElementById('slider_'+id);
+    if (sl) { sl.value = w[id]; document.getElementById('val_'+id).textContent = w[id].toFixed(2); }
+  }
+  document.getElementById('updateBadge').style.display = 'inline';
+}
 
 // ── 配置管理 ──
 const STORAGE_KEY = 'quant_param_configs';
