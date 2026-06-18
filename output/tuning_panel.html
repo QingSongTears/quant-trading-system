@@ -10,10 +10,10 @@
 body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
 header { background:var(--card); border-bottom:1px solid var(--border); padding:14px 24px; display:flex; align-items:center; gap:12px; justify-content:space-between; }
 header h1 { font-size:1.2rem; font-weight:600; }
-header .status { font-size:0.75rem; padding:4px 10px; border-radius:10px; }
-header .status.ok { background:#1b3a1b; color:var(--green); }
-header .status.err { background:#3a1b1b; color:var(--red); }
-header .status.load { background:#3a3a1b; color:var(--yellow); }
+.status-badge { font-size:0.72rem; padding:4px 10px; border-radius:10px; }
+.status-badge.ok { background:#1b3a1b; color:var(--green); }
+.status-badge.busy { background:#3a3a1b; color:var(--yellow); }
+.status-badge.err { background:#3a1b1b; color:var(--red); }
 main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-template-columns:380px 1fr; gap:20px; }
 .panel { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:20px; margin-bottom:14px; }
 .panel h3 { font-size:0.85rem; color:var(--dim); margin-bottom:14px; text-transform:uppercase; letter-spacing:1px; }
@@ -30,18 +30,24 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
 .btn-row { display:flex; gap:6px; margin:12px 0; flex-wrap:wrap; }
 .btn { padding:7px 14px; border:none; border-radius:6px; cursor:pointer; font-size:0.8rem; font-weight:500; transition:opacity .2s; }
 .btn:hover { opacity:.85; }
+.btn:disabled { opacity:0.35; cursor:not-allowed; }
 .btn-primary { background:var(--accent); color:#000; }
-.btn-secondary { background:var(--border); color:var(--text); }
+.btn-warning { background:var(--yellow); color:#000; }
 .btn-danger { background:#3a1f1f; color:var(--red); }
+.btn-secondary { background:var(--border); color:var(--text); }
 .btn-green { background:#1b3a1b; color:var(--green); }
-.btn:disabled { opacity:0.4; cursor:not-allowed; }
+.btn-ghost { background:transparent; border:1px solid var(--border); color:var(--dim); }
+.control-bar { display:flex; gap:6px; align-items:center; }
+.progress-bar { flex:1; height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+.progress-fill { height:100%; background:var(--accent); border-radius:3px; transition:width .3s; }
+.progress-fill.paused { background:var(--yellow); }
+.progress-fill.done { background:var(--green); }
+.progress-text { font-size:0.7rem; color:var(--dim); min-width:36px; text-align:right; }
 .metrics-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:8px; margin-bottom:12px; }
 .metric { background:#111318; border:1px solid var(--border); border-radius:6px; padding:10px; text-align:center; }
 .metric .val { font-size:1.3rem; font-weight:700; }
 .metric .lbl { font-size:0.65rem; color:var(--dim); margin-top:2px; }
 .metric.best { border-color:var(--green); background:#0d2818; }
-.metric.run { border-color:var(--accent); background:#0d1a28; animation:pulse 1.5s infinite; }
-@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.6;} }
 .combo-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
 .combo-table th { text-align:left; padding:5px 8px; border-bottom:2px solid var(--border); color:var(--dim); font-size:0.68rem; }
 .combo-table td { padding:5px 8px; border-bottom:1px solid var(--border); }
@@ -54,15 +60,10 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
 .ic-bar.neg { background:var(--red); }
 .spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top:2px solid var(--accent); border-radius:50%; animation:spin .8s linear infinite; vertical-align:middle; margin-right:6px; }
 @keyframes spin { to{transform:rotate(360deg);} }
-.overlay { display:none; position:fixed; top:0;left:0;right:0;bottom:0; background:rgba(0,0,0,.5); z-index:99; align-items:center; justify-content:center; }
-.overlay.show { display:flex; }
-.overlay-box { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:30px 40px; text-align:center; }
-.overlay-box .spinner { width:32px; height:32px; border-width:3px; }
-.overlay-box p { margin-top:12px; color:var(--dim); font-size:0.85rem; }
 .preset-item { display:flex; justify-content:space-between; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.78rem; transition:background .2s; }
 .preset-item:hover { background:#1e2130; }
 .preset-item .ic { font-family:monospace; font-size:0.72rem; }
-.chip-row { display:flex; gap:6px; align-items:center; }
+.chip-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
 .chip-row .dim-ic { width:auto; font-size:0.7rem; padding:2px 6px; border-radius:4px; }
 .chip-row .dim-ic.pos { background:#0d2818; }
 .chip-row .dim-ic.neg { background:#281818; }
@@ -70,30 +71,15 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
 </head>
 <body>
 
-<!-- 加载遮罩 -->
-<div class="overlay show" id="loadingOverlay">
-  <div class="overlay-box">
-    <div class="spinner"></div>
-    <p>加载数据中...</p>
-  </div>
-</div>
-
-<!-- 回测遮罩 -->
-<div class="overlay" id="backtestOverlay">
-  <div class="overlay-box">
-    <div class="spinner"></div>
-    <p id="backtestMsg">回测计算中...</p>
-    <button class="btn btn-danger" style="margin-top:16px" onclick="cancelBacktest()">⏹ 中止回测</button>
-  </div>
-</div>
-
 <header>
-  <div>
+  <div style="display:flex;align-items:center;gap:12px">
     <h1>🎯 七维量化评分 · 参数调优</h1>
+    <span class="status-badge load" id="serverStatus">连接中...</span>
   </div>
-  <div>
-    <button class="btn btn-primary" id="btnRun" onclick="runBacktest()" disabled>▶ 运行回测</button>
-    <span class="status load" id="serverStatus">连接中...</span>
+  <div class="control-bar">
+    <button class="btn btn-primary" id="btnRun" onclick="runBacktest()" disabled>▶ 运行</button>
+    <button class="btn btn-warning" id="btnPause" onclick="pauseBacktest()" disabled>⏸ 暂停</button>
+    <button class="btn btn-danger" id="btnStop" onclick="stopBacktest()" disabled>⏹ 停止</button>
   </div>
 </header>
 
@@ -101,14 +87,23 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
   <!-- 左侧：参数面板 -->
   <aside>
     <div class="panel">
-      <h3>⚖️ 维度权重 <span id="updateBadge" style="font-size:0.65rem;color:var(--yellow);display:none">(已修改, 待运行)</span></h3>
+      <h3>⚖️ 维度权重 <span id="updateBadge" style="font-size:0.65rem;color:var(--yellow);display:none">(已修改)</span></h3>
       <div id="sliders"></div>
       <div class="btn-row">
         <button class="btn btn-secondary" onclick="preset('equal')">等权</button>
         <button class="btn btn-secondary" onclick="preset('best')">最优组</button>
         <button class="btn btn-secondary" onclick="preset('techOnly')">纯技术</button>
-        <button class="btn btn-danger" onclick="preset('reset')">重置</button>
+        <button class="btn btn-ghost" onclick="preset('reset')">重置</button>
       </div>
+    </div>
+    <!-- 进度条 -->
+    <div class="panel" id="progressPanel" style="display:none">
+      <h3>⏳ 回测进度</h3>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+        <span class="progress-text" id="progressLabel">0%</span>
+      </div>
+      <p style="font-size:0.7rem;color:var(--dim);margin-top:6px" id="progressStatus">等待中...</p>
     </div>
     <div class="panel">
       <h3>📋 预设方案</h3>
@@ -116,7 +111,7 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
     </div>
   </aside>
 
-  <!-- 右侧：结果 -- -->
+  <!-- 右侧：结果 -->
   <section>
     <div id="topMetrics" class="metrics-grid"></div>
 
@@ -125,7 +120,7 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
       <table class="combo-table">
         <thead><tr><th>#</th><th>组合</th><th>IC(60d)</th><th>IC(40d)</th><th>IC(20d)</th><th></th></tr></thead>
         <tbody id="comboBody">
-          <tr><td colspan="6" style="text-align:center;color:var(--dim);padding:30px">👆 调整权重后点击「运行回测」</td></tr>
+          <tr><td colspan="6" style="text-align:center;color:var(--dim);padding:30px">👆 调整权重后点击「运行」</td></tr>
         </tbody>
       </table>
     </div>
@@ -137,13 +132,15 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
 
     <div class="panel">
       <h3>📊 各维度独立 IC</h3>
-      <div id="dimICs" style="font-size:0.78rem;color:var(--dim)">👆 点击运行回测查看各维度IC</div>
+      <div id="dimICs" style="font-size:0.78rem;color:var(--dim)">👆 点击运行回测查看</div>
     </div>
   </section>
 </main>
 
 <script>
 const API = '/api';
+const POLL_INTERVAL = 400; // 轮询间隔 ms
+
 let dimConfig = [
   {id:'tech_weighted',     name:'技术面 v3',   defIC:'+0.094', defW:1.0},
   {id:'fundam_weighted',   name:'基本面 v3',   defIC:'+0.043', defW:1.0},
@@ -154,7 +151,26 @@ let dimConfig = [
   {id:'chip_weighted',          name:'筹码面 v1', defIC:'-0.139', defW:0.0},
 ];
 let weights = {};
-let dirty = false;
+let pollTimer = null;
+let taskStatus = 'idle';
+
+// ── 按钮状态管理 ──
+function setButtons(run, pause, stop) {
+  document.getElementById('btnRun').disabled = !run;
+  document.getElementById('btnPause').disabled = !pause;
+  document.getElementById('btnStop').disabled = !stop;
+}
+
+function updateButtonsByStatus() {
+  switch(taskStatus) {
+    case 'idle':    setButtons(true, false, false); break;
+    case 'running': setButtons(false, true, true); break;
+    case 'paused':  setButtons(true, false, true); break;
+    case 'done':
+    case 'stopped':
+    case 'error':   setButtons(true, false, false); break;
+  }
+}
 
 // ── 初始化 ──
 async function init() {
@@ -162,19 +178,27 @@ async function init() {
     let r = await fetch(API+'/status');
     let s = await r.json();
     document.getElementById('serverStatus').textContent = s.loaded.toLocaleString()+' 条';
-    document.getElementById('serverStatus').className = 'status ok';
+    document.getElementById('serverStatus').className = 'status-badge ok';
+    // 恢复任务状态
+    if (s.task) {
+      taskStatus = s.task.status;
+      updateButtonsByStatus();
+      if (s.task.status === 'running' || s.task.status === 'paused') {
+        startPolling();
+      }
+      if (s.task.result) {
+        renderResults(s.task.result);
+      }
+    }
   } catch(e) {
-    document.getElementById('serverStatus').textContent = '⚠ 服务器未连接';
-    document.getElementById('serverStatus').className = 'status err';
-    document.getElementById('loadingOverlay').classList.remove('show');
+    document.getElementById('serverStatus').textContent = '⚠ 未连接';
+    document.getElementById('serverStatus').className = 'status-badge err';
     return;
   }
 
   buildSliders();
   dimConfig.forEach(d => weights[d.id] = d.defW);
-  document.getElementById('loadingOverlay').classList.remove('show');
   document.getElementById('btnRun').disabled = false;
-  // 不自动回测, 等待用户手动点击
 }
 
 function buildSliders() {
@@ -196,7 +220,6 @@ function onSliderChange(id, val) {
   let v = parseFloat(val);
   document.getElementById('val_'+id).textContent = v.toFixed(2);
   weights[id] = v;
-  dirty = true;
   document.getElementById('updateBadge').style.display = 'inline';
 }
 
@@ -213,60 +236,123 @@ function preset(type) {
     let sl = document.getElementById('slider_'+id);
     if (sl) { sl.value = map[id]; document.getElementById('val_'+id).textContent = map[id].toFixed(2); }
   }
-  dirty = true;
   document.getElementById('updateBadge').style.display = 'inline';
 }
 
-// ── 回测 ──
-let abortController = null;
-
+// ── 回测控制 ──
 async function runBacktest() {
-  // 取消正在进行的请求
-  if (abortController) { abortController.abort(); }
-  abortController = new AbortController();
+  if (taskStatus === 'paused') {
+    // 继续运行
+    let r = await fetch(API+'/backtest/resume', {method:'POST'});
+    let d = await r.json();
+    if (d.ok) { taskStatus = 'running'; updateButtonsByStatus(); startPolling(); showProgress('running'); }
+    return;
+  }
 
-  let overlay = document.getElementById('backtestOverlay');
-  let msg = document.getElementById('backtestMsg');
-  overlay.classList.add('show');
-  msg.textContent = '回测计算中...';
-  document.getElementById('btnRun').disabled = true;
+  // 新回测
+  let r = await fetch(API+'/backtest', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({weights:weights})
+  });
+  let d = await r.json();
+  if (!d.ok) { alert(d.msg); return; }
+  taskStatus = 'running';
+  updateButtonsByStatus();
+  showProgress('running');
+  document.getElementById('updateBadge').style.display = 'none';
+  startPolling();
+}
 
-  let t0 = performance.now();
+async function pauseBacktest() {
+  let r = await fetch(API+'/backtest/pause', {method:'POST'});
+  let d = await r.json();
+  if (d.ok) { taskStatus = 'paused'; updateButtonsByStatus(); showProgress('paused'); }
+}
+
+async function stopBacktest() {
+  let r = await fetch(API+'/backtest/stop', {method:'POST'});
+  let d = await r.json();
+  if (d.ok) {
+    taskStatus = 'stopped';
+    updateButtonsByStatus();
+    stopPolling();
+    hideProgress();
+  }
+}
+
+// ── 轮询 ──
+function startPolling() {
+  stopPolling();
+  showProgress('running');
+  pollTimer = setInterval(pollStatus, POLL_INTERVAL);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function pollStatus() {
   try {
-    let resp = await fetch(API+'/backtest', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({weights: weights}),
-      signal: abortController.signal
-    });
-    let data = await resp.json();
-    let elapsed = data.elapsed || ((performance.now()-t0)/1000).toFixed(1);
-    msg.textContent = `完成! 耗时 ${elapsed}s`;
-    setTimeout(() => overlay.classList.remove('show'), 600);
-    renderResults(data);
-    dirty = false;
-    document.getElementById('updateBadge').style.display = 'none';
-  } catch(e) {
-    if (e.name === 'AbortError') {
-      msg.textContent = '⏹ 已中止';
-    } else {
-      msg.textContent = '❌ 回测失败: ' + e.message;
+    let r = await fetch(API+'/backtest/status');
+    let d = await r.json();
+    taskStatus = d.status;
+    updateButtonsByStatus();
+
+    // 更新进度
+    let pf = document.getElementById('progressFill');
+    pf.style.width = d.progress + '%';
+    document.getElementById('progressLabel').textContent = d.progress + '%';
+
+    if (d.status === 'paused') {
+      pf.className = 'progress-fill paused';
+      document.getElementById('progressStatus').textContent = '⏸ 已暂停 — 点「运行」继续';
+    } else if (d.status === 'running') {
+      pf.className = 'progress-fill';
+      document.getElementById('progressStatus').textContent = '计算中...';
     }
-    setTimeout(() => overlay.classList.remove('show'), 1000);
+
+    if (d.status === 'done' && d.result) {
+      pf.className = 'progress-fill done';
+      document.getElementById('progressStatus').textContent = '✅ 完成';
+      stopPolling();
+      renderResults(d.result);
+      setTimeout(hideProgress, 2000);
+      taskStatus = 'done';
+      updateButtonsByStatus();
+    }
+    if (d.status === 'stopped') {
+      document.getElementById('progressStatus').textContent = '⏹ 已停止';
+      stopPolling();
+      setTimeout(hideProgress, 1500);
+    }
+    if (d.status === 'error') {
+      document.getElementById('progressStatus').textContent = '❌ ' + (d.error||'错误');
+      stopPolling();
+      setTimeout(hideProgress, 2000);
+    }
+  } catch(e) {
+    stopPolling();
   }
-  document.getElementById('btnRun').disabled = false;
-  abortController = null;
 }
 
-function cancelBacktest() {
-  if (abortController) {
-    abortController.abort();
-    abortController = null;
+function showProgress(status) {
+  let p = document.getElementById('progressPanel');
+  p.style.display = 'block';
+  if (status === 'running') {
+    document.getElementById('progressStatus').textContent = '计算中...';
+    document.getElementById('progressFill').className = 'progress-fill';
   }
 }
 
+function hideProgress() {
+  document.getElementById('progressPanel').style.display = 'none';
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('progressFill').className = 'progress-fill';
+}
+
+// ── 渲染结果 ──
 function renderResults(data) {
-  // 更新各维度实时IC
+  // 维度IC
   if (data.dimICs) {
     for (let id in data.dimICs) {
       let icEl = document.getElementById('ic_'+id);
@@ -282,17 +368,17 @@ function renderResults(data) {
 
   // 顶部指标
   let top = '';
-  if (data.bestCombo) {
+  if (data.bestCombo && data.combos && data.combos.length > 0) {
     top += `<div class="metric best"><div class="val">${data.bestCombo}</div><div class="lbl">最优组合</div></div>`;
     let best = data.combos[0];
-    let ic = best.ic60 != null ? best.ic60.toFixed(4) : 'N/A';
-    top += `<div class="metric"><div class="val" style="color:${best.ic60>0?'var(--green)':'var(--red)'}">${ic}</div><div class="lbl">IC(60d)</div></div>`;
+    if (best.ic60 != null) {
+      top += `<div class="metric"><div class="val" style="color:${best.ic60>0?'var(--green)':'var(--red)'}">${best.ic60.toFixed(4)}</div><div class="lbl">IC(60d)</div></div>`;
+    }
     if (data.spread != null) {
       top += `<div class="metric"><div class="val">${data.spread>0?'+':''}${data.spread}%</div><div class="lbl">Q5-Q1利差</div></div>`;
     }
-    top += `<div class="metric"><div class="val">${data.combos[0].n}</div><div class="lbl">有效样本</div></div>`;
   }
-  document.getElementById('topMetrics').innerHTML = top || '<div class="metric"><div class="val">—</div><div class="lbl">无数据</div></div>';
+  document.getElementById('topMetrics').innerHTML = top || '';
 
   // 组合排名表
   let thtml = '';
@@ -312,7 +398,7 @@ function renderResults(data) {
       </tr>`;
     });
   }
-  document.getElementById('comboBody').innerHTML = thtml || '<tr><td colspan="6" style="text-align:center;color:var(--dim)">无数据</td></tr>';
+  document.getElementById('comboBody').innerHTML = thtml;
 
   // 五分位
   let qhtml = '';
@@ -321,9 +407,9 @@ function renderResults(data) {
       qhtml += `<div class="metric"><div class="val">${q.mean}%</div><div class="lbl">Q${q.q} · 胜率${q.winRate}% · n=${q.n}</div></div>`;
     });
   }
-  document.getElementById('quintileGrid').innerHTML = qhtml || '<div class="metric"><div class="val">—</div></div>';
+  document.getElementById('quintileGrid').innerHTML = qhtml;
 
-  // 维度IC
+  // 维度IC chips
   let dhtml = '<div class="chip-row">';
   if (data.dimICs) {
     for (let id in data.dimICs) {
@@ -346,7 +432,6 @@ document.getElementById('presetList').innerHTML = `
   <div style="margin-top:12px;color:var(--red);font-size:0.72rem">⚠ 筹码面 IC=-0.139, 建议权重=0</div>
 `;
 
-// ── 启动 ──
 window.onload = init;
 </script>
 </body>
