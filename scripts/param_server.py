@@ -551,6 +551,25 @@ def _calc_bollinger(closes, period=20, std_dev=2.0):
             pos[i] = round((closes[i]-lower[i])/(upper[i]-lower[i]), 4)
     return mid, upper, lower, pos
 
+def _calc_atr(highs, lows, closes, period=14):
+    """ATR (Average True Range)"""
+    n = len(closes)
+    atr = [None]*n
+    tr_values = [None]*n
+    for i in range(1, n):
+        hl = highs[i] - lows[i]
+        hc = abs(highs[i] - closes[i-1])
+        lc = abs(lows[i] - closes[i-1])
+        tr_values[i] = max(hl, hc, lc)
+    # SMA of first 'period' TRs
+    tr_valid = [v for v in tr_values[1:period+1] if v is not None]
+    if len(tr_valid) >= period:
+        atr[period] = sum(tr_valid[:period])/period
+        for i in range(period+1, n):
+            if tr_values[i] is not None and atr[i-1] is not None:
+                atr[i] = round((atr[i-1]*(period-1)+tr_values[i])/period, 4)
+    return atr
+
 # ═══════════════════════════════════════════════════════════════
 # 交易策略定义
 # ═══════════════════════════════════════════════════════════════
@@ -647,6 +666,8 @@ def _run_single_stock_backtest(code, strategy_id, params):
     rsi6 = _calc_rsi(closes, 6)
     macd_l, macd_s, macd_h = _calc_macd(closes)
     bb_mid, bb_up, bb_lo, bb_pos = _calc_bollinger(closes)
+    atr14 = _calc_atr(highs, lows, closes, 14)  # ATR用于动态仓位
+    atr_pct = [round(atr14[i]/closes[i]*100, 2) if atr14[i] and closes[i] else None for i in range(n)]
     # 量比 (5日均量)
     vol_ma5 = _calc_ma(volumes, 5)
 
@@ -806,7 +827,14 @@ def _run_single_stock_backtest(code, strategy_id, params):
 
         # ── 执行交易 ──
         if position == 0 and buy_signal:
-            shares = int(cash / price / 100) * 100
+            base_shares = int(cash / price / 100) * 100
+            # 动态仓位: ATR越高→波动越大→仓位越小
+            atr_pct_i = atr_pct[i] if i < len(atr_pct) else None
+            if atr_pct_i and atr_pct_i > 0:
+                mult = min(1.5, max(0.3, 2.5 / atr_pct_i))
+                shares = int(base_shares * mult / 100) * 100
+            else:
+                shares = base_shares
             if shares > 0:
                 cash -= shares * price
                 position = 1
