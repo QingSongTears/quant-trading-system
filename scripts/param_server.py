@@ -339,126 +339,528 @@ def api_stock(code):
     })
 
 
-@app.route("/api/stock/<code>/backtest")
-def api_stock_backtest(code):
-    """单股历史回测: 基于七维评分策略 vs 买入持有"""
-    code = str(code).zfill(6)
-    import sqlite3, numpy as np
+# ═══════════════════════════════════════════════════════════════
+# 技术指标计算（纯Python，不依赖外部模块）
+# ═══════════════════════════════════════════════════════════════
 
-    user_threshold = request.args.get("threshold", type=float)
+def _calc_ma(arr, period):
+    """简单移动平均"""
+    result = [None]*len(arr)
+    for i in range(period-1, len(arr)):
+        result[i] = round(sum(arr[i-period+1:i+1])/period, 4)
+    return result
 
-    # 获取该股票的评分数据
-    stock_data = [r for r in records if r.get("code") == code]
-    if len(stock_data) < 6:
-        return jsonify({"error": "数据不足"}), 404
+def _calc_ema(arr, period):
+    """指数移动平均"""
+    result = [None]*len(arr)
+    if len(arr) < period: return result
+    # 初始值用SMA
+    sma = sum(arr[:period])/period
+    result[period-1] = round(sma, 4)
+    multiplier = 2/(period+1)
+    for i in range(period, len(arr)):
+        result[i] = round((arr[i]-result[i-1])*multiplier + result[i-1], 4)
+    return result
 
-    stock_data.sort(key=lambda x: x.get("as_of_date", ""))
+def _calc_rsi(closes, period=14):
+    """RSI序列"""
+    result = [None]*len(closes)
+    if len(closes) < period+1: return result
+    gains, losses = [], []
+    for i in range(1, len(closes)):
+        diff = closes[i]-closes[i-1]
+        gains.append(diff if diff>0 else 0)
+        losses.append(-diff if diff<0 else 0)
+    # 初始平均
+    avg_gain = sum(gains[:period])/period
+    avg_loss = sum(losses[:period])/period
+    for i in range(period, len(gains)):
+        if avg_loss == 0:
+            result[i+1] = 100.0
+        else:
+            rs = avg_gain/avg_loss
+            result[i+1] = round(100-100/(1+rs), 2)
+        avg_gain = (avg_gain*(period-1)+gains[i])/period
+        avg_loss = (avg_loss*(period-1)+losses[i])/period
+    return result
 
-    # 计算综合评分
-    dates = [r["as_of_date"] for r in stock_data]
-    combined = []
-    for r in stock_data:
-        vals = [r.get(d) or 0 for d in dim_cols]
-        combined.append(round(sum(vals)/len(vals), 1))
+def _calc_macd(closes, fast=12, slow=26, signal=9):
+    """MACD: 返回 (macd_line, signal_line, histogram)"""
+    ema_fast = _calc_ema(closes, fast)
+    ema_slow = _calc_ema(closes, slow)
+    macd_line = [None]*len(closes)
+    for i in range(len(closes)):
+        if ema_fast[i] is not None and ema_slow[i] is not None:
+            macd_line[i] = round(ema_fast[i]-ema_slow[i], 4)
+    # signal = EMA of macd_line
+    valid_macd = [(i,v) for i,v in enumerate(macd_line) if v is not None]
+    sig_line = [None]*len(closes)
+    hist = [None]*len(closes)
+    if len(valid_macd) >= signal:
+        vals = [v for _,v in valid_macd]
+        ema_sig = _calc_ema(vals, signal)
+        for j, (idx,_) in enumerate(valid_macd):
+            if ema_sig[j] is not None:
+                sig_line[idx] = round(ema_sig[j], 4)
+                hist[idx] = round(macd_line[idx]-ema_sig[j], 4)
+    return macd_line, sig_line, hist
 
-    # 策略: 评分 >= 阈值买入, 评分 < 阈值卖出
-    threshold = user_threshold if user_threshold else round(np.median([c for c in combined if c > 0]), 1)
+def _calc_bollinger(closes, period=20, std_dev=2.0):
+    """布林带: 返回 (mid, upper, lower, position)"""
+    mid = [None]*len(closes)
+    upper = [None]*len(closes)
+    lower = [None]*len(closes)
+    pos = [None]*len(closes)
+    for i in range(period-1, len(closes)):
+        window = closes[i-period+1:i+1]
+        m = sum(window)/period
+        mid[i] = round(m, 4)
+        variance = sum((x-m)**2 for x in window)/period
+        std = variance**0.5
+        upper[i] = round(m + std_dev*std, 4)
+        lower[i] = round(m - std_dev*std, 4)
+        if upper[i] != lower[i]:
+            pos[i] = round((closes[i]-lower[i])/(upper[i]-lower[i]), 4)
+    return mid, upper, lower, pos
 
-    # 获取该股票的日线价格用于计算收益
+# ═══════════════════════════════════════════════════════════════
+# 交易策略定义
+# ═══════════════════════════════════════════════════════════════
+
+STRATEGY_REGISTRY = {
+    "score_cross": {
+        "name": "七维评分穿越",
+        "desc": "综合评分≥阈值买入，<阈值卖出",
+        "params": {"threshold": {"default": 8, "min": 4, "max": 16, "step": 0.5, "label": "信号阈值"}},
+        "type": "score"
+    },
+    "ma_cross": {
+        "name": "均线金叉",
+        "desc": "MA5上穿MA20+放量买入，下穿或止损-8%卖出",
+        "params": {
+            "stop_loss": {"default": -8, "min": -15, "max": -3, "step": 1, "label": "止损%"},
+            "take_profit": {"default": 15, "min": 5, "max": 30, "step": 1, "label": "止盈%"}
+        },
+        "type": "tech"
+    },
+    "oversold": {
+        "name": "超卖反转",
+        "desc": "RSI(14)≤30+BB下轨+阳线买入，RSI≥65或止损-5%卖出",
+        "params": {
+            "stop_loss": {"default": -5, "min": -12, "max": -2, "step": 1, "label": "止损%"},
+            "rsi_entry": {"default": 30, "min": 20, "max": 40, "step": 2, "label": "RSI入场阈值"}
+        },
+        "type": "tech"
+    },
+    "trend_follow": {
+        "name": "趋势跟踪",
+        "desc": "EMA12>EMA26+MACD金叉买入，EMA12<EMA26或止损-10%卖出",
+        "params": {
+            "stop_loss": {"default": -10, "min": -15, "max": -3, "step": 1, "label": "止损%"},
+            "take_profit": {"default": 20, "min": 8, "max": 40, "step": 1, "label": "止盈%"}
+        },
+        "type": "tech"
+    },
+    "bollinger": {
+        "name": "布林突破",
+        "desc": "收盘<下轨且回升买入，收盘>上轨或止损-5%卖出",
+        "params": {
+            "stop_loss": {"default": -5, "min": -12, "max": -2, "step": 1, "label": "止损%"},
+            "bb_period": {"default": 20, "min": 10, "max": 30, "step": 5, "label": "布林周期"}
+        },
+        "type": "tech"
+    },
+    "combo": {
+        "name": "综合多信号",
+        "desc": "七维评分≥阈值 AND (MA金叉 OR RSI超卖) 买入，评分<阈值-2 OR 止损-8%卖出",
+        "params": {
+            "threshold": {"default": 8, "min": 4, "max": 16, "step": 0.5, "label": "评分阈值"},
+            "stop_loss": {"default": -8, "min": -15, "max": -3, "step": 1, "label": "止损%"}
+        },
+        "type": "combo"
+    }
+}
+
+
+def _run_single_stock_backtest(code, strategy_id, params):
+    """统一单股回测引擎：逐交易日检查信号，支持止损止盈"""
+    import sqlite3
     db = PROJECT_ROOT / "database" / "quant.db"
+
+    # 1. 拉取完整OHLCV
     conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
     rows = conn.execute(
-        "SELECT trade_date, close FROM daily_price WHERE code=? ORDER BY trade_date",
+        "SELECT trade_date, open, high, low, close, volume "
+        "FROM daily_price WHERE code=? ORDER BY trade_date",
         (code,)
     ).fetchall()
     conn.close()
 
-    if not rows:
-        return jsonify({"error": "无K线数据"}), 404
+    if len(rows) < 60:
+        return {"error": f"K线数据不足 ({len(rows)}条, 需≥60)"}
 
-    # 构建价格字典
-    price_dict = {r[0]: r[1] for r in rows}
-    all_dates = sorted(price_dict.keys())
+    dates = [r["trade_date"] for r in rows]
+    opens = [r["open"] for r in rows]
+    highs = [r["high"] for r in rows]
+    lows = [r["low"] for r in rows]
+    closes = [r["close"] for r in rows]
+    volumes = [r["volume"] for r in rows]
+    n = len(dates)
 
-    # 策略回测: 在每个评分日检查信号
-    strategy_returns = []   # 持仓期收益
-    buy_hold_returns = []   # 同期买入持有收益
-    signals = []            # 买卖信号
-    equity_curve = []       # 策略权益曲线
-    bh_curve = []           # 买入持有权益曲线
+    # 2. 计算技术指标
+    ma5 = _calc_ma(closes, 5)
+    ma10 = _calc_ma(closes, 10)
+    ma20 = _calc_ma(closes, 20)
+    ma60 = _calc_ma(closes, 60)
+    ema12 = _calc_ema(closes, 12)
+    ema26 = _calc_ema(closes, 26)
+    rsi14 = _calc_rsi(closes, 14)
+    rsi6 = _calc_rsi(closes, 6)
+    macd_l, macd_s, macd_h = _calc_macd(closes)
+    bb_mid, bb_up, bb_lo, bb_pos = _calc_bollinger(closes)
+    # 量比 (5日均量)
+    vol_ma5 = _calc_ma(volumes, 5)
 
-    position = 0  # 0=空仓, 1=持仓
-    entry_price = 0
-    initial_capital = 10000
+    # 3. 获取七维评分（按日期映射）
+    stock_scores = [r2 for r2 in records if r2.get("code") == code]
+    score_by_date = {}
+    for s in stock_scores:
+        d = s.get("as_of_date", "")
+        vals = [s.get(did) or 0 for did in dim_cols]
+        score_by_date[d] = round(sum(vals)/len(vals), 1)
+
+    # 4. 策略参数
+    strat = STRATEGY_REGISTRY.get(strategy_id, STRATEGY_REGISTRY["score_cross"])
+    stop_loss = params.get("stop_loss", strat["params"].get("stop_loss", {}).get("default", -8) if "stop_loss" in strat.get("params",{}) else -8)
+    take_profit = params.get("take_profit", strat["params"].get("take_profit", {}).get("default", 15) if "take_profit" in strat.get("params",{}) else 15)
+    threshold = params.get("threshold", strat["params"].get("threshold", {}).get("default", 8) if "threshold" in strat.get("params",{}) else 8)
+    rsi_entry = params.get("rsi_entry", 30)
+    bb_period_param = int(params.get("bb_period", 20))
+
+    # 5. 逐日回测
+    initial_capital = 100000
     cash = initial_capital
     shares = 0
+    position = 0  # 0=空仓 1=持仓
+    entry_price = 0
+    entry_date = ""
+    entry_idx = 0
+    max_favorable = 0
+    max_adverse = 0
+    entry_reason = ""
 
-    for i, (dt, score) in enumerate(zip(dates, combined)):
-        price = price_dict.get(dt)
-        if price is None or price <= 0:
+    trades = []
+    equity_curve = []
+    bh_curve = []
+    signal_dates = []  # 记录每天信号详情（用于对账）
+
+    # 买入持有基准: 首日买入
+    bh_shares = int(initial_capital / closes[0] / 100) * 100
+    bh_cost = bh_shares * closes[0]
+    bh_cash = initial_capital - bh_cost
+
+    for i in range(n):
+        if i < 60:  # 前60天无法计算所有指标，跳过
+            equity_curve.append({"date": dates[i], "value": initial_capital})
+            bh_curve.append({"date": dates[i], "value": round(bh_cash + bh_shares*closes[i], 2)})
             continue
 
-        if position == 0 and score >= threshold:
-            # 买入信号
-            shares = int(cash / price / 100) * 100  # 整手
+        price = closes[i]
+        signal_info = {"date": dates[i], "close": price}
+
+        # ── 生成信号 ──
+        buy_signal = False
+        sell_signal = False
+        sell_reason = ""
+
+        if strategy_id == "score_cross":
+            today_score = 0
+            for dt_key in score_by_date:
+                if dt_key <= dates[i]:
+                    today_score = score_by_date[dt_key]
+            signal_info["score"] = round(today_score, 1)
+            if position == 0 and today_score >= threshold:
+                buy_signal = True
+                entry_reason = f"综合评分{today_score}≥阈值{threshold}"
+            elif position == 1 and today_score < threshold:
+                sell_signal = True
+                sell_reason = f"评分{today_score}<阈值{threshold}"
+
+        elif strategy_id == "ma_cross":
+            signal_info["ma5"] = ma5[i]; signal_info["ma20"] = ma20[i]
+            vol_ratio = volumes[i]/vol_ma5[i] if vol_ma5[i] and vol_ma5[i]>0 else 1
+            signal_info["vol_ratio"] = round(vol_ratio, 2)
+            if position == 0:
+                if (ma5[i] and ma20[i] and ma5[i-1] and ma20[i-1]
+                    and ma5[i-1] <= ma20[i-1] and ma5[i] > ma20[i] and vol_ratio >= 1.2):
+                    buy_signal = True
+                    entry_reason = f"MA5({ma5[i]:.2f})上穿MA20({ma20[i]:.2f}) 量比{vol_ratio:.1f}"
+            elif position == 1:
+                if ma5[i] and ma20[i] and ma5[i] < ma20[i]:
+                    sell_signal = True
+                    sell_reason = f"MA5({ma5[i]:.2f})下穿MA20({ma20[i]:.2f})"
+
+        elif strategy_id == "oversold":
+            signal_info["rsi14"] = rsi14[i]; signal_info["bb_pos"] = bb_pos[i]
+            if position == 0:
+                if (rsi14[i] and rsi14[i] <= rsi_entry and bb_pos[i] is not None and bb_pos[i] <= 0.08
+                    and closes[i] > opens[i]):  # 阳线
+                    buy_signal = True
+                    entry_reason = f"RSI={rsi14[i]:.0f}≤{rsi_entry} BB位={bb_pos[i]:.2f} 阳线确认"
+            elif position == 1:
+                if rsi14[i] and rsi14[i] >= 65:
+                    sell_signal = True
+                    sell_reason = f"RSI={rsi14[i]:.0f}≥65 超买"
+
+        elif strategy_id == "trend_follow":
+            signal_info["ema12"] = ema12[i]; signal_info["ema26"] = ema26[i]
+            macd_golden = (macd_h[i] is not None and macd_h[i-1] is not None
+                          and macd_h[i-1] <= 0 and macd_h[i] > 0)
+            if position == 0:
+                if (ema12[i] and ema26[i] and ema12[i] > ema26[i] and macd_golden):
+                    buy_signal = True
+                    entry_reason = f"EMA12({ema12[i]:.2f})>EMA26({ema26[i]:.2f}) MACD金叉"
+            elif position == 1:
+                if ema12[i] and ema26[i] and ema12[i] < ema26[i]:
+                    sell_signal = True
+                    sell_reason = f"EMA12({ema12[i]:.2f})<EMA26({ema26[i]:.2f})"
+
+        elif strategy_id == "bollinger":
+            # 动态重算布林带
+            bb_mid_i, bb_up_i, bb_lo_i, bb_pos_i = _calc_bollinger(closes[:i+1], bb_period_param, 2.0)
+            signal_info["bb_lower"] = bb_lo_i[i]; signal_info["bb_upper"] = bb_up_i[i]
+            if position == 0:
+                if (bb_lo_i[i] and closes[i] < bb_lo_i[i]
+                    and closes[i] > closes[i-1]):  # 回升
+                    buy_signal = True
+                    entry_reason = f"收盘{closes[i]:.2f}<下轨{bb_lo_i[i]:.2f} 回升确认"
+            elif position == 1:
+                if bb_up_i[i] and closes[i] > bb_up_i[i]:
+                    sell_signal = True
+                    sell_reason = f"收盘{closes[i]:.2f}>上轨{bb_up_i[i]:.2f}"
+
+        elif strategy_id == "combo":
+            today_score = 0
+            for dt_key in score_by_date:
+                if dt_key <= dates[i]:
+                    today_score = score_by_date[dt_key]
+            signal_info["score"] = round(today_score, 1)
+            signal_info["rsi14"] = rsi14[i]
+            signal_info["ma5"] = ma5[i]; signal_info["ma20"] = ma20[i]
+            ma_golden = (ma5[i] and ma20[i] and ma5[i-1] and ma20[i-1]
+                        and ma5[i-1] <= ma20[i-1] and ma5[i] > ma20[i])
+            rsi_oversold = rsi14[i] and rsi14[i] <= 30
+            if position == 0:
+                if today_score >= threshold and (ma_golden or rsi_oversold):
+                    buy_signal = True
+                    reasons = []
+                    if ma_golden: reasons.append("MA金叉")
+                    if rsi_oversold: reasons.append(f"RSI={rsi14[i]:.0f}超卖")
+                    entry_reason = f"评分{today_score}≥{threshold} AND ({'/'.join(reasons)})"
+            elif position == 1:
+                if today_score < threshold - 2:
+                    sell_signal = True
+                    sell_reason = f"评分{today_score}<{threshold-2}"
+
+        # ── 止损止盈检查（所有tech策略共用）──
+        if position == 1 and not sell_signal:
+            pnl_pct = (price - entry_price) / entry_price * 100
+            if stop_loss and pnl_pct <= stop_loss:
+                sell_signal = True
+                sell_reason = f"止损 {pnl_pct:.1f}%≤{stop_loss}%"
+            elif take_profit and pnl_pct >= take_profit:
+                sell_signal = True
+                sell_reason = f"止盈 {pnl_pct:.1f}%≥{take_profit}%"
+            # 跟踪最大盈利/回撤
+            if pnl_pct > max_favorable: max_favorable = pnl_pct
+            if pnl_pct < max_adverse: max_adverse = pnl_pct
+
+        # ── 执行交易 ──
+        if position == 0 and buy_signal:
+            shares = int(cash / price / 100) * 100
             if shares > 0:
-                cost = shares * price
-                cash -= cost
+                cash -= shares * price
                 position = 1
                 entry_price = price
-                signals.append({"date": dt, "type": "buy", "price": price, "score": score})
+                entry_date = dates[i]
+                entry_idx = i
+                max_favorable = 0
+                max_adverse = 0
+                signal_info["action"] = "buy"
+                signal_info["reason"] = entry_reason
 
-        elif position == 1 and score < threshold:
-            # 卖出信号
+        elif position == 1 and sell_signal:
             sell_value = shares * price
             cash += sell_value
-            ret = (price - entry_price) / entry_price * 100
-            strategy_returns.append(ret)
-
-            # 同期买入持有收益
-            bh_start = price_dict.get(dates[0])
-            if bh_start:
-                bh_ret = (price - bh_start) / bh_start * 100
-                buy_hold_returns.append(bh_ret)
-
-            signals.append({"date": dt, "type": "sell", "price": price, "score": score, "return": round(ret, 2)})
+            ret = round((price - entry_price) / entry_price * 100, 2)
+            hold_days = i - entry_idx
+            trades.append({
+                "id": len(trades) + 1,
+                "entryDate": entry_date,
+                "entryPrice": round(entry_price, 2),
+                "exitDate": dates[i],
+                "exitPrice": round(price, 2),
+                "returnPct": ret,
+                "holdDays": hold_days,
+                "reason": sell_reason,
+                "entrySignal": entry_reason,
+                "exitSignal": sell_reason,
+                "maxFavorable": round(max_favorable, 2),
+                "maxAdverse": round(max_adverse, 2),
+            })
             shares = 0
             position = 0
+            signal_info["action"] = "sell"
+            signal_info["reason"] = sell_reason
+            signal_info["return"] = ret
 
-        # 权益曲线
+        # ── 权益曲线 ──
         total_value = cash + (shares * price if position == 1 else 0)
-        equity_curve.append({"date": dt, "value": round(total_value, 2)})
-        bh_value = (initial_capital / price_dict.get(dates[0], price)) * price
-        bh_curve.append({"date": dt, "value": round(bh_value, 2)})
+        equity_curve.append({"date": dates[i], "value": round(total_value, 2)})
+        bh_curve.append({"date": dates[i], "value": round(bh_cash + bh_shares*price, 2)})
+        signal_dates.append(signal_info)
 
-    # 统计
-    final_value = cash + (shares * price_dict.get(dates[-1], 0) if position == 1 else 0)
-    total_return = (final_value - initial_capital) / initial_capital * 100
+    # ── 期末清仓 ──
+    if position == 1:
+        last_price = closes[-1]
+        ret = round((last_price - entry_price) / entry_price * 100, 2)
+        cash += shares * last_price
+        trades.append({
+            "id": len(trades) + 1,
+            "entryDate": entry_date,
+            "entryPrice": round(entry_price, 2),
+            "exitDate": dates[-1],
+            "exitPrice": round(last_price, 2),
+            "returnPct": ret,
+            "holdDays": n - 1 - entry_idx,
+            "reason": "期末清仓",
+            "entrySignal": entry_reason,
+            "exitSignal": "回测结束",
+            "maxFavorable": round(max_favorable, 2),
+            "maxAdverse": round(max_adverse, 2),
+        })
 
-    # 买入持有最终值
-    start_price = price_dict.get(dates[0], 1) if dates else 1
-    bh_final = (initial_capital / start_price) * price_dict.get(dates[-1], start_price)
-    bh_return = (bh_final - initial_capital) / initial_capital * 100
+    # ── 统计 ──
+    final_value = cash
+    total_return = round((final_value - initial_capital) / initial_capital * 100, 2)
+    bh_final = bh_cash + bh_shares * closes[-1]
+    bh_return = round((bh_final - initial_capital) / initial_capital * 100, 2)
 
-    win_count = sum(1 for r in strategy_returns if r > 0)
-    total_trades = len(strategy_returns)
+    win_trades = [t for t in trades if t["returnPct"] > 0]
+    loss_trades = [t for t in trades if t["returnPct"] <= 0]
+    total_trades = len(trades)
+    win_rate = round(len(win_trades)/total_trades*100, 1) if total_trades > 0 else 0
+    avg_return = round(np.mean([t["returnPct"] for t in trades]), 2) if trades else 0
+    avg_hold = round(np.mean([t["holdDays"] for t in trades]), 0) if trades else 0
+    total_wins = sum(t["returnPct"] for t in win_trades) if win_trades else 0
+    total_losses = abs(sum(t["returnPct"] for t in loss_trades)) if loss_trades else 0
+    profit_factor = round(total_wins/total_losses, 2) if total_losses > 0 else (99 if total_wins > 0 else 0)
 
-    return jsonify({
+    # 最大回撤
+    eq_vals = [e["value"] for e in equity_curve]
+    peak = eq_vals[0]
+    max_dd = 0
+    for v in eq_vals:
+        if v > peak: peak = v
+        dd = (v - peak) / peak * 100
+        if dd < max_dd: max_dd = dd
+
+    # 夏普比率
+    if len(eq_vals) > 10:
+        daily_r = [(eq_vals[j]-eq_vals[j-1])/eq_vals[j-1] for j in range(1, len(eq_vals))]
+        mean_r = np.mean(daily_r)
+        std_r = np.std(daily_r)
+        sharpe = round((mean_r/std_r)*np.sqrt(252), 2) if std_r > 0 else 0
+    else:
+        sharpe = 0
+
+    # 对账数据：最近100个交易日的OHLCV+指标
+    verify_n = min(100, n)
+    verify_prices = []
+    verify_signals = []
+    for i in range(n-verify_n, n):
+        verify_prices.append({
+            "date": dates[i],
+            "open": round(opens[i], 2), "high": round(highs[i], 2),
+            "low": round(lows[i], 2), "close": round(closes[i], 2),
+            "volume": int(volumes[i]) if volumes[i] else 0,
+        })
+        verify_signals.append({
+            "date": dates[i],
+            "ma5": ma5[i], "ma20": ma20[i], "ma60": ma60[i],
+            "ema12": ema12[i], "ema26": ema26[i],
+            "rsi14": rsi14[i], "rsi6": rsi6[i],
+            "macd": macd_l[i], "macd_signal": macd_s[i], "macd_hist": macd_h[i],
+            "bb_mid": bb_mid[i], "bb_upper": bb_up[i], "bb_lower": bb_lo[i], "bb_pos": bb_pos[i],
+        })
+
+    return {
         "code": code,
-        "threshold": round(threshold, 1),
-        "totalReturn": round(total_return, 2),
-        "bhReturn": round(bh_return, 2),
-        "excessReturn": round(total_return - bh_return, 2),
-        "trades": total_trades,
-        "winRate": round(win_count/total_trades*100, 1) if total_trades > 0 else 0,
-        "avgReturn": round(np.mean(strategy_returns), 2) if strategy_returns else 0,
-        "signals": signals,
+        "strategy": strategy_id,
+        "strategyName": strat["name"],
+        "strategyDesc": strat["desc"],
+        "params": params,
+        "summary": {
+            "totalReturn": total_return,
+            "bhReturn": bh_return,
+            "excessReturn": round(total_return - bh_return, 2),
+            "maxDrawdown": round(max_dd, 2),
+            "sharpe": sharpe,
+            "totalTrades": total_trades,
+            "winTrades": len(win_trades),
+            "winRate": win_rate,
+            "avgReturn": avg_return,
+            "avgHoldDays": int(avg_hold),
+            "profitFactor": profit_factor,
+            "initialCapital": initial_capital,
+            "finalValue": round(final_value, 2),
+        },
+        "trades": trades,
         "equityCurve": equity_curve,
         "bhCurve": bh_curve,
-        "dates": dates,
-        "combined": combined,
-        "threshold": round(threshold, 1),
-    })
+        "signalDates": signal_dates[60:],  # 跳过前60天（指标不全）
+        "verification": {
+            "prices": verify_prices,
+            "indicators": verify_signals,
+        }
+    }
+
+
+@app.route("/api/stock/<code>/backtest")
+def api_stock_backtest(code):
+    """单股策略回测: 支持6种策略，逐交易日模拟，详细交易记录+对账数据"""
+    code = str(code).zfill(6)
+    strategy_id = request.args.get("strategy", "score_cross")
+
+    # 解析策略参数
+    params = {}
+    for key in request.args:
+        if key in ("strategy", "threshold"):
+            try: params[key] = float(request.args.get(key))
+            except: pass
+        elif key.startswith("param_"):
+            try: params[key[6:]] = float(request.args.get(key))
+            except: pass
+
+    # 兼容旧版 threshold 参数
+    if "threshold" in params:
+        params["threshold"] = params.pop("threshold") if "threshold" in params else float(request.args.get("threshold", 8))
+
+    if strategy_id not in STRATEGY_REGISTRY:
+        return jsonify({"error": f"未知策略: {strategy_id}", "available": list(STRATEGY_REGISTRY.keys())}), 400
+
+    result = _run_single_stock_backtest(code, strategy_id, params)
+    if "error" in result:
+        return jsonify(result), 404
+    return jsonify(result)
+
+
+@app.route("/api/strategies")
+def api_strategies():
+    """返回所有可用策略的元数据"""
+    return jsonify(STRATEGY_REGISTRY)
+@app.route("/api/stock/<code>/kline/<period>")
 def api_kline(code, period="day"):
     """K线查询: 优先网络实时数据, 断网降级到本地DB"""
     code = str(code).zfill(6)
