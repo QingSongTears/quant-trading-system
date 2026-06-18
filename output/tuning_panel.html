@@ -113,7 +113,21 @@ th[data-tip]:hover::after { font-weight:400; }
         <button class="btn btn-secondary" onclick="preset('equal')">等权</button>
         <button class="btn btn-secondary" onclick="preset('best')">最优组</button>
         <button class="btn btn-secondary" onclick="preset('techOnly')">纯技术</button>
-        <button class="btn btn-ghost" onclick="preset('reset')">重置</button>
+        <button class="btn btn-ghost" onclick="preset('reset')">重置默认</button>
+      </div>
+      <!-- 配置保存/加载 -->
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+          <select id="configSelect" onchange="loadConfig()" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#111318;color:var(--text);font-size:0.78rem">
+            <option value="">— 选择已保存配置 —</option>
+          </select>
+          <button class="btn btn-ghost" onclick="deleteConfig()" style="font-size:0.7rem;padding:5px 8px" title="删除选中配置">🗑</button>
+        </div>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="configName" placeholder="配置名称" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#111318;color:var(--text);font-size:0.78rem">
+          <button class="btn btn-green" onclick="saveConfig()" style="font-size:0.72rem;white-space:nowrap">💾 保存</button>
+        </div>
+        <p id="configMsg" style="font-size:0.65rem;color:var(--dim);margin-top:4px;min-height:16px"></p>
       </div>
     </div>
     <!-- 进度条 -->
@@ -242,6 +256,7 @@ async function init() {
   buildSliders();
   dimConfig.forEach(d => weights[d.id] = d.defW);
   document.getElementById('btnRun').disabled = false;
+  initConfigs();
 }
 
 function buildSliders() {
@@ -475,6 +490,77 @@ document.getElementById('presetList').innerHTML = `
   <div class="preset-item" onclick="preset('equal')"><span>⚖️ 七维等权</span><span class="ic pos">IC +0.083</span></div>
   <div style="margin-top:12px;color:var(--red);font-size:0.72rem">⚠ 筹码面 IC=-0.139, 建议权重=0</div>
 `;
+
+// ── 配置管理 ──
+const STORAGE_KEY = 'quant_param_configs';
+
+function getSavedConfigs() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+  catch(e) { return {}; }
+}
+function saveConfigsToStorage(configs) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(configs));
+}
+
+function refreshConfigSelect() {
+  let configs = getSavedConfigs();
+  let sel = document.getElementById('configSelect');
+  sel.innerHTML = '<option value="">— 选择已保存配置 —</option>';
+  for (let name in configs) {
+    sel.innerHTML += `<option value="${name}">${name}</option>`;
+  }
+}
+
+function saveConfig() {
+  let name = document.getElementById('configName').value.trim();
+  if (!name) { flashMsg('请输入配置名称'); return; }
+  let configs = getSavedConfigs();
+  if (configs[name] && !confirm(`配置"${name}"已存在, 覆盖?`)) return;
+
+  configs[name] = Object.assign({}, weights);
+  saveConfigsToStorage(configs);
+  refreshConfigSelect();
+  document.getElementById('configSelect').value = name;
+  document.getElementById('configName').value = '';
+  flashMsg(`✅ 已保存 "${name}"`, 'var(--green)');
+}
+
+function loadConfig() {
+  let name = document.getElementById('configSelect').value;
+  if (!name) return;
+  let configs = getSavedConfigs();
+  let w = configs[name];
+  if (!w) return;
+
+  for (let id in w) {
+    weights[id] = w[id];
+    let sl = document.getElementById('slider_'+id);
+    if (sl) { sl.value = w[id]; document.getElementById('val_'+id).textContent = w[id].toFixed(2); }
+  }
+  document.getElementById('updateBadge').style.display = 'inline';
+  flashMsg(`📂 已加载 "${name}"`, 'var(--accent)');
+}
+
+function deleteConfig() {
+  let name = document.getElementById('configSelect').value;
+  if (!name) return;
+  if (!confirm(`删除配置"${name}"?`)) return;
+  let configs = getSavedConfigs();
+  delete configs[name];
+  saveConfigsToStorage(configs);
+  refreshConfigSelect();
+  flashMsg(`🗑 已删除 "${name}"`);
+}
+
+function flashMsg(msg, color) {
+  let el = document.getElementById('configMsg');
+  el.textContent = msg;
+  el.style.color = color || 'var(--dim)';
+  setTimeout(() => { el.textContent = ''; }, 2500);
+}
+
+// 初始化下拉框
+function initConfigs() { refreshConfigSelect(); }
 
 // ── 单股查询 ──
 const DIM_COLORS = ['#4fc3f7','#66bb6a','#ffa726','#ef5350','#ab47bc','#26c6da','#78909c'];
