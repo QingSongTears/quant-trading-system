@@ -52,45 +52,60 @@ class FundamentalScorer:
         self._load_data()
 
     def _load_data(self):
-        """加载全量财务数据并预计算分位数
-        适配新DB schema:
-          finance_snapshot_v2: roe/eps/debt_ratio/bps/total_equity/total_revenue/net_profit/list_date_raw/shares
-          dividend_data: 从分红表JOIN取最新pre_tax_bonus
-        """
+        """v3: 从 finance_summary 加载真实财报数据 + stock_profile 行业/上市日期"""
         self.df = pd.read_sql(
-            "SELECT f.code, f.roe, f.eps, f.debt_ratio, f.bps, "
-            "f.total_equity, f.total_revenue as revenue, f.net_profit, "
-            "f.list_date_raw, f.shares, "
-            "COALESCE(d.pre_tax_bonus, 0) as dividend "
-            "FROM finance_snapshot_v2 f "
-            "LEFT JOIN ("
-            "  SELECT code, pre_tax_bonus FROM dividend_data "
-            "  WHERE (code, ex_div_date) IN ("
-            "    SELECT code, MAX(ex_div_date) FROM dividend_data GROUP BY code"
-            "  )"
-            ") d ON f.code = d.code",
+            "SELECT f.code, "
+            "f.ROETTM as roe, f.EPSTTM as eps, f.NAPS, "
+            "f.DebtAssetsRatio as debt_ratio, "
+            "f.OperatingRevenueGrowRate as revenue_growth, "
+            "f.NPParentCompanyYOY as profit_growth, "
+            "f.NetOperateCashFlowTTM as cashflow, "
+            "f.TotalShareholderEquity as equity, "
+            "f.OperatingRevenueTTM as revenue, "
+            "f.NPParentCompanyOwnersTTM as net_profit, "
+            "f.NetProfitRatioTTM as net_margin, "
+            "f.TotalAssets, "
+            "f._date as report_date, "
+            "COALESCE(s.listedDate, '') as listed_date, "
+            "COALESCE(s.industry, '') as industry, "
+            "COALESCE(s.sector, '') as sector "
+            "FROM finance_summary f "
+            "LEFT JOIN stock_profile s ON f.code = s.code",
             self.engine
         )
         self.df = self.df.set_index("code")
 
+        # 强制转换为 float（处理可能混入的字符串）
+        float_cols = ["roe", "eps", "NAPS", "debt_ratio", "revenue_growth",
+                      "profit_growth", "cashflow", "equity", "revenue",
+                      "net_profit", "net_margin", "TotalAssets"]
+        for c in float_cols:
+            if c in self.df.columns:
+                self.df[c] = pd.to_numeric(self.df[c], errors="coerce")
+
         # 衍生指标（clip处理极端值）
-        net_profit_abs = self.df["net_profit"].replace(0, np.nan).abs()
-        equity_v = self.df["total_equity"].clip(lower=1e4)
+        net_profit_abs = self.df["net_profit"].fillna(0).replace(0, np.nan).abs()
+        equity_v = self.df["equity"].fillna(1e7).clip(lower=1e4)
         self.df["pe_proxy"] = (equity_v / net_profit_abs).clip(-500, 500)
-        self.df["roe_v"] = self.df["roe"].clip(-1, 1)  # -100%~100%
-        self.df["debt_v"] = self.df["debt_ratio"].clip(0, 1)
+        self.df["roe_v"] = (self.df["roe"] / 100).clip(-1, 1)  # ROETTM是百分比，转小数
+        self.df["debt_v"] = (self.df["debt_ratio"] / 100).clip(0, 1)  # DebtAssetsRatio是百分比
         self.df["log_size"] = np.log10(equity_v)
-        # list_date_raw → YYYYMMDD → 取前4位年份
-        raw = self.df["list_date_raw"]
+        # listedDate → 提取年份
+        raw = self.df["listed_date"].replace("", np.nan)
         self.df["list_years"] = np.where(
-            raw.notna() & (raw != ""),
+            raw.notna(),
             (2026 - raw.astype(str).str[:4].astype(float)).clip(0, 35),
             10
         )
+        # 现金流质量
+        self.df["cf_quality"] = self.df["cashflow"].fillna(0).clip(-1e12, 1e12)
+        # 营收增长
+        self.df["rev_growth_v"] = self.df["revenue_growth"].fillna(0).clip(-200, 500)
 
         # 预计算分位数
         self._pct = {}
-        for col in ["roe_v", "pe_proxy", "log_size", "list_years", "debt_v", "dividend"]:
+        for col in ["roe_v", "pe_proxy", "log_size", "list_years", "debt_v",
+                     "cf_quality", "rev_growth_v", "net_margin"]:
             vals = self.df[col].dropna()
             if len(vals) > 0:
                 self._pct[col] = {
@@ -243,29 +258,25 @@ class FundamentalScorer:
     # ============================================================
     #  7. 成长质量 (0-3) — ROE + 低负债 + 营收
     # ============================================================
-    def _score_growth_quality(self, roe: float, debt_ratio: float) -> int:
-        """
-        重构v1的quality_composite: 不再奖励"分红+利润+现金流"
-        (那是价值股的配方)，改为奖励"ROE+低负债" (成长质量)。
-
-        3分: 高ROE(P50+) + 低负债(P50-) = 有质量的成长
-        2分: 高ROE + 高负债 或 中ROE + 低负债
-        1分: 中ROE + 中负债
-        0分: 低ROE + 高负债
-        """
+    def _score_growth_quality(self, roe: float, debt_ratio: float,
+                              rev_growth: float, cf_quality: float) -> int:
+        """v3: ROE + 低负债 + 营收增长 + 正现金流 = 有质量的成长"""
         pct_roe = self._pct.get("roe_v", {})
         pct_debt = self._pct.get("debt_v", {})
+        pct_growth = self._pct.get("rev_growth_v", {})
+        pct_cf = self._pct.get("cf_quality", {})
 
         high_roe = (not pd.isna(roe) and roe >= pct_roe.get(50, 0.05))
         low_debt = (not pd.isna(debt_ratio) and debt_ratio <= pct_debt.get(50, 0.5))
-        mid_roe = (not pd.isna(roe) and roe >= pct_roe.get(25, 0.01))
-        mid_debt = (not pd.isna(debt_ratio) and debt_ratio <= pct_debt.get(75, 0.75))
+        pos_growth = (not pd.isna(rev_growth) and rev_growth >= pct_growth.get(50, 0))
+        pos_cf = (not pd.isna(cf_quality) and cf_quality > 0)
 
-        if high_roe and low_debt:
+        score = sum([high_roe, low_debt, pos_growth, pos_cf])
+        if score >= 4:
             return 3
-        elif high_roe or low_debt:
+        elif score >= 2:
             return 2
-        elif mid_roe and mid_debt:
+        elif score >= 1:
             return 1
         return 0
 
@@ -290,17 +301,18 @@ class FundamentalScorer:
         pe = row.get("pe_proxy", np.nan)
         log_size = row.get("log_size", np.nan)
         list_yrs = row.get("list_years", np.nan)
-        dividend = row.get("dividend", np.nan)
         debt = row.get("debt_v", np.nan)
+        rev_growth = row.get("rev_growth_v", np.nan)
+        cf = row.get("cf_quality", np.nan)
 
         sub_scores = {
             "roe_quality": self._score_roe(roe),
             "valuation": self._score_valuation(pe),
             "size_premium": self._score_size(log_size),
             "growth_stage": self._score_growth_stage(list_yrs),
-            "reinvestment": self._score_reinvestment(dividend),
+            "reinvestment": 1,  # 无分红数据，给中性
             "financial_health": self._score_financial_health(debt),
-            "growth_quality": self._score_growth_quality(roe, debt),
+            "growth_quality": self._score_growth_quality(roe, debt, rev_growth, cf),
         }
 
         total = sum(sub_scores.values())
