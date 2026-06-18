@@ -497,3 +497,186 @@ async def get_backtest_results(limit: int = 20):
             "created_at": str(r.created_at),
         })
     return {"success": True, "data": data}
+
+
+# ===== 批量回测 API =====
+
+@router.post("/backtest/batch/run")
+async def run_batch_backtest(req: BatchBacktestRequest):
+    """批量回测: 多策略 × 多股票"""
+    try:
+        from ...config import load_strategies
+        import importlib
+
+        strategies_config = load_strategies()
+
+        # 加载策略类
+        strategy_classes = []
+        for s_name in req.strategy_names:
+            found = False
+            for s in strategies_config.get("strategies", []):
+                if s["name"] == s_name and s.get("strategy_type", "signal") == "signal":
+                    module_path, class_name = s["class_path"].rsplit(".", 1)
+                    module = importlib.import_module(module_path)
+                    strategy_classes.append(getattr(module, class_name))
+                    found = True
+                    break
+            if not found:
+                raise ValueError(f"未找到策略: {s_name}")
+
+        engine = BacktestEngine()
+        reports = engine.run_batch(
+            strategy_classes=strategy_classes,
+            stock_codes=req.stock_codes,
+            start_date=date.fromisoformat(req.start_date),
+            end_date=date.fromisoformat(req.end_date),
+            initial_capital=req.initial_capital,
+        )
+
+        # 排序并返回排名
+        ranked = engine.rank_batch_results(reports, sort_by="sharpe_ratio")
+
+        return {"success": True, "total": len(ranked), "data": ranked}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== 参数搜索 API =====
+
+class ParamSearchRequest(BaseModel):
+    strategy_name: str
+    stock_code: str
+    start_date: str
+    end_date: str
+    initial_capital: float = 100000
+    param_spec: dict  # {"fast_period": [3,5,10], "slow_period": [15,26,40]}
+    mode: str = "grid"       # grid / random / bayesian
+    metric: str = "sharpe_ratio"
+    workers: int = 4
+    n_iter: int = 50         # random/bayesian 采样次数
+
+
+@router.post("/backtest/paramsearch/run")
+async def run_param_search(req: ParamSearchRequest):
+    """参数搜索: 网格/随机/贝叶斯"""
+    try:
+        from ...config import load_strategies
+        import importlib
+
+        strategies_config = load_strategies()
+        strategy_class = None
+        for s in strategies_config.get("strategies", []):
+            if s["name"] == req.strategy_name and s.get("strategy_type", "signal") == "signal":
+                module_path, class_name = s["class_path"].rsplit(".", 1)
+                module = importlib.import_module(module_path)
+                strategy_class = getattr(module, class_name)
+                break
+
+        if strategy_class is None:
+            raise ValueError(f"未找到策略: {req.strategy_name}")
+
+        engine = BacktestEngine()
+        start_date = date.fromisoformat(req.start_date)
+        end_date = date.fromisoformat(req.end_date)
+
+        if req.mode == "grid":
+            results = engine.run_grid_search(
+                strategy_class=strategy_class,
+                stock_code=req.stock_code,
+                start_date=start_date,
+                end_date=end_date,
+                param_grid=req.param_spec,
+                metric=req.metric,
+                max_workers=req.workers,
+            )
+        elif req.mode == "random":
+            param_ranges = {}
+            for k, vals in req.param_spec.items():
+                if all(isinstance(v, int) for v in vals):
+                    param_ranges[k] = (min(vals), max(vals), "int")
+                elif all(isinstance(v, float) for v in vals):
+                    param_ranges[k] = (min(vals), max(vals), "float")
+                else:
+                    param_ranges[k] = (vals, vals, "categorical")
+            results = engine.run_random_search(
+                strategy_class=strategy_class,
+                stock_code=req.stock_code,
+                start_date=start_date,
+                end_date=end_date,
+                param_ranges=param_ranges,
+                n_iter=req.n_iter,
+                metric=req.metric,
+                max_workers=req.workers,
+            )
+        elif req.mode == "bayesian":
+            param_ranges = {}
+            for k, vals in req.param_spec.items():
+                if all(isinstance(v, int) for v in vals):
+                    param_ranges[k] = (min(vals), max(vals), "int")
+                elif all(isinstance(v, float) for v in vals):
+                    param_ranges[k] = (min(vals), max(vals), "float")
+                else:
+                    param_ranges[k] = (vals, vals, "categorical")
+            results = engine.run_bayesian_search(
+                strategy_class=strategy_class,
+                stock_code=req.stock_code,
+                start_date=start_date,
+                end_date=end_date,
+                param_ranges=param_ranges,
+                n_iter=req.n_iter,
+                metric=req.metric,
+                max_workers=req.workers,
+            )
+        else:
+            raise ValueError(f"未知搜索模式: {req.mode}")
+
+        return {"success": True, "total": len(results), "data": results}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# ===== 股票池筛选 API =====
+
+@router.get("/stockpool/list")
+async def get_stock_pool(
+    exclude_st: bool = Query(True),
+    industry: Optional[str] = Query(None),
+    min_mcap: Optional[float] = Query(None),
+    max_mcap: Optional[float] = Query(None),
+    max_stocks: Optional[int] = Query(None),
+):
+    """获取符合条件的股票池"""
+    repo = DataRepository()
+    df = repo.get_stock_list()
+
+    if exclude_st:
+        df = df[~df["name"].str.contains("ST|退市", na=False)]
+
+    if industry and "industry" in df.columns:
+        df = df[df["industry"].str.contains(industry, na=False)]
+
+    if min_mcap and "mcap_yi" in df.columns:
+        df = df[df["mcap_yi"] >= min_mcap]
+
+    if max_mcap and "mcap_yi" in df.columns:
+        df = df[df["mcap_yi"] <= max_mcap]
+
+    codes = df["code"].tolist()
+    names = df["name"].tolist()
+    industries = df["industry"].tolist() if "industry" in df.columns else []
+
+    if max_stocks:
+        codes = codes[:max_stocks]
+        names = names[:max_stocks]
+
+    return {
+        "success": True,
+        "total": len(codes),
+        "data": [
+            {"code": c, "name": n, "industry": industries[i] if industries else ""}
+            for i, (c, n) in enumerate(zip(codes, names))
+        ],
+    }

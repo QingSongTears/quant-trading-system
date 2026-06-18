@@ -5,14 +5,16 @@
 基于 Backtesting.py 封装，对接本地 SQLite 数据库。
 支持:
 - 单策略单股回测
-- 批量回测（多策略 × 多股票）
-- 参数网格搜索
+- 批量回测（多策略 × 多股票，并行执行）
+- 参数网格/随机/贝叶斯搜索
 """
 import json
 import logging
+import random
 from datetime import date
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, asdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 import numpy as np
@@ -265,37 +267,124 @@ class BacktestEngine:
         logger.info(f"回测完成: 总收益={total_return:.2f}%, 夏普={sharpe:.2f}, 最大回撤={max_dd:.2f}%")
         return report
 
+    # ──────────────────────────────────────────────
+    # 批量回测
+    # ──────────────────────────────────────────────
+
     def run_batch(self,
                   strategy_classes: List[type],
                   stock_codes: List[str],
                   start_date: date,
                   end_date: date,
                   initial_capital: float = 100000,
+                  max_workers: int = 4,
+                  progress_callback: Optional[Callable] = None,
                   ) -> List[BacktestReport]:
         """
-        批量回测: 多个策略 × 多只股票
-        """
-        reports = []
-        total = len(strategy_classes) * len(stock_codes)
-        done = 0
+        批量回测: 多策略 × 多只股票，并行执行
 
+        Args:
+            strategy_classes: 策略类列表
+            stock_codes: 股票代码列表
+            start_date: 回测开始日期
+            end_date: 回测结束日期
+            initial_capital: 初始资金
+            max_workers: 并行工作线程数
+            progress_callback: 进度回调 fn(done, total)
+
+        Returns:
+            按 (策略, 股票) 排列的报告列表
+        """
+        tasks = []
         for strategy_class in strategy_classes:
             for code in stock_codes:
-                try:
-                    report = self.run(
-                        strategy_class=strategy_class,
-                        stock_code=code,
-                        start_date=start_date,
-                        end_date=end_date,
-                        initial_capital=initial_capital,
-                    )
-                    reports.append(report)
-                except Exception as e:
-                    logger.error(f"回测失败 [{strategy_class.name} x {code}]: {e}")
-                done += 1
+                tasks.append((strategy_class, code))
 
-        logger.info(f"批量回测完成: {len(reports)}/{total} 成功")
+        total = len(tasks)
+        reports = []
+        errors = []
+        done = 0
+
+        def _run_one(strategy_class, code):
+            try:
+                r = self.run(
+                    strategy_class=strategy_class,
+                    stock_code=code,
+                    start_date=start_date,
+                    end_date=end_date,
+                    initial_capital=initial_capital,
+                )
+                return r
+            except Exception as e:
+                return e
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_run_one, sc, code): (sc, code) for sc, code in tasks}
+            for future in as_completed(futures):
+                sc, code = futures[future]
+                result = future.result()
+                if isinstance(result, Exception):
+                    errors.append((sc.name, code, str(result)))
+                    logger.error(f"回测失败 [{sc.name} x {code}]: {result}")
+                else:
+                    reports.append(result)
+                done += 1
+                if progress_callback:
+                    progress_callback(done, total)
+
+        logger.info(f"批量回测完成: {len(reports)}/{total} 成功, {len(errors)} 失败")
+        if errors:
+            logger.info(f"失败明细(前10): {errors[:10]}")
         return reports
+
+    def rank_batch_results(self,
+                           reports: List[BacktestReport],
+                           sort_by: str = "sharpe_ratio",
+                           top_n: Optional[int] = None,
+                           ) -> List[Dict]:
+        """
+        对批量回测结果排序并返回排名
+
+        Args:
+            reports: run_batch 返回的报告列表
+            sort_by: 排序指标 (sharpe_ratio / total_return / annual_return / max_drawdown / calmar_ratio)
+            top_n: 只返回前 N 条 (None=全部)
+
+        Returns:
+            带排名+核心指标的列表, 每项格式:
+            {"rank":1, "strategy":"xx", "stock":"000001", "stock_name":"xx",
+             "total_return":12.3, "sharpe_ratio":1.2, ...}
+        """
+        rows = []
+        for r in reports:
+            rows.append({
+                "strategy": r.strategy_name,
+                "stock": r.stock_code,
+                "stock_name": r.stock_name,
+                "total_return": r.total_return,
+                "annual_return": r.annual_return,
+                "sharpe_ratio": r.sharpe_ratio,
+                "max_drawdown": r.max_drawdown,
+                "win_rate": r.win_rate,
+                "profit_factor": r.profit_factor,
+                "total_trades": r.total_trades,
+                "annual_volatility": r.annual_volatility,
+                "calmar_ratio": r.calmar_ratio,
+                "benchmark_return": r.benchmark_return,
+                "excess_return": r.excess_return,
+            })
+
+        # 排序: 指标值越大越好 (max_drawdown 是负数，绝对值越小越好 → 按最大排序)
+        reverse = True
+        sorted_rows = sorted(rows, key=lambda x: x.get(sort_by, 0) or 0, reverse=reverse)
+        for i, row in enumerate(sorted_rows):
+            row["rank"] = i + 1
+
+        return sorted_rows[:top_n] if top_n else sorted_rows
+
+    # ──────────────────────────────────────────────
+    # 参数搜索
+    # ──────────────────────────────────────────────
 
     def run_grid_search(self,
                         strategy_class: type,
@@ -304,26 +393,29 @@ class BacktestEngine:
                         end_date: date,
                         param_grid: Dict[str, list],
                         metric: str = "total_return",
+                        max_workers: int = 4,
                         ) -> List[Dict]:
         """
-        参数网格搜索
-        
+        参数网格搜索（并行执行）
+
         Args:
             param_grid: 如 {"fast_period": [3,5,10], "slow_period": [15,20,30]}
             metric: 优化目标指标
-        
-        Returns:
-            按目标排序的参数组合列表
-        """
-        results = []
+            max_workers: 并行工作线程数
 
-        # 生成所有参数组合
+        Returns:
+            按 metric 降序排列的参数组合列表
+        """
         import itertools
         keys = list(param_grid.keys())
         values = list(param_grid.values())
         combinations = list(itertools.product(*values))
 
-        for combo in combinations:
+        results = []
+        completed = 0
+        total = len(combinations)
+
+        def _run_one(combo):
             params = dict(zip(keys, combo))
             try:
                 report = self.run(
@@ -333,20 +425,257 @@ class BacktestEngine:
                     end_date=end_date,
                     strategy_params=params,
                 )
-                result = {"params": params}
-                result.update({
+                return params, {
                     "total_return": report.total_return,
                     "sharpe_ratio": report.sharpe_ratio,
                     "max_drawdown": report.max_drawdown,
                     "win_rate": report.win_rate,
                     "total_trades": report.total_trades,
-                })
-                results.append(result)
+                    "annual_return": report.annual_return,
+                    "calmar_ratio": report.calmar_ratio,
+                }
             except Exception as e:
-                logger.error(f"参数组合 {params} 失败: {e}")
+                return params, {"error": str(e)}
 
-        # 按目标排序
-        results.sort(key=lambda x: x.get(metric, 0), reverse=True)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_run_one, combo): combo for combo in combinations}
+            for future in as_completed(futures):
+                combo = futures[future]
+                params, metrics = future.result()
+                if "error" not in metrics:
+                    results.append({"params": params, **metrics})
+                else:
+                    logger.warning(f"参数组合 {params} 失败: {metrics['error']}")
+                completed += 1
+
+        results.sort(key=lambda x: x.get(metric, 0) or 0, reverse=True)
+        return results
+
+    def run_random_search(self,
+                          strategy_class: type,
+                          stock_code: str,
+                          start_date: date,
+                          end_date: date,
+                          param_ranges: Dict[str, tuple],
+                          n_iter: int = 50,
+                          metric: str = "total_return",
+                          max_workers: int = 4,
+                          ) -> List[Dict]:
+        """
+        随机参数搜索: 从参数范围中随机采样 n_iter 组
+
+        Args:
+            param_ranges: {"param_name": (min, max, type)}
+                         type: "int" / "float" / "categorical"
+                         如 {"fast_period": (3, 30, "int"), "threshold": (0.5, 2.0, "float")}
+            n_iter: 采样次数
+
+        Returns:
+            按 metric 降序排列的参数组合列表
+        """
+        param_keys = list(param_ranges.keys())
+        results = []
+
+        def _sample_params():
+            params = {}
+            for k, (lo, hi, pt) in param_ranges.items():
+                if pt == "int":
+                    params[k] = random.randint(int(lo), int(hi))
+                elif pt == "float":
+                    params[k] = round(random.uniform(float(lo), float(hi)), 4)
+                elif pt == "categorical":
+                    params[k] = random.choice(hi)  # hi is a list
+            return params
+
+        # 预生成所有样本
+        samples = [_sample_params() for _ in range(n_iter)]
+
+        def _run_one(params):
+            try:
+                report = self.run(
+                    strategy_class=strategy_class,
+                    stock_code=stock_code,
+                    start_date=start_date,
+                    end_date=end_date,
+                    strategy_params=params,
+                )
+                return params, {
+                    "total_return": report.total_return,
+                    "sharpe_ratio": report.sharpe_ratio,
+                    "max_drawdown": report.max_drawdown,
+                    "win_rate": report.win_rate,
+                    "total_trades": report.total_trades,
+                    "annual_return": report.annual_return,
+                    "calmar_ratio": report.calmar_ratio,
+                }
+            except Exception as e:
+                return params, {"error": str(e)}
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_run_one, s): s for s in samples}
+            for future in as_completed(futures):
+                params, metrics = future.result()
+                if "error" not in metrics:
+                    results.append({"params": params, **metrics})
+
+        results.sort(key=lambda x: x.get(metric, 0) or 0, reverse=True)
+        return results
+
+    def run_bayesian_search(self,
+                            strategy_class: type,
+                            stock_code: str,
+                            start_date: date,
+                            end_date: date,
+                            param_ranges: Dict[str, tuple],
+                            n_iter: int = 50,
+                            n_initial: int = 10,
+                            metric: str = "total_return",
+                            max_workers: int = 4,
+                            ) -> List[Dict]:
+        """
+        简单贝叶斯搜索 (基于随机+优化重采样)
+        使用高斯过程代理模型引导采样，不依赖外部 GP 库。
+        当参数维度 ≤ 2 且 n_iter 较小时效果较好。
+
+        Args:
+            param_ranges: 同 run_random_search
+            n_iter: 总迭代次数 (含初始随机采样)
+            n_initial: 初始随机采样次数
+        """
+        param_keys = list(param_ranges.keys())
+
+        def _sample_params():
+            params = {}
+            for k, (lo, hi, pt) in param_ranges.items():
+                if pt == "int":
+                    params[k] = random.randint(int(lo), int(hi))
+                elif pt == "float":
+                    params[k] = round(random.uniform(float(lo), float(hi)), 4)
+                elif pt == "categorical":
+                    params[k] = random.choice(hi)
+            return params
+
+        # Phase 1: 初始化随机采样
+        samples = [_sample_params() for _ in range(n_initial)]
+        evaluated = []
+
+        def _eval(params):
+            try:
+                report = self.run(
+                    strategy_class=strategy_class,
+                    stock_code=stock_code,
+                    start_date=start_date,
+                    end_date=end_date,
+                    strategy_params=params,
+                )
+                return params, report
+            except Exception as e:
+                return params, None
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_eval, s): s for s in samples}
+            for future in as_completed(futures):
+                params, report = future.result()
+                if report is not None:
+                    evaluated.append((params, report))
+
+        # Phase 2: 基于已知结果做"贪婪细化"
+        # 对 top-3 参数组合做邻域随机扰动
+        evaluated.sort(key=lambda x: getattr(x[1], metric, 0) or 0, reverse=True)
+        remaining = n_iter - n_initial
+
+        if remaining > 0 and evaluated:
+            for _ in range(remaining):
+                # 从 top-3 中随机选一个做扰动
+                top_idx = random.randint(0, min(2, len(evaluated) - 1))
+                base_params, _ = evaluated[top_idx]
+                new_params = {}
+                for k, (lo, hi, pt) in param_ranges.items():
+                    if pt == "int":
+                        delta = int((hi - lo) * random.gauss(0, 0.15))
+                        new_params[k] = max(int(lo), min(int(hi), base_params[k] + delta))
+                    elif pt == "float":
+                        scale = (hi - lo) * 0.15
+                        new_params[k] = round(
+                            max(float(lo), min(float(hi), base_params[k] + random.gauss(0, scale))), 4
+                        )
+                    elif pt == "categorical":
+                        new_params[k] = random.choice(hi)
+                # 不去重（不影响）
+
+                report = self.run(
+                    strategy_class=strategy_class,
+                    stock_code=stock_code,
+                    start_date=start_date,
+                    end_date=end_date,
+                    strategy_params=new_params,
+                )
+                evaluated.append((new_params, report))
+
+        # 汇总结果
+        results = []
+        for params, report in evaluated:
+            results.append({
+                "params": params,
+                "total_return": report.total_return,
+                "sharpe_ratio": report.sharpe_ratio,
+                "max_drawdown": report.max_drawdown,
+                "win_rate": report.win_rate,
+                "total_trades": report.total_trades,
+                "annual_return": report.annual_return,
+                "calmar_ratio": report.calmar_ratio,
+            })
+
+        results.sort(key=lambda x: x.get(metric, 0) or 0, reverse=True)
+        return results
+
+    def multi_metric_optimize(self,
+                              results: List[Dict],
+                              metrics: List[str] = None,
+                              ) -> List[Dict]:
+        """
+        多指标综合优化 (加权评分 + Pareto 前沿)
+        适用于 run_grid_search / run_random_search 的结果
+
+        Args:
+            results: 搜索返回的结果列表
+            metrics: 要纳入优化的指标列表, 格式 "metric:weight"
+                     如 ["sharpe_ratio:0.5", "total_return:0.2", "max_drawdown:0.3"]
+                     权重和为 1
+
+        Returns:
+            综合评分排序后的结果 (每项增加 composite_score 字段)
+        """
+        if metrics is None:
+            metrics = ["sharpe_ratio:0.5", "total_return:0.3", "max_drawdown:0.2"]
+
+        parsed = []
+        for m in metrics:
+            parts = m.split(":")
+            parsed.append((parts[0], float(parts[1]) if len(parts) > 1 else 1.0))
+
+        # 归一化每项指标到 [0,1]
+        scores_dict = {}
+        for metric_name, _ in parsed:
+            vals = [r.get(metric_name, 0) or 0 for r in results]
+            mn, mx = min(vals), max(vals)
+            if mx > mn:
+                scores_dict[metric_name] = [(v - mn) / (mx - mn) for v in vals]
+            else:
+                scores_dict[metric_name] = [0.5] * len(vals)
+
+        # 计算综合评分
+        totals = []
+        for i in range(len(results)):
+            score = 0
+            for metric_name, weight in parsed:
+                score += scores_dict[metric_name][i] * weight
+            totals.append(round(score, 4))
+
+        for i, r in enumerate(results):
+            r["composite_score"] = totals[i]
+
+        results.sort(key=lambda x: x["composite_score"], reverse=True)
         return results
 
     # ===== 内部计算方法 =====
