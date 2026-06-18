@@ -188,8 +188,11 @@ th[data-tip]:hover::after { font-weight:400; }
     <div class="panel" id="stockPanel">
       <h3>📈 单股评分走势 <span id="stockTitle" style="font-weight:400;color:var(--dim);font-size:0.8rem"></span></h3>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px" id="dimToggles"></div>
-      <canvas id="stockChart" width="800" height="300" style="width:100%;border-radius:6px;background:#111318"></canvas>
-      <div style="display:flex;gap:12px;margin-top:8px;font-size:0.7rem;color:var(--dim);flex-wrap:wrap" id="stockStats"></div>
+      <canvas id="stockChart" width="800" height="300" style="width:100%;border-radius:6px;background:#111318;margin-bottom:6px"></canvas>
+      <div style="display:flex;gap:12px;margin-top:4px;font-size:0.7rem;color:var(--dim);flex-wrap:wrap" id="stockStats"></div>
+      <hr style="border-color:var(--border);margin:12px 0 8px">
+      <h3 style="font-size:0.82rem;margin-bottom:8px">🕯️ 日K线 (近120日)</h3>
+      <canvas id="klineChart" width="800" height="280" style="width:100%;border-radius:6px;background:#111318"></canvas>
     </div>
   </section>
 </main>
@@ -565,21 +568,31 @@ function initConfigs() { refreshConfigSelect(); }
 // ── 单股查询 ──
 const DIM_COLORS = ['#4fc3f7','#66bb6a','#ffa726','#ef5350','#ab47bc','#26c6da','#78909c'];
 let stockChartData = null;
+let stockKlineData = null;
 let visibleDims = {};
 
 async function loadStock() {
   let code = document.getElementById('stockCode').value.trim();
   if (!code) return;
   try {
-    let r = await fetch(API+'/stock/'+code);
-    if (!r.ok) { alert('未找到该股票 ('+code+')'); return; }
-    let data = await r.json();
+    let [r1, r2] = await Promise.all([
+      fetch(API+'/stock/'+code),
+      fetch(API+'/stock/'+code+'/kline')
+    ]);
+    if (!r1.ok) { alert('未找到该股票 ('+code+')'); return; }
+    let data = await r1.json();
     stockChartData = data;
     document.getElementById('stockTitle').textContent = data.code;
     document.getElementById('stockPanel').style.display = 'block';
     buildDimToggles(data);
     drawChart();
     computeStockStats(data);
+    // K线
+    if (r2.ok) {
+      let kl = await r2.json();
+      stockKlineData = kl;
+      drawKline(kl);
+    }
   } catch(e) { alert('查询失败: '+e.message); }
 }
 
@@ -675,6 +688,112 @@ function computeStockStats(data) {
     html += `<span style="color:${DIM_COLORS[di]}">${d}: 最新${latest.toFixed(1)}/均值${avg} ${sign}</span>`;
   });
   document.getElementById('stockStats').innerHTML = html;
+}
+
+function drawKline(data) {
+  let canvas = document.getElementById('klineChart');
+  let ctx = canvas.getContext('2d');
+  let dpr = window.devicePixelRatio || 1;
+  let rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = 280 * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = '280px';
+  ctx.scale(dpr, dpr);
+  let W = rect.width, H = 280;
+  ctx.clearRect(0, 0, W, H);
+  if (!data || !data.dates || data.dates.length < 2) return;
+
+  let n = data.dates.length;
+  let pad = {l:55, r:20, t:25, b:40};
+  let cw = W - pad.l - pad.r, ch = H - pad.t - pad.b;
+  let barW = Math.max(1, Math.floor(cw / n * 0.7));
+  let gap = Math.floor(cw / n);
+
+  // 价格范围
+  let allPrices = data.high.concat(data.low);
+  let minP = Math.min(...allPrices), maxP = Math.max(...allPrices);
+  let pr = maxP - minP || 1;
+  minP -= pr * 0.03; maxP += pr * 0.03;
+
+  // 网格
+  ctx.strokeStyle = '#1a1d27'; ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    let y = pad.t + (ch/4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W-pad.r, y); ctx.stroke();
+    ctx.fillStyle = '#555'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText((maxP - (pr/4)*i).toFixed(2), pad.l-6, y+4);
+  }
+
+  // X轴日期
+  ctx.fillStyle = '#555'; ctx.textAlign = 'center';
+  let step = Math.max(1, Math.floor(n/8));
+  for (let i = 0; i < n; i += step) {
+    let x = pad.l + gap * i + gap/2;
+    ctx.fillText(data.dates[i].slice(5), x, H-pad.b+16);
+  }
+
+  // 蜡烛图
+  for (let i = 0; i < n; i++) {
+    let o = data.open[i], h = data.high[i], l = data.low[i], c = data.close[i];
+    let isGreen = c >= o;
+    let color = isGreen ? '#ef5350' : '#26a69a'; // A股红涨绿跌
+    let x = pad.l + gap * i + gap/2 - barW/2;
+
+    // 影线
+    let hiY = pad.t + ch - ((h - minP) / (maxP-minP)) * ch;
+    let loY = pad.t + ch - ((l - minP) / (maxP-minP)) * ch;
+    ctx.strokeStyle = color; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x + barW/2, hiY); ctx.lineTo(x + barW/2, loY); ctx.stroke();
+
+    // 实体
+    let bodyTop = pad.t + ch - ((Math.max(o,c) - minP) / (maxP-minP)) * ch;
+    let bodyBot = pad.t + ch - ((Math.min(o,c) - minP) / (maxP-minP)) * ch;
+    let bodyH = Math.max(1, bodyBot - bodyTop);
+    ctx.fillStyle = color;
+    ctx.fillRect(x, bodyTop, barW, bodyH);
+  }
+
+  // 均线 MA5/MA20
+  let ma = (period) => {
+    let result = [];
+    for (let i = period-1; i < n; i++) {
+      let sum = 0;
+      for (let j = i-period+1; j <= i; j++) sum += data.close[j];
+      result.push({x: pad.l + gap*i + gap/2, y: sum/period});
+    }
+    return result;
+  };
+  [["MA5","#ffa726",5],["MA20","#4fc3f7",20]].forEach(([label,color,p]) => {
+    let pts = ma(p);
+    ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+    ctx.beginPath();
+    pts.forEach((pt,i) => {
+      let cy = pad.t + ch - ((pt.y - minP) / (maxP-minP)) * ch;
+      if (i===0) ctx.moveTo(pt.x, cy);
+      else ctx.lineTo(pt.x, cy);
+    });
+    ctx.stroke(); ctx.setLineDash([]);
+    // 标签
+    if (pts.length > 0) {
+      let last = pts[pts.length-1];
+      ctx.fillStyle = color; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(label, last.x+3, pad.t + ch - ((last.y - minP) / (maxP-minP)) * ch);
+    }
+  });
+
+  // 成交量柱 (底部30px)
+  let volMax = Math.max(...data.volume);
+  let volH = 35, volBase = H - pad.b - 8;
+  for (let i = 0; i < n; i++) {
+    let isGreen = data.close[i] >= data.open[i];
+    let vh = (data.volume[i] / volMax) * volH;
+    let x = pad.l + gap * i + gap/2 - barW/2;
+    ctx.fillStyle = isGreen ? 'rgba(239,83,80,0.3)' : 'rgba(38,166,154,0.3)';
+    ctx.fillRect(x, volBase - vh, barW, vh);
+  }
+  ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('VOL', pad.l-6, volBase - volH/2);
 }
 
 window.onload = init;
