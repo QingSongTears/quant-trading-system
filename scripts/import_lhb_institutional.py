@@ -69,7 +69,7 @@ def import_to_db(df, db_path=DB_PATH):
         date = row.get("上榜日", "")
         topic = row.get("题材", "")
         reason = row.get("原因", "")
-        net = float(row.get("净买额", 0) or 0
+        net = float(row.get("净买额", 0) or 0)
 
         # 买席位分析
         buy_names = []

@@ -22,7 +22,7 @@
 import sys
 from pathlib import Path
 _HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(_HERE.parents[3]))
+sys.path.insert(0, str(_HERE.parents[1]))  # src/strategies/stock_screener
 
 import pandas as pd
 import numpy as np
@@ -83,7 +83,8 @@ class FundFlowScorer:
         dg = [d for d in dragon_data if d.get('code') == code]
         if dg:
             net = sum(d.get('net_buy', 0) for d in dg[:5])
-            if net > 0 and (dg[0].get('buy_types', [''])[0] in ('机构', '游资'):
+            buy_types = [d.get('buy_types', [''])[0] for d in dg[:5]]
+            if net > 0 and any(t in ('机构', '游资') for t in buy_types):
                 pts += 4; detail['F3'] = f"龙虎净{net/1e8:.1f}亿"
         # F4: 龙虎榜席位质量 (满分3)
         if dg:

@@ -1,6 +1,7 @@
 """
-预计算全部7维评分并导出JSON，供HTML参数面板使用。
+预计算全部8维评分并导出JSON，供HTML参数面板使用。
 输出: data/all_7d_scores.json (由HTML面板加载)
+8维: 技术面、基本面、资金面、机构面、龙虎榜机构、情绪面、新闻面、筹码面
 """
 
 import sys, json
@@ -34,17 +35,47 @@ def main():
     df_sample["code"] = df_sample["code"].astype(str).str.zfill(6)
     unique_dates = sorted(df_sample["as_of_date"].unique())
 
-    # 加载后4维
+    # 加载后5维 (机构面、情绪面、新闻面、筹码面、龙虎榜机构)
     extra_dims = [
         ("institutional", "机构面"),
         ("sentiment", "情绪面"),
         ("news_event", "新闻面"),
         ("chip", "筹码面"),
+        ("lh_institutional", "龙虎榜机构面"),
     ]
 
     for dim_name, label in extra_dims:
         col_name = f"{dim_name}_weighted"
         print(f"\n{label} 评分...")
+        
+        # 龙虎榜机构面：直接从数据库聚合，不走batch_score
+        if dim_name == "lh_institutional":
+            import sqlite3
+            db_path = PROJECT_ROOT / "database" / "quant.db"
+            conn = sqlite3.connect(str(db_path))
+            # 对每个股票，取最近龙虎榜净买入汇总
+            lhb_df = pd.read_sql("""
+                SELECT code, SUM(inst_net) as total_inst_net
+                FROM lhb_institutional
+                GROUP BY code
+            """, conn)
+            conn.close()
+            lhb_df["code"] = lhb_df["code"].astype(str).str.zfill(6)
+            # 将 total_inst_net 转换为 0-20 分制评分
+            # 正净买入 → 高分，负净买入 → 低分
+            max_abs = lhb_df["total_inst_net"].abs().max()
+            if max_abs > 0:
+                lhb_df["lh_institutional_weighted"] = (
+                    (lhb_df["total_inst_net"] / max_abs * 10 + 10).clip(0, 20)
+                )
+            else:
+                lhb_df["lh_institutional_weighted"] = 10.0
+            lhb_df = lhb_df[["code", "lh_institutional_weighted"]]
+            df_sample = df_sample.merge(lhb_df, on="code", how="left")
+            df_sample["lh_institutional_weighted"] = df_sample["lh_institutional_weighted"].fillna(10.0)
+            print(f"  完成: {len(lhb_df)} 条")
+            continue
+        
         scorer = ScorerRegistry.get(dim_name, engine=engine)
         all_scores = []
 
@@ -74,8 +105,8 @@ def main():
     # 只保留需要的列，转为JSON
     keep_cols = ["code", "as_of_date", "year_month",
                  "tech_weighted", "fundam_weighted", "fund_weighted",
-                 "institutional_weighted", "sentiment_weighted",
-                 "news_event_weighted", "chip_weighted",
+                 "institutional_weighted", "lh_institutional_weighted",
+                 "sentiment_weighted", "news_event_weighted", "chip_weighted",
                  "ret_20d", "ret_40d", "ret_60d"]
 
     export = df_sample[keep_cols].copy()
