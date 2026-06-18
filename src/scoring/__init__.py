@@ -35,6 +35,7 @@ class ScorerRegistry:
         "news_event":    ("src.scoring.news_event_scorer",    "NewsEventScorer",     "消息面"),
         "sentiment":     ("src.scoring.sentiment_scorer",     "SentimentScorer",     "情绪面"),
         "institutional": ("src.scoring.institutional_scorer", "InstitutionalScorer", "机构持仓"),
+        "chip":          ("src.scoring.chip_scorer",          "ChipScorer",          "筹码面"),
     }
 
     # 单例缓存 (同一 engine 下复用实例)
