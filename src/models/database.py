@@ -193,3 +193,46 @@ class DataSourceMeta(Base):
         String(20), default="completed", comment="状态: downloading/completed/failed"
     )
     error_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="错误日志")
+
+
+class TechnicalIndicator(Base):
+    """
+    技术指标预计算表
+    数据来源: A股全市场数据/technical_indicators.csv — 预计算技术指标
+    避免每次回测重复计算相同指标，加速回测速度。
+
+    注意: MACD/RSI/KDJ 等指标需要一定的数据长度才能准确，
+    数据起始部分（前 20~60 天）的指标值为空或为初始值。
+    """
+    __tablename__ = "technical_indicators"
+    __table_args__ = (
+        UniqueConstraint("code", "trade_date", name="uq_ti_code_date"),
+        Index("idx_ti_code", "code"),
+        Index("idx_ti_date", "trade_date"),
+        Index("idx_ti_code_date", "code", "trade_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(10), nullable=False, comment="股票代码")
+    trade_date: Mapped[date] = mapped_column(Date, nullable=False, comment="交易日期")
+
+    # MACD (12, 26, 9)
+    macd_dif: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="MACD DIF线")
+    macd_dea: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="MACD DEA线")
+    macd_hist: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="MACD 柱状线")
+
+    # RSI
+    rsi14: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="RSI(14)")
+
+    # KDJ (9, 3, 3)
+    kdj_k: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="KDJ_K值")
+    kdj_d: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="KDJ_D值")
+    kdj_j: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="KDJ_J值")
+
+    # Bollinger Bands (20, 2)
+    boll_mid: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="布林带中轨(MA20)")
+    boll_upper: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="布林带上轨")
+    boll_lower: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="布林带下轨")
+
+    def __repr__(self):
+        return f"<TechnicalIndicator(code={self.code}, date={self.trade_date})>"
