@@ -339,8 +339,126 @@ def api_stock(code):
     })
 
 
-@app.route("/api/stock/<code>/kline")
-@app.route("/api/stock/<code>/kline/<period>")
+@app.route("/api/stock/<code>/backtest")
+def api_stock_backtest(code):
+    """单股历史回测: 基于七维评分策略 vs 买入持有"""
+    code = str(code).zfill(6)
+    import sqlite3, numpy as np
+
+    user_threshold = request.args.get("threshold", type=float)
+
+    # 获取该股票的评分数据
+    stock_data = [r for r in records if r.get("code") == code]
+    if len(stock_data) < 6:
+        return jsonify({"error": "数据不足"}), 404
+
+    stock_data.sort(key=lambda x: x.get("as_of_date", ""))
+
+    # 计算综合评分
+    dates = [r["as_of_date"] for r in stock_data]
+    combined = []
+    for r in stock_data:
+        vals = [r.get(d) or 0 for d in dim_cols]
+        combined.append(round(sum(vals)/len(vals), 1))
+
+    # 策略: 评分 >= 阈值买入, 评分 < 阈值卖出
+    threshold = user_threshold if user_threshold else round(np.median([c for c in combined if c > 0]), 1)
+
+    # 获取该股票的日线价格用于计算收益
+    db = PROJECT_ROOT / "database" / "quant.db"
+    conn = sqlite3.connect(str(db))
+    rows = conn.execute(
+        "SELECT trade_date, close FROM daily_price WHERE code=? ORDER BY trade_date",
+        (code,)
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return jsonify({"error": "无K线数据"}), 404
+
+    # 构建价格字典
+    price_dict = {r[0]: r[1] for r in rows}
+    all_dates = sorted(price_dict.keys())
+
+    # 策略回测: 在每个评分日检查信号
+    strategy_returns = []   # 持仓期收益
+    buy_hold_returns = []   # 同期买入持有收益
+    signals = []            # 买卖信号
+    equity_curve = []       # 策略权益曲线
+    bh_curve = []           # 买入持有权益曲线
+
+    position = 0  # 0=空仓, 1=持仓
+    entry_price = 0
+    initial_capital = 10000
+    cash = initial_capital
+    shares = 0
+
+    for i, (dt, score) in enumerate(zip(dates, combined)):
+        price = price_dict.get(dt)
+        if price is None or price <= 0:
+            continue
+
+        if position == 0 and score >= threshold:
+            # 买入信号
+            shares = int(cash / price / 100) * 100  # 整手
+            if shares > 0:
+                cost = shares * price
+                cash -= cost
+                position = 1
+                entry_price = price
+                signals.append({"date": dt, "type": "buy", "price": price, "score": score})
+
+        elif position == 1 and score < threshold:
+            # 卖出信号
+            sell_value = shares * price
+            cash += sell_value
+            ret = (price - entry_price) / entry_price * 100
+            strategy_returns.append(ret)
+
+            # 同期买入持有收益
+            bh_start = price_dict.get(dates[0])
+            if bh_start:
+                bh_ret = (price - bh_start) / bh_start * 100
+                buy_hold_returns.append(bh_ret)
+
+            signals.append({"date": dt, "type": "sell", "price": price, "score": score, "return": round(ret, 2)})
+            shares = 0
+            position = 0
+
+        # 权益曲线
+        total_value = cash + (shares * price if position == 1 else 0)
+        equity_curve.append({"date": dt, "value": round(total_value, 2)})
+        bh_value = (initial_capital / price_dict.get(dates[0], price)) * price
+        bh_curve.append({"date": dt, "value": round(bh_value, 2)})
+
+    # 统计
+    final_value = cash + (shares * price_dict.get(dates[-1], 0) if position == 1 else 0)
+    total_return = (final_value - initial_capital) / initial_capital * 100
+
+    # 买入持有最终值
+    start_price = price_dict.get(dates[0], 1) if dates else 1
+    bh_final = (initial_capital / start_price) * price_dict.get(dates[-1], start_price)
+    bh_return = (bh_final - initial_capital) / initial_capital * 100
+
+    win_count = sum(1 for r in strategy_returns if r > 0)
+    total_trades = len(strategy_returns)
+
+    return jsonify({
+        "code": code,
+        "threshold": round(threshold, 1),
+        "totalReturn": round(total_return, 2),
+        "bhReturn": round(bh_return, 2),
+        "excessReturn": round(total_return - bh_return, 2),
+        "trades": total_trades,
+        "winRate": round(win_count/total_trades*100, 1) if total_trades > 0 else 0,
+        "avgReturn": round(np.mean(strategy_returns), 2) if strategy_returns else 0,
+        "signals": signals,
+        "equityCurve": equity_curve,
+        "bhCurve": bh_curve,
+        "dates": dates,
+        "combined": combined,
+        "threshold": round(threshold, 1),
+    })
 def api_kline(code, period="day"):
     """K线查询: 优先网络实时数据, 断网降级到本地DB"""
     code = str(code).zfill(6)
