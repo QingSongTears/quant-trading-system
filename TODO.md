@@ -17,7 +17,7 @@
 | **chip_distribution** | 312KB | 5,250行: 筹码获利比例/平均成本/集中度 |
 | **block_trade** | 13MB | 大宗交易明细 |
 | **dragon_tiger** | 2.9MB | 龙虎榜明细 |
-| **technical_indicators** | 252MB | 技术指标全量(MA/MACD/KDJ/RSI/BOLL等) |
+| **technical_indicators** | 252MB | ✅ 已导入quant.db (301万行, 5206只股票) |
 
 **影响**: 之前 finance_snapshot_v2 手工计算的 ROE/EPS/BPS/debt_ratio 全部可替换为 finance_summary 真实数据。基本面评分器质量大幅提升。
 
@@ -91,7 +91,7 @@
 - lhb_institutional.csv → lhb_institutional表
 - dragon_tiger.csv → dragon_tiger表  
 - margin_trading.csv → margin_trading表
-- technical_indicators.csv (263MB) → 评估是否有增量价值
+- ✅ technical_indicators.csv (263MB) → 已导入quant.db (301万行, #62)
 - combined_3d_scores.csv (51MB) → 评估是否可用
 - block_trade.csv → 大宗交易表
 - shareholder_count.csv → 股东人数表
@@ -130,8 +130,8 @@
 | 🟢 P2 | [#59](https://github.com/QingSongTears/quant-trading-system/issues/59) | T3.2 行业暴露控制 | 降低尾部风险 | 中 | stock_profile提供行业分类 |
 | 🟢 P2 | [#60](https://github.com/QingSongTears/quant-trading-system/issues/60) | T5.1 参数扫描框架 | 系统化提升 | 中 | 网格搜索/贝叶斯 |
 | 🔵 P3 | [#61](https://github.com/QingSongTears/quant-trading-system/issues/61) | T2.3 龙虎榜机构评分 | +0.05~0.10 | 中 | dragon_tiger数据就绪 |
-| 🔵 P3 | [#62](https://github.com/QingSongTears/quant-trading-system/issues/62) | T4.1 技术指标表导入 | 加速回测 | 中 | 252MB预计算指标 |
-| 🔵 P3 | [#63](https://github.com/QingSongTears/quant-trading-system/issues/63) | T5.2 Walk-Forward | 验证稳健性 | 中 | 滚动窗口验证 |
+| 🔵 P3 | [#62](https://github.com/QingSongTears/quant-trading-system/issues/62) | T4.1 技术指标表导入 | 加速回测 | 中 | ✅ 已导入 (301万行) |
+| 🔵 P3 | [#63](https://github.com/QingSongTears/quant-trading-system/issues/63) | T5.2 Walk-Forward | 验证稳健性 | 中 | ✅ 已关闭 |
 
 ---
 
@@ -150,4 +150,4 @@
 
 ---
 
-*最后更新: 2026-06-17*
+*最后更新: 2026-06-18*

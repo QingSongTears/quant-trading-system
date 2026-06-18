@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, func, text
 from sqlalchemy.orm import Session, joinedload
 
 from ..config import get_config, get_db_url
-from .database import Base, StockBasic, DailyPrice, BenchmarkData, StrategyConfig, BacktestResult, DataSourceMeta
+from .database import Base, StockBasic, DailyPrice, BenchmarkData, StrategyConfig, BacktestResult, DataSourceMeta, TechnicalIndicator
 
 
 class DataRepository:
@@ -230,3 +230,45 @@ class DataRepository:
     def get_all_stock_basics(self) -> pd.DataFrame:
         """获取所有股票基本信息"""
         return self.get_stock_list()
+
+    # ===== 技术指标 =====
+
+    def get_technical_indicators(self, code: str, start: date, end: date) -> pd.DataFrame:
+        """
+        获取指定股票在日期范围内的预计算技术指标
+
+        Returns:
+            DataFrame with columns: trade_date, macd_dif, macd_dea, macd_hist,
+            rsi14, kdj_k, kdj_d, kdj_j, boll_mid, boll_upper, boll_lower
+        """
+        query = f"""
+            SELECT trade_date, macd_dif, macd_dea, macd_hist,
+                   rsi14, kdj_k, kdj_d, kdj_j,
+                   boll_mid, boll_upper, boll_lower
+            FROM technical_indicators
+            WHERE code = '{code}'
+              AND trade_date >= '{start}'
+              AND trade_date <= '{end}'
+            ORDER BY trade_date ASC
+        """
+        df = pd.read_sql(query, self.engine)
+        if not df.empty:
+            df["trade_date"] = pd.to_datetime(df["trade_date"])
+            df.set_index("trade_date", inplace=True)
+        return df
+
+    def get_technical_indicator_coverage(self) -> dict:
+        """获取技术指标数据覆盖概览"""
+        with self.get_session() as session:
+            total_records = session.query(func.count(TechnicalIndicator.id)).scalar()
+            total_stocks = session.query(func.count(
+                func.distinct(TechnicalIndicator.code)
+            )).scalar()
+            min_date = session.query(func.min(TechnicalIndicator.trade_date)).scalar()
+            max_date = session.query(func.max(TechnicalIndicator.trade_date)).scalar()
+
+        return {
+            "total_records": total_records,
+            "total_stocks": total_stocks,
+            "date_range": {"start": min_date, "end": max_date}
+        }
