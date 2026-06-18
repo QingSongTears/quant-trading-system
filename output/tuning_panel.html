@@ -67,6 +67,26 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
 .chip-row .dim-ic { width:auto; font-size:0.7rem; padding:2px 6px; border-radius:4px; }
 .chip-row .dim-ic.pos { background:#0d2818; }
 .chip-row .dim-ic.neg { background:#281818; }
+
+/* ── Tooltip ── */
+[data-tip] { position:relative; cursor:help; border-bottom:1px dotted var(--dim); }
+[data-tip]:hover::after {
+  content:attr(data-tip);
+  position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+  background:#2a2a35; color:var(--text); font-size:0.72rem; font-weight:400;
+  padding:6px 12px; border-radius:6px; white-space:nowrap; z-index:999;
+  border:1px solid var(--border); box-shadow:0 4px 12px rgba(0,0,0,.4);
+  pointer-events:none; line-height:1.4;
+}
+th[data-tip]:hover::after { font-weight:400; }
+
+/* ── 图例卡片 ── */
+.legend { display:flex; gap:16px; flex-wrap:wrap; font-size:0.72rem; color:var(--dim); padding:8px 12px; background:#111318; border-radius:6px; margin-bottom:12px; }
+.legend-item { display:flex; align-items:center; gap:4px; }
+.legend-dot { width:8px; height:8px; border-radius:50%; }
+.legend-dot.good { background:var(--green); }
+.legend-dot.ok { background:var(--yellow); }
+.legend-dot.bad { background:var(--red); }
 </style>
 </head>
 <body>
@@ -113,12 +133,18 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
 
   <!-- 右侧：结果 -->
   <section>
+    <div class="legend">
+      <div class="legend-item"><span class="legend-dot good"></span> IC>0.05 有效</div>
+      <div class="legend-item"><span class="legend-dot ok"></span> IC>0 微弱正向</div>
+      <div class="legend-item"><span class="legend-dot bad"></span> IC<0 负相关</div>
+      <span style="margin-left:auto;font-size:0.65rem">💡 鼠标悬停表头查看指标说明</span>
+    </div>
     <div id="topMetrics" class="metrics-grid"></div>
 
     <div class="panel">
       <h3>🏆 组合 IC 排名 (60日)</h3>
       <table class="combo-table">
-        <thead><tr><th>#</th><th>组合</th><th>IC(60d)</th><th>IC(40d)</th><th>IC(20d)</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>组合</th><th data-tip="评分与未来60日收益的Spearman相关系数, >0.05有效, >0.08优秀">IC(60d)</th><th data-tip="评分与未来40日收益的相关系数">IC(40d)</th><th data-tip="评分与未来20日收益的相关系数, 短期信号噪声较大">IC(20d)</th><th></th></tr></thead>
         <tbody id="comboBody">
           <tr><td colspan="6" style="text-align:center;color:var(--dim);padding:30px">👆 调整权重后点击「运行」</td></tr>
         </tbody>
@@ -210,7 +236,7 @@ function buildSliders() {
       <input type="range" class="dim-slider" id="slider_${d.id}" min="0" max="2" step="0.05" value="${d.defW}"
              oninput="onSliderChange('${d.id}', this.value)">
       <span class="dim-value" id="val_${d.id}">${d.defW.toFixed(1)}</span>
-      <span class="dim-ic ${icCls}" id="ic_${d.id}">${d.defIC}</span>
+      <span class="dim-ic ${icCls}" id="ic_${d.id}" data-tip="该维度独立60日IC, 回测后更新为实时值">${d.defIC}</span>
     </div>`;
   });
   document.getElementById('sliders').innerHTML = html;
@@ -352,7 +378,7 @@ function hideProgress() {
 
 // ── 渲染结果 ──
 function renderResults(data) {
-  // 维度IC
+  // 更新各维度实时IC tooltip
   if (data.dimICs) {
     for (let id in data.dimICs) {
       let icEl = document.getElementById('ic_'+id);
@@ -361,6 +387,7 @@ function renderResults(data) {
         if (v != null) {
           icEl.textContent = (v>=0?'+':'') + v.toFixed(3);
           icEl.className = 'dim-ic ' + (v>=0?'pos':'neg');
+          icEl.setAttribute('data-tip', `该维度独立60日IC=${(v>=0?'+':'')+v.toFixed(3)}, 回测后实时更新`);
         }
       }
     }
@@ -368,14 +395,14 @@ function renderResults(data) {
 
   // 顶部指标
   let top = '';
-  if (data.bestCombo && data.combos && data.combos.length > 0) {
-    top += `<div class="metric best"><div class="val">${data.bestCombo}</div><div class="lbl">最优组合</div></div>`;
+    if (data.bestCombo && data.combos && data.combos.length > 0) {
+    top += `<div class="metric best"><div class="val" data-tip="当前权重下60日IC最高的维度组合">${data.bestCombo}</div><div class="lbl">最优组合</div></div>`;
     let best = data.combos[0];
     if (best.ic60 != null) {
-      top += `<div class="metric"><div class="val" style="color:${best.ic60>0?'var(--green)':'var(--red)'}">${best.ic60.toFixed(4)}</div><div class="lbl">IC(60d)</div></div>`;
+      top += `<div class="metric"><div class="val" style="color:${best.ic60>0?'var(--green)':'var(--red)'}" data-tip="Spearman秩相关系数, 衡量评分排序与收益排序的一致性">${best.ic60.toFixed(4)}</div><div class="lbl">IC(60d)</div></div>`;
     }
     if (data.spread != null) {
-      top += `<div class="metric"><div class="val">${data.spread>0?'+':''}${data.spread}%</div><div class="lbl">Q5-Q1利差</div></div>`;
+      top += `<div class="metric"><div class="val" data-tip="最高分组(Q5)与最低分组(Q1)的60日平均收益差, 正值=高分跑赢低分">${data.spread>0?'+':''}${data.spread}%</div><div class="lbl">Q5-Q1利差</div></div>`;
     }
   }
   document.getElementById('topMetrics').innerHTML = top || '';
