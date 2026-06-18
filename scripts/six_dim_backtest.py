@@ -60,9 +60,7 @@ def main():
         if na_rate > 0:
             print(f"  {dim_col} 缺失率 {na_rate*100:.0f}%, 填{fill_val:.1f}")
             df_sample[dim_col] = df_sample[dim_col].fillna(fill_val)
-    df_sample["fundam_weighted"] = df_sample["fundam_weighted"].fillna(
-        df_sample["fundam_weighted"].median()
-    )
+    # 基本面v3将在后续循环中重新计算，旧的fundam_weighted不填默认值
 
     # ── 后三维评分（含基本面v3重算）──
     unique_dates = sorted(df_sample["as_of_date"].unique())
@@ -109,6 +107,9 @@ def main():
         if all_scores:
             dim_df = pd.concat(all_scores, ignore_index=True)
             dim_df = dim_df.rename(columns={"weighted": col_name})
+            # 如果目标列已存在则先删除（避免 merge 后缀冲突）
+            if col_name in df_sample.columns:
+                df_sample = df_sample.drop(columns=[col_name])
             df_sample["code"] = df_sample["code"].astype(str)
             df_sample = df_sample.merge(
                 dim_df, on=["code", "as_of_date"], how="left"
