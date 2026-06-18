@@ -43,6 +43,7 @@ def main():
     # 采样: 每只股票每月1条
     df["sample_key"] = df["code"].astype(str) + "_" + df["year_month"].astype(str)
     df_sample = df.drop_duplicates(subset=["sample_key"]).copy()
+    df_sample["code"] = df_sample["code"].astype(str).str.zfill(6)  # 确保6位字符串
     print(f"  采样后: {len(df_sample)} 行")
     del df  # 释放内存
 
@@ -85,6 +86,7 @@ def main():
 
         for i, dt in enumerate(unique_dates):
             date_codes = df_sample[df_sample["as_of_date"] == dt]["code"].tolist()
+            date_codes = [str(c).zfill(6) for c in date_codes]  # 确保6位字符串
             if not date_codes:
                 continue
             try:
