@@ -25,6 +25,8 @@ CORS(app)
 # ── 全局数据 ──
 records = []
 dim_cols = []
+industry_map = {}  # code(6-digit) → industry_name
+industry_ic_cache = None  # 缓存行业IC结果
 
 # ── 任务管理 ──
 class BacktestTask:
@@ -168,13 +170,18 @@ class BacktestTask:
                 if self._stop_event.is_set(): return
                 sc = np.array([(r.get(did, 0) or 0) for r in records])
                 dim_ics[did] = self._compute_ic(sc, "ret_60d")["ic"]
-                self.progress = 85 + int(15 * (ci+1) / len(dim_cols))
+                self.progress = 85 + int(8 * (ci+1) / len(dim_cols))
+
+            # Phase 4: 行业暴露分析 — 按行业分组计算最佳组合IC
+            industry_ics = _compute_industry_ics(combo_scores[best["name"]], best["name"])
+            self.progress = 98
 
             self.progress = 100
             with self._lock:
                 self.result = {
                     "combos": results, "bestCombo": best["name"],
                     "quintile": qs, "spread": spread, "dimICs": dim_ics,
+                    "industryICs": industry_ics,
                 }
                 self.status = "done"
 
@@ -231,7 +238,7 @@ task = BacktestTask()
 
 
 def load_data():
-    global records, dim_cols
+    global records, dim_cols, industry_map
     json_path = PROJECT_ROOT / "data" / "all_7d_scores.json"
     if not json_path.exists():
         print(f"⚠️  {json_path} 不存在")
@@ -243,7 +250,19 @@ def load_data():
         "institutional_weighted", "sentiment_weighted",
         "news_event_weighted", "chip_weighted",
     ]
-    print(f"✅ 数据加载: {len(records)} 条, {len(dim_cols)} 维")
+    # 加载行业映射 (stock_profile: code→industry)
+    import sqlite3
+    db = PROJECT_ROOT / "database" / "quant.db"
+    conn = sqlite3.connect(str(db))
+    rows = conn.execute("SELECT code, industry FROM stock_profile").fetchall()
+    conn.close()
+    for r in rows:
+        raw_code = r[0]
+        industry = r[1] or "其他"
+        # 去掉 sz/sh 前缀 → 6位代码
+        code6 = raw_code.replace("sz","").replace("sh","")
+        industry_map[code6] = industry
+    print(f"✅ 数据加载: {len(records)} 条, {len(dim_cols)} 维, {len(industry_map)} 只含行业")
 
 
 # ── API ──
@@ -294,6 +313,115 @@ def api_resume():
 def api_stop():
     ok, msg = task.stop()
     return jsonify({"ok": ok, "msg": msg, "task": task.snapshot()})
+
+
+@app.route("/api/scan", methods=["POST"])
+def api_scan():
+    """参数网格扫描: 对每个维度按指定步长扫描，返回IC最优的Top 20组合"""
+    data = request.get_json() or {}
+    mode = data.get("mode", "fast")  # fast=0/1二分, medium=0/0.5/1三步, full=0/0.25/0.5/0.75/1五步
+    
+    step_map = {"fast": [0, 1.0], "medium": [0, 0.5, 1.0], "full": [0, 0.25, 0.5, 0.75, 1.0]}
+    values = step_map.get(mode, step_map["fast"])
+    
+    # 只扫描用户指定的维度，默认全体
+    selected_dims = data.get("dims", dim_cols)
+    selected_dims = [d for d in selected_dims if d in dim_cols]
+    
+    if not selected_dims:
+        return jsonify({"error": "无有效维度"}), 400
+    
+    # 生成所有组合 (笛卡尔积)
+    from itertools import product
+    all_combos = list(product(values, repeat=len(selected_dims)))
+    total_combos = len(all_combos)
+    
+    if total_combos > 10000:
+        return jsonify({"error": f"组合数{total_combos}过大，请选择更高步长或更少维度"}), 400
+    
+    results = []
+    for combo_idx, combo_vals in enumerate(all_combos):
+        # 构建权重字典
+        w = {}
+        for did in dim_cols:
+            w[did] = 0
+        for did, val in zip(selected_dims, combo_vals):
+            w[did] = val
+        
+        # 计算加权分数
+        total_w = sum(w.get(did, 0) for did in selected_dims)
+        if total_w == 0:
+            continue
+        scores = np.zeros(len(records))
+        for did in selected_dims:
+            wv = w.get(did, 0)
+            if wv == 0: continue
+            for i, r in enumerate(records):
+                scores[i] += (r.get(did, 0) or 0) * wv
+        scores /= total_w
+        
+        # 计算IC
+        ic = _calc_ic_fast(scores)
+        if ic is not None:
+            results.append({
+                "weights": {did: w[did] for did in selected_dims},
+                "ic": round(ic, 4),
+                "n": len(records),
+            })
+    
+    # 排序取 Top 20
+    results.sort(key=lambda x: x["ic"] if x["ic"] is not None else -99, reverse=True)
+    top20 = results[:20]
+    
+    # 维度重要性分析
+    dim_labels = {
+        "tech_weighted": "技术面 v3", "fundam_weighted": "基本面 v3",
+        "fund_weighted": "资金面 v2.1", "institutional_weighted": "机构面 v2",
+        "sentiment_weighted": "情绪面 v2", "news_event_weighted": "新闻面 v1",
+        "chip_weighted": "筹码面 v1",
+    }
+    importance = {}
+    for did in selected_dims:
+        weights_vals = [r["weights"].get(did, 0) for r in top20]
+        non_zero = sum(1 for wv in weights_vals if wv > 0)
+        avg_w = np.mean(weights_vals)
+        importance[did] = {
+            "avgWeight": round(float(avg_w), 2),
+            "nonZeroRate": round(non_zero/len(top20)*100, 1),
+            "name": dim_labels.get(did, did),
+        }
+    
+    return jsonify({
+        "mode": mode,
+        "totalCombos": total_combos,
+        "topResults": top20,
+        "dimImportance": importance,
+        "bestIC": top20[0]["ic"] if top20 else None,
+        "dimsScanned": selected_dims,
+    })
+
+
+def _calc_ic_fast(scores):
+    """快速IC计算（与BacktestTask._compute_ic逻辑一致）"""
+    sx, sy = [], []
+    for i, r in enumerate(records):
+        ret = r.get("ret_60d")
+        if ret is not None and not (isinstance(ret, float) and np.isnan(ret)):
+            if not np.isnan(scores[i]):
+                sx.append(scores[i])
+                sy.append(ret)
+    if len(sx) < 50:
+        return None
+    try:
+        from scipy.stats import rankdata
+        rx = rankdata(np.array(sx))
+        ry = rankdata(np.array(sy))
+        d = rx - ry
+        n = len(d)
+        ic = 1 - (6 * np.sum(d**2)) / (n * (n**2 - 1))
+        return float(ic) if not np.isnan(ic) else None
+    except:
+        return None
 
 
 @app.route("/api/stock/<code>")
@@ -972,6 +1100,57 @@ def _fetch_kline_local(code, period="day"):
         "low": recent["low"].tolist(), "close": recent["close"].tolist(),
         "volume": recent["volume"].tolist(),
     }
+
+
+def _compute_industry_ics(scores, combo_name):
+    """按行业计算IC: 分组统计各行业的评分有效性"""
+    if not industry_map:
+        return []
+
+    # 按行业聚合评分和收益
+    industry_data = {}  # industry → {"scores":[], "returns":[]}
+    for i, r in enumerate(records):
+        code = r.get("code", "")
+        ind = industry_map.get(code, "其他")
+        ret = r.get("ret_60d")
+        sc = scores[i]
+        if ret is not None and not (isinstance(ret, float) and np.isnan(ret)):
+            if not np.isnan(sc):
+                if ind not in industry_data:
+                    industry_data[ind] = {"scores": [], "returns": [], "codes": set()}
+                industry_data[ind]["scores"].append(sc)
+                industry_data[ind]["returns"].append(ret)
+                industry_data[ind]["codes"].add(code)
+
+    # 计算每个行业的IC
+    results = []
+    for ind, data in industry_data.items():
+        if len(data["scores"]) < 20:
+            continue
+        try:
+            from scipy.stats import rankdata
+            sx = np.array(data["scores"])
+            sy = np.array(data["returns"])
+            rx = rankdata(sx)
+            ry = rankdata(sy)
+            d = rx - ry
+            n = len(d)
+            ic = 1 - (6 * np.sum(d**2)) / (n * (n**2 - 1))
+            avg_score = round(float(np.mean(sx)), 1)
+            avg_ret = round(float(np.mean(sy)), 2)
+            results.append({
+                "industry": ind,
+                "ic": round(float(ic), 4) if not np.isnan(ic) else None,
+                "n": len(data["codes"]),
+                "samples": n,
+                "avgScore": avg_score,
+                "avgRet": avg_ret,
+            })
+        except:
+            pass
+
+    results.sort(key=lambda x: x["ic"] if x["ic"] is not None else -99, reverse=True)
+    return results
 
 
 if __name__ == "__main__":
