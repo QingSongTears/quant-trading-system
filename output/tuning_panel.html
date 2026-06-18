@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>七维量化评分 — 参数调优面板</title>
+<style>
+:root { --bg: #0f1117; --card: #1a1d27; --border: #2a2d3a; --text: #e0e0e0; --dim: #888; --accent: #4fc3f7; --green: #66bb6a; --red: #ef5350; --yellow: #ffa726; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+header { background: var(--card); border-bottom: 1px solid var(--border); padding: 16px 24px; display:flex; align-items:center; gap:16px; }
+header h1 { font-size: 1.3rem; font-weight: 600; }
+header .badge { font-size: 0.75rem; padding: 3px 10px; border-radius: 12px; background: #1b5e20; color: var(--green); }
+main { max-width: 1400px; margin: 0 auto; padding: 20px; display: grid; grid-template-columns: 380px 1fr; gap: 20px; }
+.panel { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+.panel h3 { font-size: 0.9rem; color: var(--dim); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px; }
+.dim-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+.dim-label { width: 80px; font-size: 0.85rem; font-weight: 500; }
+.dim-slider { flex:1; -webkit-appearance:none; height:6px; border-radius:3px; background:linear-gradient(to right, var(--red) 0%, var(--yellow) 50%, var(--green) 100%); outline:none; }
+.dim-slider::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%; background: var(--accent); cursor:pointer; border:2px solid #fff; }
+.dim-value { width: 36px; text-align:center; font-size:0.85rem; font-weight:600; }
+.dim-ic { width: 55px; text-align:right; font-size: 0.75rem; }
+.dim-ic.pos { color: var(--green); }
+.dim-ic.neg { color: var(--red); }
+.btn-row { display:flex; gap:8px; margin-top:16px; }
+.btn { padding: 8px 16px; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem; font-weight:500; }
+.btn-primary { background: var(--accent); color: #000; }
+.btn-secondary { background: var(--border); color: var(--text); }
+.btn-danger { background: #3a1f1f; color: var(--red); }
+.results { display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:10px; margin-bottom:16px; }
+.metric { background: #111318; border: 1px solid var(--border); border-radius:6px; padding:12px; text-align:center; }
+.metric .val { font-size:1.5rem; font-weight:700; }
+.metric .lbl { font-size:0.7rem; color: var(--dim); margin-top:4px; }
+.metric.best { border-color: var(--green); background: #0d2818; }
+.metric.worst { border-color: var(--red); background: #280d0d; }
+.combo-table { width:100%; border-collapse:collapse; font-size:0.8rem; }
+.combo-table th { text-align:left; padding:6px 10px; border-bottom:2px solid var(--border); color: var(--dim); font-size:0.7rem; }
+.combo-table td { padding:6px 10px; border-bottom:1px solid var(--border); }
+.combo-table .rank-1 { color: var(--green); font-weight:700; }
+.combo-table .rank-2 { color: var(--green); }
+.combo-table .rank-3 { color: var(--accent); }
+.ic-bar { display:inline-block; height:12px; border-radius:3px; margin-right:6px; vertical-align:middle; }
+.ic-bar.pos { background: var(--green); }
+.ic-bar.neg { background: var(--red); }
+#status { font-size:0.75rem; color: var(--dim); text-align:center; padding: 20px; }
+footer { text-align:center; padding:12px; font-size:0.7rem; color: var(--dim); border-top:1px solid var(--border); margin-top:20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎯 七维量化评分调参面板</h1>
+  <span class="badge" id="dataStatus">加载中...</span>
+</header>
+<main>
+  <aside>
+    <div class="panel">
+      <h3>⚖️ 维度权重</h3>
+      <div id="sliders"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="applyEqual()">等权</button>
+        <button class="btn btn-secondary" onclick="applyBest()">最优组合</button>
+        <button class="btn btn-secondary" onclick="applyTechOnly()">纯技术</button>
+        <button class="btn btn-danger" onclick="resetAll()">重置</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>📊 预设方案</h3>
+      <div id="presets" style="font-size:0.8rem; line-height:2;"></div>
+    </div>
+  </aside>
+  <section>
+    <div class="results" id="topMetrics"></div>
+    <div class="panel">
+      <h3>🏆 组合 IC 排名 (60日)</h3>
+      <table class="combo-table"><thead><tr><th>#</th><th>组合</th><th>IC</th><th>可视化</th></tr></thead><tbody id="comboBody"></tbody></table>
+    </div>
+    <div class="panel">
+      <h3>📈 五分位收益 (60日)</h3>
+      <div class="results" id="quintileMetrics"></div>
+    </div>
+  </section>
+</main>
+<footer>实时计算 · 拖动滑块即时更新 · 数据: 128K采样 × 7维</footer>
+
+<script>
+// ── 全局状态 ──
+let records = [];
+let dimConfig = [
+  {id:'tech_weighted',     name:'技术面 v3',   ic:'+0.094', defaultW:1.0},
+  {id:'fundam_weighted',   name:'基本面 v3',   ic:'+0.043', defaultW:1.0},
+  {id:'fund_weighted',     name:'资金面 v2.1', ic:'+0.033', defaultW:0.5},
+  {id:'institutional_weighted', name:'机构面 v2', ic:'+0.005', defaultW:0.3},
+  {id:'sentiment_weighted',     name:'情绪面 v2', ic:'+0.061', defaultW:0.5},
+  {id:'news_event_weighted',    name:'新闻面 v1', ic:'-0.020', defaultW:0.2},
+  {id:'chip_weighted',          name:'筹码面 v1', ic:'-0.139', defaultW:0.0},
+];
+let weights = {};
+let scoresCache = {}; // precomputed combined scores
+
+// ── 初始化 ──
+async function init() {
+  document.getElementById('dataStatus').textContent = '加载数据...';
+  try {
+    let resp = await fetch('/data/all_7d_scores.json');
+    records = await resp.json();
+    document.getElementById('dataStatus').textContent = records.length.toLocaleString() + ' 条';
+  } catch(e) {
+    document.getElementById('dataStatus').textContent = '⚠️ 无数据, 先运行 scripts/export_7d_scores.py';
+    return;
+  }
+  buildSliders();
+  dimConfig.forEach(d => weights[d.id] = d.defaultW);
+  updateAll();
+}
+
+// ── 构建滑块 ──
+function buildSliders() {
+  let html = '';
+  dimConfig.forEach(d => {
+    html += `<div class="dim-row">
+      <span class="dim-label">${d.name}</span>
+      <input type="range" class="dim-slider" id="slider_${d.id}" min="0" max="2" step="0.05" value="${d.defaultW}"
+             oninput="onSliderChange('${d.id}', this.value)">
+      <span class="dim-value" id="val_${d.id}">${d.defaultW.toFixed(1)}</span>
+      <span class="dim-ic ${parseFloat(d.ic)>0?'pos':'neg'}" title="独立IC">${d.ic}</span>
+    </div>`;
+  });
+  document.getElementById('sliders').innerHTML = html;
+}
+
+// ── 滑块变化 ──
+function onSliderChange(id, val) {
+  let v = parseFloat(val);
+  document.getElementById('val_'+id).textContent = v.toFixed(2);
+  weights[id] = v;
+  scoresCache = {}; // 清除缓存
+  updateAll();
+}
+
+// ── 计算得分 ──
+function getCombinedScore(combName, dimIds) {
+  if (scoresCache[combName]) return scoresCache[combName];
+  let scores = [];
+  let totalW = dimIds.reduce((s,id) => s + (weights[id] || 0), 0);
+  if (totalW === 0) { scoresCache[combName] = new Array(records.length).fill(0); return scoresCache[combName]; }
+
+  for (let i = 0; i < records.length; i++) {
+    let r = records[i];
+    let sum = 0;
+    for (let id of dimIds) {
+      let w = weights[id] || 0;
+      let v = r[id] || 0;
+      sum += v * w;
+    }
+    scores.push(sum / totalW);
+  }
+  scoresCache[combName] = scores;
+  return scores;
+}
+
+// ── Spearman ──
+function spearman(x, y) {
+  let n = x.length;
+  if (n < 10) return NaN;
+  let rxA = x.map((v,i) => [v,i]).sort((a,b) => a[0]-b[0]);
+  let ryA = y.map((v,i) => [v,i]).sort((a,b) => a[0]-b[0]);
+  let rx = new Array(n), ry = new Array(n);
+  for (let i = 0; i < n; i++) { rx[rxA[i][1]] = i+1; ry[ryA[i][1]] = i+1; }
+  // Handle ties
+  let sumDsq = 0;
+  for (let i=0;i<n;i++) { let d = rx[i]-ry[i]; sumDsq += d*d; }
+  return 1 - (6*sumDsq)/(n*(n*n-1));
+}
+
+// ── IC计算 ──
+function computeIC(scoreArr, retKey) {
+  let sx=[], sy=[];
+  for (let i=0;i<records.length;i++) {
+    let ret = records[i][retKey];
+    if (ret != null && !isNaN(ret) && !isNaN(scoreArr[i])) {
+      sx.push(scoreArr[i]);
+      sy.push(ret);
+    }
+  }
+  if (sx.length < 50) return {ic: NaN, n: sx.length};
+  return {ic: spearman(sx,sy), n: sx.length};
+}
+
+// ── 组合定义 ──
+const combos = [
+  {name:'技术+基本面',    ids:['tech_weighted','fundam_weighted']},
+  {name:'纯技术面',        ids:['tech_weighted']},
+  {name:'Tech+Fund+Inst', ids:['tech_weighted','fundam_weighted','institutional_weighted']},
+  {name:'三因子联盟',      ids:['tech_weighted','fundam_weighted','fund_weighted']},
+  {name:'六维全开',        ids:['tech_weighted','fundam_weighted','fund_weighted','institutional_weighted','sentiment_weighted','news_event_weighted']},
+  {name:'七维全开',        ids:['tech_weighted','fundam_weighted','fund_weighted','institutional_weighted','sentiment_weighted','news_event_weighted','chip_weighted']},
+  {name:'Tech+Chip',       ids:['tech_weighted','chip_weighted']},
+  {name:'技术+情绪',       ids:['tech_weighted','sentiment_weighted']},
+];
+
+// ── 主更新 ──
+function updateAll() {
+  // Top metrics
+  let bestIC = -Infinity, bestCombo = '', bestQ5Q1 = 0;
+  let rows = [];
+  combos.forEach(c => {
+    let sc = getCombinedScore(c.name, c.ids);
+    let ic60 = computeIC(sc, 'ret_60d');
+    rows.push({name:c.name, ic60: ic60.ic, n: ic60.n, scores: sc});
+  });
+  rows.sort((a,b) => (b.ic60||-99) - (a.ic60||-99));
+
+  // 指标卡片
+  let topHtml = '';
+  let topCombo = rows[0];
+  if (topCombo) {
+    let qs = quintile(topCombo.scores, 'ret_60d');
+    let spread = qs[4].mean - qs[0].mean;
+    topHtml += `<div class="metric best"><div class="val">${topCombo.name}</div><div class="lbl">最优组合</div></div>`;
+    topHtml += `<div class="metric"><div class="val" style="color:${topCombo.ic60>0?'var(--green)':'var(--red)'}">${(topCombo.ic60||0).toFixed(4)}</div><div class="lbl">IC(60d)</div></div>`;
+    topHtml += `<div class="metric"><div class="val">${spread.toFixed(2)}%</div><div class="lbl">Q5-Q1利差</div></div>`;
+  }
+  document.getElementById('topMetrics').innerHTML = topHtml;
+
+  // 组合排名表
+  let tableHtml = '';
+  rows.forEach((r, i) => {
+    let ic = r.ic60 || 0;
+    let barW = Math.min(Math.abs(ic)*200, 30);
+    let barCls = ic >= 0 ? 'pos' : 'neg';
+    let rankCls = i < 3 ? 'rank-'+(i+1) : '';
+    tableHtml += `<tr>
+      <td class="${rankCls}">${i+1}</td>
+      <td>${r.name}</td>
+      <td style="font-weight:600;color:${ic>=0?'var(--green)':'var(--red)'}">${ic>=0?'+':''}${ic.toFixed(4)}</td>
+      <td><span class="ic-bar ${barCls}" style="width:${barW}px"></span></td>
+    </tr>`;
+  });
+  document.getElementById('comboBody').innerHTML = tableHtml;
+
+  // 五分位
+  if (topCombo) {
+    let qs = quintile(topCombo.scores, 'ret_60d');
+    let qhtml = '';
+    qs.forEach((q,i) => {
+      qhtml += `<div class="metric"><div class="val">${q.mean.toFixed(2)}%</div><div class="lbl">Q${i+1} · 胜率${q.winRate}% · n=${q.n}</div></div>`;
+    });
+    document.getElementById('quintileMetrics').innerHTML = qhtml;
+  }
+}
+
+// ── 五分位 ──
+function quintile(scores, retKey) {
+  let arr = [];
+  for (let i=0;i<records.length;i++) {
+    let r = records[i][retKey];
+    if (r != null && !isNaN(r)) arr.push({s:scores[i], r:r});
+  }
+  arr.sort((a,b)=>a.s-b.s);
+  let n = arr.length;
+  let qSize = Math.floor(n/5);
+  let qs = [];
+  for (let q=0;q<5;q++) {
+    let start = q*qSize;
+    let end = q===4 ? n : (q+1)*qSize;
+    let slice = arr.slice(start, end);
+    let mean = slice.reduce((s,x)=>s+x.r,0)/slice.length;
+    let wins = slice.filter(x=>x.r>0).length;
+    qs.push({mean, n:slice.length, winRate:(wins/slice.length*100).toFixed(1)});
+  }
+  return qs;
+}
+
+// ── 预设 ──
+function setWeights(map) {
+  for (let id in map) {
+    weights[id] = map[id];
+    let sl = document.getElementById('slider_'+id);
+    if (sl) { sl.value = map[id]; document.getElementById('val_'+id).textContent = map[id].toFixed(2); }
+  }
+  scoresCache = {};
+  updateAll();
+}
+function applyEqual() {
+  dimConfig.forEach(d => weights[d.id] = 1.0);
+  setWeights(Object.fromEntries(dimConfig.map(d=>[d.id,1.0])));
+}
+function applyBest() {
+  setWeights({tech_weighted:1.0, fundam_weighted:1.0, fund_weighted:0.5, institutional_weighted:0.3, sentiment_weighted:0.5, news_event_weighted:0.2, chip_weighted:0});
+}
+function applyTechOnly() {
+  setWeights({tech_weighted:1.0, fundam_weighted:0, fund_weighted:0, institutional_weighted:0, sentiment_weighted:0, news_event_weighted:0, chip_weighted:0});
+}
+function resetAll() {
+  dimConfig.forEach(d => { weights[d.id]=d.defaultW; let sl=document.getElementById('slider_'+d.id); if(sl)sl.value=d.defaultW; document.getElementById('val_'+d.id).textContent=d.defaultW.toFixed(1); });
+  scoresCache={}; updateAll();
+}
+
+// ── 启动 ──
+window.onload = init;
+
+// 预设展示
+document.getElementById('presets').innerHTML = `
+  <div style="margin-bottom:4px">✅ <b>技术+基本面</b> (1.0 / 1.0) — IC +0.0974</div>
+  <div style="margin-bottom:4px">✅ <b>纯技术面</b> (1.0) — IC +0.0943</div>
+  <div style="margin-bottom:4px">✅ <b>三因子</b> (1.0/1.0/0.5) — IC +0.086</div>
+  <div style="margin-bottom:4px">✅ <b>六维全开</b> (等权) — IC +0.090</div>
+  <div style="color:var(--red)">⚠️ 筹码面权重建议设0</div>
+`;
+</script>
+</body>
+</html>
