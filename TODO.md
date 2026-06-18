@@ -119,19 +119,19 @@
 
 ## 优先级排序 (v1.1 数据升级后)
 
-| 优先级 | 任务 | 预期夏普提升 | 工作量 | 备注 |
-|--------|------|-------------|--------|------|
-| 🔴 P0 | **0.1 重建quant.db** (finance_summary替代finance_snapshot) | 数据基础 | 中 | 100字段→真正基本面 |
-| 🔴 P0 | T1.1 放宽v6阈值 | +0.10~0.20 | 小 | 信号量32→80+ |
-| 🔴 P0 | T2.1 资金面评分器 | +0.20~0.30 | 中 | margin_trading/fund_flow双数据源 |
-| 🟡 P1 | T2.0 基本面评分v3 (基于finance_summary真实数据) | +0.15~0.25 | 中 | ROE/EPS/BPS/行业分组 |
-| 🟡 P1 | T3.1 动态仓位分配 | +0.10~0.20 | 中 | ATR/波动率加权 |
-| 🟢 P2 | T2.2 筹码面评分器 | +0.05~0.15 | 小 | chip_distribution数据就绪 |
-| 🟢 P2 | T3.2 行业暴露控制 | 降低尾部风险 | 中 | stock_profile提供行业分类 |
-| 🟢 P2 | T5.1 参数扫描 | 系统化提升 | 中 | 网格搜索/贝叶斯 |
-| 🔵 P3 | T2.3 龙虎榜机构评分 | +0.05~0.10 | 中 | dragon_tiger数据就绪 |
-| 🔵 P3 | T4.1 技术指标表导入 | 加速回测 | 中 | 252MB预计算指标 |
-| 🔵 P3 | T5.2 Walk-Forward | 验证稳健性 | 中 | 滚动窗口验证 |
+| 优先级 | Issue | 任务 | 预期夏普提升 | 工作量 | 备注 |
+|--------|-------|------|-------------|--------|------|
+| 🔴 P0 | [#53](https://github.com/QingSongTears/quant-trading-system/issues/53) | **0.1 重建quant.db** (finance_summary替代finance_snapshot) | 数据基础 | 中 | 100字段→真正基本面 |
+| 🔴 P0 | [#54](https://github.com/QingSongTears/quant-trading-system/issues/54) | T1.1 放宽v6阈值 | +0.10~0.20 | 小 | 信号量32→80+ |
+| 🔴 P0 | [#55](https://github.com/QingSongTears/quant-trading-system/issues/55) | T2.1 资金面评分器 | +0.20~0.30 | 中 | margin_trading/fund_flow双数据源 |
+| 🟡 P1 | [#56](https://github.com/QingSongTears/quant-trading-system/issues/56) | T2.0 基本面评分v3 (基于finance_summary真实数据) | +0.15~0.25 | 中 | ROE/EPS/BPS/行业分组 |
+| 🟡 P1 | [#57](https://github.com/QingSongTears/quant-trading-system/issues/57) | T3.1 动态仓位分配 | +0.10~0.20 | 中 | ATR/波动率加权 |
+| 🟢 P2 | [#58](https://github.com/QingSongTears/quant-trading-system/issues/58) | T2.2 筹码面评分器 | +0.05~0.15 | 小 | chip_distribution数据就绪 |
+| 🟢 P2 | [#59](https://github.com/QingSongTears/quant-trading-system/issues/59) | T3.2 行业暴露控制 | 降低尾部风险 | 中 | stock_profile提供行业分类 |
+| 🟢 P2 | [#60](https://github.com/QingSongTears/quant-trading-system/issues/60) | T5.1 参数扫描框架 | 系统化提升 | 中 | 网格搜索/贝叶斯 |
+| 🔵 P3 | [#61](https://github.com/QingSongTears/quant-trading-system/issues/61) | T2.3 龙虎榜机构评分 | +0.05~0.10 | 中 | dragon_tiger数据就绪 |
+| 🔵 P3 | [#62](https://github.com/QingSongTears/quant-trading-system/issues/62) | T4.1 技术指标表导入 | 加速回测 | 中 | 252MB预计算指标 |
+| 🔵 P3 | [#63](https://github.com/QingSongTears/quant-trading-system/issues/63) | T5.2 Walk-Forward | 验证稳健性 | 中 | 滚动窗口验证 |
 
 ---
 
