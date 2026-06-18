@@ -71,11 +71,12 @@ def main():
         ("institutional", "机构面v2", 6.7, "institutional_weighted"),
         ("sentiment", "情绪面v1", 8.6, "sentiment_weighted"),
         ("news_event", "新闻面v1", 9.0, "news_event_weighted"),
+        ("chip", "筹码面v1", 9.3, "chip_weighted"),  # 新增筹码面
     ]:
         print(f"\n{label} 评分 ({total_dates} 日期)...")
 
-        if col_name in df_sample.columns and dim_name != "fundamental":
-            # 跳过已有的（但基本面v3强制重算）
+        if col_name in df_sample.columns and dim_name not in ("fundamental", "chip"):
+            # 跳过已有的（但基本面v3和筹码v1强制重算）
             print(f"  已存在, 跳过")
             continue
 
@@ -88,8 +89,8 @@ def main():
             if not date_codes:
                 continue
             try:
-                # 基本面评分器不需要 as_of_date（预加载全量数据）
-                if dim_name == "fundamental":
+                # 基本面/筹码面评分器不需要 as_of_date（预加载全量数据）
+                if dim_name in ("fundamental", "chip"):
                     batch_df = scorer.batch_score(date_codes)
                 else:
                     batch_df = scorer.batch_score(date_codes, dt)
@@ -129,6 +130,7 @@ def main():
         "机构面 v2":   "institutional_weighted",
         "情绪面 v1":   "sentiment_weighted",
         "新闻面 v1":   "news_event_weighted",
+        "筹码面 v1":   "chip_weighted",
     }
 
     # ── 多维度组合 IC ──
@@ -149,7 +151,9 @@ def main():
         # 五因子/六因子
         "五因子(+情绪)":  ["tech_weighted", "fundam_weighted", "fund_weighted",
                          "institutional_weighted", "sentiment_weighted"],
-        "六维全开":       list(dim_cols.values()),
+        "六维全开":       list(dim_cols.values())[:6],  # 前6维
+        "七维全开":       list(dim_cols.values()),     # 全部7维
+        "Tech+Chip":      ["tech_weighted", "chip_weighted"],  # 技术+筹码
         # Top-2 组合
         "Tech+Fund+Inst": ["tech_weighted", "fundam_weighted", "institutional_weighted"],
         "Tech+Inst+News": ["tech_weighted", "institutional_weighted", "news_event_weighted"],
