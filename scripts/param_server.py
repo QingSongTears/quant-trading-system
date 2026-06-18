@@ -1215,4 +1215,4 @@ def _compute_industry_ics(scores, combo_name):
 
 if __name__ == "__main__":
     load_data()
-    app.run(host="0.0.0.0", port=8081, debug=False)
+    app.run(host="0.0.0.0", port=8081, debug=False, threaded=True)
