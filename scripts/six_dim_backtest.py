@@ -63,19 +63,20 @@ def main():
         df_sample["fundam_weighted"].median()
     )
 
-    # ── 后三维评分 ──
+    # ── 后三维评分（含基本面v3重算）──
     unique_dates = sorted(df_sample["as_of_date"].unique())
     total_dates = len(unique_dates)
 
-    for dim_name, label, default_val in [
-        ("institutional", "机构面v2", 6.7),
-        ("sentiment", "情绪面v1", 8.6),
-        ("news_event", "新闻面v1", 9.0),
+    for dim_name, label, default_val, col_name in [
+        ("fundamental", "基本面v3", 7.6, "fundam_weighted"),  # 用v3替换旧v2评分
+        ("institutional", "机构面v2", 6.7, "institutional_weighted"),
+        ("sentiment", "情绪面v1", 8.6, "sentiment_weighted"),
+        ("news_event", "新闻面v1", 9.0, "news_event_weighted"),
     ]:
-        col_name = f"{dim_name}_weighted"
         print(f"\n{label} 评分 ({total_dates} 日期)...")
 
-        if col_name in df_sample.columns:
+        if col_name in df_sample.columns and dim_name != "fundamental":
+            # 跳过已有的（但基本面v3强制重算）
             print(f"  已存在, 跳过")
             continue
 
@@ -87,7 +88,11 @@ def main():
             if not date_codes:
                 continue
             try:
-                batch_df = scorer.batch_score(date_codes, dt)
+                # 基本面评分器不需要 as_of_date（预加载全量数据）
+                if dim_name == "fundamental":
+                    batch_df = scorer.batch_score(date_codes)
+                else:
+                    batch_df = scorer.batch_score(date_codes, dt)
                 if not batch_df.empty and "weighted" in batch_df.columns:
                     batch_df = batch_df.copy()
                     batch_df["code"] = batch_df["code"].astype(str)
