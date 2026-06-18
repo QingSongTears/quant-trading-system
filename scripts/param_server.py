@@ -247,8 +247,8 @@ def load_data():
         records = json.load(f)
     dim_cols = [
         "tech_weighted", "fundam_weighted", "fund_weighted",
-        "institutional_weighted", "sentiment_weighted",
-        "news_event_weighted", "chip_weighted",
+        "institutional_weighted", "lh_institutional_weighted",
+        "sentiment_weighted", "news_event_weighted", "chip_weighted",
     ]
     # 加载行业映射 (stock_profile: code→industry)
     import sqlite3
@@ -445,6 +445,7 @@ def api_stock(code):
         "情绪面": [r.get("sentiment_weighted") for r in stock_data],
         "新闻面": [r.get("news_event_weighted") for r in stock_data],
         "筹码面": [r.get("chip_weighted") for r in stock_data],
+        "龙虎榜": [r.get("lh_institutional_weighted") or 0 for r in stock_data],
     }
     returns = {
         "20日": [r.get("ret_20d") for r in stock_data],
@@ -616,6 +617,15 @@ STRATEGY_REGISTRY = {
             "bb_period": {"default": 20, "min": 10, "max": 30, "step": 5, "label": "布林周期"}
         },
         "type": "tech"
+    },
+    "bull_wave": {
+        "name": "七维共振牛股",
+        "desc": "技术+资金+情绪+消息+大盘+机构+板块 七维评分≥阈值买入",
+        "params": {
+            "threshold": {"default": 7, "min": 4, "max": 12, "step": 0.5, "label": "七维总分阈值"},
+            "stop_loss": {"default": -8, "min": -15, "max": -3, "step": 1, "label": "止损%"}
+        },
+        "type": "combo"
     },
     "combo": {
         "name": "综合多信号",
@@ -811,6 +821,28 @@ def _run_single_stock_backtest(code, strategy_id, params):
                 if today_score < threshold - 2:
                     sell_signal = True
                     sell_reason = f"评分{today_score}<{threshold-2}"
+
+        elif strategy_id == "bull_wave":
+            # 七维共振牛股 — 使用评分的加权和（模拟7维）
+            today_score = 0
+            for dt_key in score_by_date:
+                if dt_key <= dates[i]:
+                    today_score = score_by_date[dt_key]
+            signal_info["score"] = round(today_score, 1)
+            signal_info["rsi14"] = rsi14[i]
+            bw_threshold = params.get("threshold", 7)
+            bw_stop = params.get("stop_loss", -8)
+            if position == 0 and today_score >= bw_threshold:
+                buy_signal = True
+                entry_reason = f"七维共振{today_score}≥{bw_threshold}"
+            elif position == 1:
+                pnl_pct = (price - entry_price) / entry_price * 100
+                if pnl_pct <= bw_stop:
+                    sell_signal = True
+                    sell_reason = f"止损 {pnl_pct:.1f}%≤{bw_stop}%"
+                elif today_score < bw_threshold - 10:
+                    sell_signal = True
+                    sell_reason = f"七维{today_score}<{bw_threshold-10}"
 
         # ── 止损止盈检查（所有tech策略共用）──
         if position == 1 and not sell_signal:
