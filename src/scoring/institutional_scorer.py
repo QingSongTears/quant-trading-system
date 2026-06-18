@@ -1,22 +1,21 @@
 """
-机构持仓/筹码集中度评分器 v2 — DB驱动 (权重 10%)
-=================================================
+机构持仓/筹码集中度评分器 v3 — dragon_tiger 数据驱动 (权重 10%)
+============================================================
 
-v1 (API驱动): 逐只HTTP调用, 5000只=10000+次请求, 批量模式被迫用默认分 ❌
-v2 (DB驱动):  全量数据存入SQLite, 批量评分从DB读取, 秒级完成 ✅
+v3 更新 (2026-06): 使用 dragon_tiger_data 替代 lhb_institutional
 
 数据源 (DB表):
-  - lhb_institutional: 龙虎榜机构专用席位买卖汇总 (5,054条, 1,825只股票)
-  - margin_trading:    融资融券最新快照 (4,370条, 4,370只股票)
-  - shareholder_count: 股东户数最新季度快照 (5,521条, 5,521只股票)
+  - dragon_tiger_data: 龙虎榜全量数据 (26,732条, 4,313只股票)
+  - margin_trading:    融资融券数据 (76,071条, 3,663只股票)
+  - shareholder_count: 股东户数最新快照 (5,332条, 5,099只股票)
 
 子指标 (每项 0-3 分, 满分 18, 归一化到 0-20):
-  1. 机构净买入   (0-3): 龙虎榜机构席位近30日净买入额
-  2. 筹码集中度   (0-3): 股东户数环比变化率 (负=集中=好)
-  3. 融资情绪     (0-3): 融资净买入额
-  4. 机构活跃度   (0-3): 机构出现天数
-  5. 筹码综合     (0-3): 综合筹码评分
-  6. 北向资金     (0-3): 北向资金 (stub, 后续下载)
+  1. 龙虎榜净买入   (0-3): 近30日龙虎榜净买入额
+  2. 筹码集中度     (0-3): 股东户数环比变化率 (负=集中=好)
+  3. 融资情绪       (0-3): 融资净买入额
+  4. 上榜活跃度     (0-3): 龙虎榜出现天数
+  5. 筹码综合       (0-3): 综合筹码评分
+  6. 北向资金       (0-3): 北向资金 (stub, 后续下载)
 """
 import numpy as np
 import pandas as pd
@@ -28,7 +27,7 @@ from ..config import get_config, get_db_url
 
 
 class InstitutionalScorer:
-    """机构持仓评分器 v2 — DB驱动"""
+    """机构持仓评分器 v3 — dragon_tiger 数据驱动"""
 
     def __init__(self, engine=None):
         if engine is None:
@@ -39,13 +38,13 @@ class InstitutionalScorer:
             self.engine = engine
 
         # 批量预加载的数据缓存
-        self._lhb_cache: Optional[pd.DataFrame] = None
+        self._dragon_cache: Optional[pd.DataFrame] = None
         self._margin_cache: Optional[pd.DataFrame] = None
         self._holder_cache: Optional[pd.DataFrame] = None
         self._cache_date: Optional[str] = None
 
     # ============================================================
-    #  DB 数据加载 (替代API调用)
+    #  DB 数据加载
     # ============================================================
 
     def _prefetch_all(self, as_of_date: Optional[str] = None):
@@ -53,68 +52,87 @@ class InstitutionalScorer:
         if as_of_date is None:
             as_of_date = datetime.now().strftime("%Y-%m-%d")
 
-        if self._cache_date == as_of_date and self._lhb_cache is not None:
+        if self._cache_date == as_of_date and self._dragon_cache is not None:
             return  # 已缓存
 
-        # LHB: 近30日机构席位数据
+        # 解析日期
         try:
             end_date = datetime.strptime(as_of_date, "%Y-%m-%d")
         except ValueError:
             end_date = datetime.now()
         start_date = (end_date - timedelta(days=30)).strftime("%Y-%m-%d")
 
+        # dragon_tiger_data: 近30日龙虎榜数据
         try:
-            self._lhb_cache = pd.read_sql(
+            self._dragon_cache = pd.read_sql(
                 f"""
-                SELECT code, trade_date, inst_buy, inst_sell, inst_net
-                FROM lhb_institutional
+                SELECT code, trade_date, net_buy_wan, turnover_pct
+                FROM dragon_tiger_data
                 WHERE trade_date >= '{start_date}'
                   AND trade_date <= '{as_of_date}'
                 """,
                 self.engine,
             )
+            self._dragon_cache["code"] = self._dragon_cache["code"].astype(str).str.zfill(6)
         except Exception:
-            self._lhb_cache = pd.DataFrame(
-                columns=["code", "trade_date", "inst_buy", "inst_sell", "inst_net"]
+            self._dragon_cache = pd.DataFrame(
+                columns=["code", "trade_date", "net_buy_wan", "turnover_pct"]
             )
 
-        # Margin: 最新快照
+        # margin_trading: 最新融资融券快照（取每条股票的最新日期）
         try:
             self._margin_cache = pd.read_sql(
-                "SELECT code, date, rzye, rzmre, rzche, rzjme, rqye, rzrqye FROM margin_trading",
+                """
+                SELECT m.code, m.trade_date, m.rzye, m.rzmre, m.rzche, m.rqye
+                FROM margin_trading m
+                INNER JOIN (
+                    SELECT code, MAX(trade_date) AS max_date
+                    FROM margin_trading
+                    GROUP BY code
+                ) latest ON m.code = latest.code AND m.trade_date = latest.max_date
+                """,
                 self.engine,
             )
             self._margin_cache["code"] = self._margin_cache["code"].astype(str).str.zfill(6)
         except Exception:
             self._margin_cache = pd.DataFrame(
-                columns=["code", "date", "rzye", "rzmre", "rzche", "rzjme", "rqye", "rzrqye"]
+                columns=["code", "trade_date", "rzye", "rzmre", "rzche", "rqye"]
             )
 
-        # Shareholder: 最新快照
+        # shareholder_count: 最新股东户数快照
         try:
             self._holder_cache = pd.read_sql(
-                "SELECT code, end_date, holder_num, pre_holder_num, holder_change_pct, avg_holding FROM shareholder_count",
+                """
+                SELECT s.code, s.end_date, s.holder_num, s.change_num, s.change_ratio, s.avg_shares
+                FROM shareholder_count s
+                INNER JOIN (
+                    SELECT code, MAX(end_date) AS max_date
+                    FROM shareholder_count
+                    GROUP BY code
+                ) latest ON s.code = latest.code AND s.end_date = latest.max_date
+                """,
                 self.engine,
             )
             self._holder_cache["code"] = self._holder_cache["code"].astype(str).str.zfill(6)
         except Exception:
             self._holder_cache = pd.DataFrame(
-                columns=["code", "end_date", "holder_num", "pre_holder_num", "holder_change_pct", "avg_holding"]
+                columns=["code", "end_date", "holder_num", "change_num", "change_ratio", "avg_shares"]
             )
 
         self._cache_date = as_of_date
 
-    def _get_lhb_data(self, code: str) -> dict:
-        """从预加载缓存中获取单只股票的LHB数据"""
-        if self._lhb_cache is None or self._lhb_cache.empty:
+    def _get_dragon_data(self, code: str) -> dict:
+        """从预加载缓存中获取单只股票的龙虎榜数据"""
+        if self._dragon_cache is None or self._dragon_cache.empty:
             return {}
-        stock_lhb = self._lhb_cache[self._lhb_cache["code"] == code]
-        if stock_lhb.empty:
+        stock_data = self._dragon_cache[self._dragon_cache["code"] == code]
+        if stock_data.empty:
             return {}
         return {
-            "inst_buy": stock_lhb["inst_buy"].sum(),
-            "inst_sell": stock_lhb["inst_sell"].sum(),
-            "inst_appear_days": stock_lhb["trade_date"].nunique(),
+            "net_buy_wan": float(stock_data["net_buy_wan"].sum()),
+            "max_net_buy_wan": float(stock_data["net_buy_wan"].max()),
+            "appear_days": int(stock_data["trade_date"].nunique()),
+            "avg_turnover": float(stock_data["turnover_pct"].mean()),
         }
 
     def _get_margin_data(self, code: str) -> dict:
@@ -129,9 +147,7 @@ class InstitutionalScorer:
             "rzye": float(r.get("rzye") or 0),
             "rzmre": float(r.get("rzmre") or 0),
             "rzche": float(r.get("rzche") or 0),
-            "rzjme": float(r.get("rzjme") or 0),
             "rqye": float(r.get("rqye") or 0),
-            "rzrqye": float(r.get("rzrqye") or 0),
         }
 
     def _get_holder_data(self, code: str) -> dict:
@@ -143,61 +159,65 @@ class InstitutionalScorer:
             return {}
         r = row.iloc[0]
         return {
-            "holder_change_pct": float(r.get("holder_change_pct") or 0),
-            "latest_count": int(r.get("holder_num") or 0),
+            "holder_num": int(r.get("holder_num") or 0),
+            "change_num": int(r.get("change_num") or 0),
+            "change_ratio": float(r.get("change_ratio") or 0),
+            "avg_shares": float(r.get("avg_shares") or 0),
             "end_date": str(r.get("end_date", ""))[:10],
         }
 
     # ============================================================
-    #  评分逻辑 (与 v1 相同)
+    #  评分逻辑
     # ============================================================
 
-    def _score_institutional_buy(self, lhb_data: dict) -> int:
-        """机构近30日净买入"""
-        if not lhb_data:
+    def _score_dragon_net_buy(self, dragon_data: dict) -> int:
+        """龙虎榜近30日净买入评分"""
+        if not dragon_data:
             return 1
-        buy = lhb_data.get("inst_buy", 0)
-        sell = lhb_data.get("inst_sell", 0)
-        net = buy - sell
-        if net > 100_000_000:   # >1亿
+        net = dragon_data.get("net_buy_wan", 0)
+        if net > 10_000:      # >1亿 (净买入 >1亿)
             return 3
-        elif net > 10_000_000:  # >1000万
+        elif net > 2_000:     # >2000万
             return 2
         elif net > 0:
             return 1
+        elif net > -2_000:    # 小幅净卖出
+            return 0
         return 0
 
     def _score_chip_concentration(self, holder_data: dict) -> int:
         """筹码集中度 — 股东户数减少=筹码集中"""
         if not holder_data:
             return 1
-        change = holder_data.get("holder_change_pct", 0)
-        if change < -10:  # 减少>10% = 显著集中
+        change = holder_data.get("change_ratio", 0)
+        if change < -10:    # 减少>10% = 显著集中
             return 3
-        elif change < -5:
+        elif change < -5:   # 减少5%~10%
             return 2
-        elif change < 0:
+        elif change < 0:    # 减少0%~5%
             return 1
         return 0
 
     def _score_margin_sentiment(self, margin_data: dict) -> int:
-        """融资情绪 — 基于融资净买入额"""
+        """融资情绪 — 基于融资净买入额(买入-偿还)"""
         if not margin_data:
             return 1
-        net_buy = margin_data.get("rzjme", 0)
-        if net_buy > 50_000_000:    # >5000万
+        buy = margin_data.get("rzmre", 0)
+        repay = margin_data.get("rzche", 0)
+        net = buy - repay
+        if net > 50_000_000:     # 净买入>5000万
             return 3
-        elif net_buy > 10_000_000:  # >1000万
+        elif net > 10_000_000:   # 净买入>1000万
             return 2
-        elif net_buy > 0:
+        elif net > 0:
             return 1
         return 0
 
-    def _score_institutional_activity(self, lhb_data: dict) -> int:
-        """机构活跃度 — 机构出现天数"""
-        if not lhb_data:
+    def _score_dragon_activity(self, dragon_data: dict) -> int:
+        """上榜活跃度 — 龙虎榜出现天数"""
+        if not dragon_data:
             return 1
-        days = lhb_data.get("inst_appear_days", 0)
+        days = dragon_data.get("appear_days", 0)
         if days >= 5:
             return 3
         elif days >= 3:
@@ -212,8 +232,8 @@ class InstitutionalScorer:
 
     def _score_chip_composite(self, subs: dict) -> int:
         parts = [subs.get(k, 1) for k in [
-            "institutional_buy", "chip_concentration",
-            "margin_sentiment", "institutional_activity"
+            "dragon_net_buy", "chip_concentration",
+            "margin_sentiment", "dragon_activity"
         ]]
         avg = np.mean(parts)
         if avg >= 2.5:
@@ -236,23 +256,23 @@ class InstitutionalScorer:
 
         Args:
             code: 6位股票代码
-            as_of_date: 基准日期
+            as_of_date: 基准日期 (YYYY-MM-DD)
         """
         if as_of_date is None:
             as_of_date = datetime.now().strftime("%Y-%m-%d")
 
-        # 确保数据已预加载
+        code = str(code).zfill(6)
         self._prefetch_all(as_of_date)
 
-        lhb = self._get_lhb_data(code)
+        dragon = self._get_dragon_data(code)
         margin = self._get_margin_data(code)
         holder = self._get_holder_data(code)
 
         sub_scores = {
-            "institutional_buy": self._score_institutional_buy(lhb),
+            "dragon_net_buy": self._score_dragon_net_buy(dragon),
             "chip_concentration": self._score_chip_concentration(holder),
             "margin_sentiment": self._score_margin_sentiment(margin),
-            "institutional_activity": self._score_institutional_activity(lhb),
+            "dragon_activity": self._score_dragon_activity(dragon),
             "northbound_flow": self._score_northbound_flow(),
         }
         sub_scores["chip_composite"] = self._score_chip_composite(sub_scores)
@@ -264,6 +284,12 @@ class InstitutionalScorer:
             "total": total,
             "weighted": round(total / 18 * 20, 1),  # 6维 × 3分 = 18 → 0-20
             "sub_scores": sub_scores,
+            "raw_data": {
+                "net_buy_wan": dragon.get("net_buy_wan", 0) if dragon else 0,
+                "appear_days": dragon.get("appear_days", 0) if dragon else 0,
+                "holder_change_ratio": holder.get("change_ratio", 0) if holder else 0,
+                "margin_net": (margin.get("rzmre", 0) - margin.get("rzche", 0)) if margin else 0,
+            },
             "error": None,
         }
 
@@ -278,25 +304,24 @@ class InstitutionalScorer:
             as_of_date: 基准日期
             verbose: 是否打印进度
         """
-        import pandas as pd
-
         if as_of_date is None:
             as_of_date = datetime.now().strftime("%Y-%m-%d")
 
-        # 一次性预加载全部机构数据
+        # 一次性预加载全部数据
         self._prefetch_all(as_of_date)
 
         results = []
-        for i, code in enumerate(codes):
-            lhb = self._get_lhb_data(code)
+        for i, c in enumerate(codes):
+            code = str(c).zfill(6)
+            dragon = self._get_dragon_data(code)
             margin = self._get_margin_data(code)
             holder = self._get_holder_data(code)
 
             sub_scores = {
-                "institutional_buy": self._score_institutional_buy(lhb),
+                "dragon_net_buy": self._score_dragon_net_buy(dragon),
                 "chip_concentration": self._score_chip_concentration(holder),
                 "margin_sentiment": self._score_margin_sentiment(margin),
-                "institutional_activity": self._score_institutional_activity(lhb),
+                "dragon_activity": self._score_dragon_activity(dragon),
                 "northbound_flow": self._score_northbound_flow(),
             }
             sub_scores["chip_composite"] = self._score_chip_composite(sub_scores)
@@ -314,8 +339,3 @@ class InstitutionalScorer:
                 print(f"  ... institutional {i + 1}/{len(codes)}")
 
         return pd.DataFrame(results)
-
-    # ============================================================
-    #  保留单只API方法作为 fallback (当 DB 无数据时)
-    # ============================================================
-    # 以下方法在 DB 数据缺失时可通过 HTTP API 补充，当前版本 DB 数据已覆盖。
