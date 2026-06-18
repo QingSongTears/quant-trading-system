@@ -339,6 +339,37 @@ def api_stock(code):
     })
 
 
+@app.route("/api/stock/<code>/kline")
+def api_kline(code):
+    """查询单只股票的日K线数据"""
+    code = str(code).zfill(6)
+    import sqlite3
+    db = PROJECT_ROOT / "database" / "quant.db"
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT trade_date, open, high, low, close, volume "
+        "FROM daily_price WHERE code=? ORDER BY trade_date",
+        (code,)
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return jsonify({"error": f"未找到K线 {code}"}), 404
+
+    # 最近120天
+    recent = rows[-120:]
+    return jsonify({
+        "code": code,
+        "dates": [r["trade_date"] for r in recent],
+        "open": [r["open"] for r in recent],
+        "high": [r["high"] for r in recent],
+        "low": [r["low"] for r in recent],
+        "close": [r["close"] for r in recent],
+        "volume": [r["volume"] for r in recent],
+    })
+
+
 if __name__ == "__main__":
     load_data()
     app.run(host="0.0.0.0", port=8081, debug=False)
