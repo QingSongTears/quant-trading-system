@@ -55,12 +55,12 @@
 - **文件**: `src/scoring/fund_flow_scorer.py`（需新建）
 - **优先级**: 🔴 高 — 资金面与技术面天然正交
 
-### T2.2 机构面评分器(lhb_institutional)接入
-- **数据**: tdrive有lhb_institutional.csv(275KB, 龙虎榜机构席位)
+### T2.2 ~~机构面评分器(lhb_institutional)接入~~ ✅ 完成 (#61)
+- **数据**: 使用 dragon_tiger.csv (26,732行) + margin_trading.csv + holder_num.csv
 - **行动**:
-  - 导入lhb_institutional到quant.db
-  - 实现InstitutionalScorer: 机构买入占比、净买入额、上榜频率
-- **文件**: 新建`scripts/import_lhb_data.py` + `src/scoring/institutional_scorer.py`
+  - ✅ 导入 dragon_tiger_data / margin_trading / shareholder_count 三表到 quant.db
+  - ✅ 重写 InstitutionalScorer v3: 龙虎榜净买入/上榜活跃度/融资情绪/筹码集中度 4维评分
+- **文件**: `scripts/import_institutional_data.py` + `src/scoring/institutional_scorer.py`
 
 ### T2.3 新闻情绪评分器(news_event)接入
 - **数据**: tdrive有em_global_news.csv(750KB, 东方财富全球新闻)
@@ -88,14 +88,14 @@
 ## 阶段四: 补充数据
 
 ### T4.1 导入tdrive剩余CSV
-- lhb_institutional.csv → lhb_institutional表
-- dragon_tiger.csv → dragon_tiger表  
-- margin_trading.csv → margin_trading表
+- ✅ dragon_tiger.csv → dragon_tiger_data表 (26,732行, #61)
+- ✅ margin_trading.csv → margin_trading表 (76,071行, #61)
+- ✅ holder_num.csv → shareholder_count表 (5,332行, #61)
 - ✅ technical_indicators.csv (263MB) → 已导入quant.db (301万行, #62)
+- lhb_institutional.csv → 已在tdrive中查找但未找到，改用dragon_tiger_data替代
 - combined_3d_scores.csv (51MB) → 评估是否可用
 - block_trade.csv → 大宗交易表
-- shareholder_count.csv → 股东人数表
-- **优先级**: 🟡 — lhb_institutional最优先(机构面评分需要)
+- **优先级**: 🟢 — 剩余CSV已不是阻塞项
 
 ### T4.2 数据质量修复
 - **问题**: finance_snapshot_v2的total_liabilities列数据异常(col_8 = 10×预期值)
@@ -129,7 +129,7 @@
 | 🟢 P2 | [#58](https://github.com/QingSongTears/quant-trading-system/issues/58) | T2.2 筹码面评分器 | +0.05~0.15 | 小 | chip_distribution数据就绪 |
 | 🟢 P2 | [#59](https://github.com/QingSongTears/quant-trading-system/issues/59) | T3.2 行业暴露控制 | 降低尾部风险 | 中 | stock_profile提供行业分类 |
 | 🟢 P2 | [#60](https://github.com/QingSongTears/quant-trading-system/issues/60) | T5.1 参数扫描框架 | 系统化提升 | 中 | 网格搜索/贝叶斯 |
-| 🔵 P3 | [#61](https://github.com/QingSongTears/quant-trading-system/issues/61) | T2.3 龙虎榜机构评分 | +0.05~0.10 | 中 | dragon_tiger数据就绪 |
+| 🔵 P3 | [#61](https://github.com/QingSongTears/quant-trading-system/issues/61) | T2.3 龙虎榜机构评分 | +0.05~0.10 | 中 | ✅ 已完成 (v3, dragon_tiger_data) |
 | 🔵 P3 | [#62](https://github.com/QingSongTears/quant-trading-system/issues/62) | T4.1 技术指标表导入 | 加速回测 | 中 | ✅ 已导入 (301万行) |
 | 🔵 P3 | [#63](https://github.com/QingSongTears/quant-trading-system/issues/63) | T5.2 Walk-Forward | 验证稳健性 | 中 | ✅ 已关闭 |
 
@@ -150,4 +150,4 @@
 
 ---
 
-*最后更新: 2026-06-18*
+*最后更新: 2026-06-19*
