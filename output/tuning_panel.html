@@ -37,6 +37,7 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
 .btn-secondary { background:var(--border); color:var(--text); }
 .btn-green { background:#1b3a1b; color:var(--green); }
 .btn-ghost { background:transparent; border:1px solid var(--border); color:var(--dim); }
+.btn-period.active { background:var(--accent); color:#000; border-color:var(--accent); }
 .control-bar { display:flex; gap:6px; align-items:center; }
 .progress-bar { flex:1; height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
 .progress-fill { height:100%; background:var(--accent); border-radius:3px; transition:width .3s; }
@@ -191,7 +192,14 @@ th[data-tip]:hover::after { font-weight:400; }
       <canvas id="stockChart" width="800" height="300" style="width:100%;border-radius:6px;background:#111318;margin-bottom:6px"></canvas>
       <div style="display:flex;gap:12px;margin-top:4px;font-size:0.7rem;color:var(--dim);flex-wrap:wrap" id="stockStats"></div>
       <hr style="border-color:var(--border);margin:12px 0 8px">
-      <h3 style="font-size:0.82rem;margin-bottom:8px">🕯️ 日K线 (近120日)</h3>
+      <h3 style="font-size:0.82rem;margin-bottom:8px">🕯️ K线图
+        <span style="display:inline-flex;gap:4px;margin-left:8px;vertical-align:middle">
+          <button class="btn btn-ghost btn-period active" data-p="day" onclick="switchPeriod('day')" style="font-size:0.65rem;padding:2px 8px">日</button>
+          <button class="btn btn-ghost btn-period" data-p="week" onclick="switchPeriod('week')" style="font-size:0.65rem;padding:2px 8px">周</button>
+          <button class="btn btn-ghost btn-period" data-p="month" onclick="switchPeriod('month')" style="font-size:0.65rem;padding:2px 8px">月</button>
+        </span>
+        <span style="font-weight:400;color:var(--dim);font-size:0.7rem;margin-left:6px">(近120根)</span>
+      </h3>
       <canvas id="klineChart" width="800" height="280" style="width:100%;border-radius:6px;background:#111318"></canvas>
     </div>
   </section>
@@ -570,6 +578,14 @@ const DIM_COLORS = ['#4fc3f7','#66bb6a','#ffa726','#ef5350','#ab47bc','#26c6da',
 let stockChartData = null;
 let stockKlineData = null;
 let visibleDims = {};
+let klinePeriod = 'day';
+
+function switchPeriod(p) {
+  klinePeriod = p;
+  document.querySelectorAll('.btn-period').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.btn-period[data-p="${p}"]`).classList.add('active');
+  if (stockKlineData) loadStock();
+}
 
 async function loadStock() {
   let code = document.getElementById('stockCode').value.trim();
@@ -577,7 +593,7 @@ async function loadStock() {
   try {
     let [r1, r2] = await Promise.all([
       fetch(API+'/stock/'+code),
-      fetch(API+'/stock/'+code+'/kline')
+      fetch(API+'/stock/'+code+'/kline/'+klinePeriod)
     ]);
     if (!r1.ok) { alert('未找到该股票 ('+code+')'); return; }
     let data = await r1.json();

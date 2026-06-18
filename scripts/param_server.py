@@ -340,8 +340,9 @@ def api_stock(code):
 
 
 @app.route("/api/stock/<code>/kline")
-def api_kline(code):
-    """查询单只股票的日K线数据"""
+@app.route("/api/stock/<code>/kline/<period>")
+def api_kline(code, period="day"):
+    """查询单只股票的K线数据, period: day/week/month"""
     code = str(code).zfill(6)
     import sqlite3
     db = PROJECT_ROOT / "database" / "quant.db"
@@ -357,16 +358,43 @@ def api_kline(code):
     if not rows:
         return jsonify({"error": f"未找到K线 {code}"}), 404
 
-    # 最近120天
-    recent = rows[-120:]
+    if period == "day":
+        recent = rows[-120:]
+        return jsonify({
+            "code": code, "period": "day",
+            "dates": [r["trade_date"] for r in recent],
+            "open": [r["open"] for r in recent],
+            "high": [r["high"] for r in recent],
+            "low": [r["low"] for r in recent],
+            "close": [r["close"] for r in recent],
+            "volume": [r["volume"] for r in recent],
+        })
+
+    # 周线/月线：从日线聚合
+    import pandas as pd
+    df = pd.DataFrame(rows, columns=["date","open","high","low","close","volume"])
+    df["date"] = pd.to_datetime(df["date"])
+
+    if period == "week":
+        df["period"] = df["date"].dt.isocalendar().year.astype(str) + "-W" + df["date"].dt.isocalendar().week.astype(str).str.zfill(2)
+    else:  # month
+        df["period"] = df["date"].dt.strftime("%Y-%m")
+
+    grouped = df.groupby("period").agg(
+        open=("open", "first"), high=("high", "max"),
+        low=("low", "min"), close=("close", "last"),
+        volume=("volume", "sum"), date=("date", "last")
+    ).reset_index(drop=True)
+
+    recent = grouped.tail(120)
     return jsonify({
-        "code": code,
-        "dates": [r["trade_date"] for r in recent],
-        "open": [r["open"] for r in recent],
-        "high": [r["high"] for r in recent],
-        "low": [r["low"] for r in recent],
-        "close": [r["close"] for r in recent],
-        "volume": [r["volume"] for r in recent],
+        "code": code, "period": period,
+        "dates": [d.strftime("%Y-%m-%d") for d in recent["date"]],
+        "open": recent["open"].tolist(),
+        "high": recent["high"].tolist(),
+        "low": recent["low"].tolist(),
+        "close": recent["close"].tolist(),
+        "volume": recent["volume"].tolist(),
     })
 
 
