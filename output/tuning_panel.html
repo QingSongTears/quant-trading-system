@@ -83,6 +83,7 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
   <div class="overlay-box">
     <div class="spinner"></div>
     <p id="backtestMsg">回测计算中...</p>
+    <button class="btn btn-danger" style="margin-top:16px" onclick="cancelBacktest()">⏹ 中止回测</button>
   </div>
 </div>
 
@@ -124,7 +125,7 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
       <table class="combo-table">
         <thead><tr><th>#</th><th>组合</th><th>IC(60d)</th><th>IC(40d)</th><th>IC(20d)</th><th></th></tr></thead>
         <tbody id="comboBody">
-          <tr><td colspan="6" style="text-align:center;color:var(--dim);padding:30px">等待回测...</td></tr>
+          <tr><td colspan="6" style="text-align:center;color:var(--dim);padding:30px">👆 调整权重后点击「运行回测」</td></tr>
         </tbody>
       </table>
     </div>
@@ -136,7 +137,7 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
 
     <div class="panel">
       <h3>📊 各维度独立 IC</h3>
-      <div id="dimICs" style="font-size:0.78rem;color:var(--dim)">等待回测...</div>
+      <div id="dimICs" style="font-size:0.78rem;color:var(--dim)">👆 点击运行回测查看各维度IC</div>
     </div>
   </section>
 </main>
@@ -173,9 +174,7 @@ async function init() {
   dimConfig.forEach(d => weights[d.id] = d.defW);
   document.getElementById('loadingOverlay').classList.remove('show');
   document.getElementById('btnRun').disabled = false;
-
-  // 自动跑一次默认权重
-  setTimeout(runBacktest, 500);
+  // 不自动回测, 等待用户手动点击
 }
 
 function buildSliders() {
@@ -219,7 +218,13 @@ function preset(type) {
 }
 
 // ── 回测 ──
+let abortController = null;
+
 async function runBacktest() {
+  // 取消正在进行的请求
+  if (abortController) { abortController.abort(); }
+  abortController = new AbortController();
+
   let overlay = document.getElementById('backtestOverlay');
   let msg = document.getElementById('backtestMsg');
   overlay.classList.add('show');
@@ -231,7 +236,8 @@ async function runBacktest() {
     let resp = await fetch(API+'/backtest', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({weights: weights})
+      body: JSON.stringify({weights: weights}),
+      signal: abortController.signal
     });
     let data = await resp.json();
     let elapsed = data.elapsed || ((performance.now()-t0)/1000).toFixed(1);
@@ -241,10 +247,22 @@ async function runBacktest() {
     dirty = false;
     document.getElementById('updateBadge').style.display = 'none';
   } catch(e) {
-    msg.textContent = '❌ 回测失败: ' + e.message;
-    setTimeout(() => overlay.classList.remove('show'), 1500);
+    if (e.name === 'AbortError') {
+      msg.textContent = '⏹ 已中止';
+    } else {
+      msg.textContent = '❌ 回测失败: ' + e.message;
+    }
+    setTimeout(() => overlay.classList.remove('show'), 1000);
   }
   document.getElementById('btnRun').disabled = false;
+  abortController = null;
+}
+
+function cancelBacktest() {
+  if (abortController) {
+    abortController.abort();
+    abortController = null;
+  }
 }
 
 function renderResults(data) {
