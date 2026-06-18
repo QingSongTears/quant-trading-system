@@ -264,6 +264,7 @@ th[data-tip]:hover::after { font-weight:400; }
           <option value="oversold">超卖反转</option>
           <option value="trend_follow">趋势跟踪</option>
           <option value="bollinger">布林突破</option>
+          <option value="bull_wave">七维共振牛股</option>
           <option value="combo">综合多信号</option>
         </select>
         <button class="btn btn-primary" onclick="runStockBacktest()">▶ 运行回测</button>
@@ -329,6 +330,7 @@ let dimConfig = [
   {id:'fundam_weighted',   name:'基本面 v3',   defIC:'+0.043', defW:1.0},
   {id:'fund_weighted',     name:'资金面 v2.1', defIC:'+0.033', defW:0.5},
   {id:'institutional_weighted', name:'机构面 v2', defIC:'+0.005', defW:0.3},
+  {id:'lh_institutional_weighted', name:'龙虎榜 v1', defIC:'N/A', defW:0.3},
   {id:'sentiment_weighted',     name:'情绪面 v2', defIC:'+0.061', defW:0.5},
   {id:'news_event_weighted',    name:'新闻面 v1', defIC:'-0.020', defW:0.2},
   {id:'chip_weighted',          name:'筹码面 v1', defIC:'-0.139', defW:0.0},
