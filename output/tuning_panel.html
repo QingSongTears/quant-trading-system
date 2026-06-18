@@ -199,6 +199,7 @@ th[data-tip]:hover::after { font-weight:400; }
           <button class="btn btn-ghost btn-period" data-p="month" onclick="switchPeriod('month')" style="font-size:0.65rem;padding:2px 8px">月</button>
         </span>
         <span style="font-weight:400;color:var(--dim);font-size:0.7rem;margin-left:6px">(近120根)</span>
+        <span id="klineSource" style="font-size:0.65rem;margin-left:8px;padding:2px 6px;border-radius:4px;background:var(--border);color:var(--dim)"></span>
       </h3>
       <canvas id="klineChart" width="800" height="280" style="width:100%;border-radius:6px;background:#111318"></canvas>
     </div>
@@ -608,6 +609,9 @@ async function loadStock() {
       let kl = await r2.json();
       stockKlineData = kl;
       drawKline(kl);
+      // 显示数据来源
+      let srcEl = document.getElementById('klineSource');
+      if (srcEl) srcEl.textContent = kl._source === '网络实时' ? '🌐 网络实时' : '💾 本地DB';
     }
   } catch(e) { alert('查询失败: '+e.message); }
 }

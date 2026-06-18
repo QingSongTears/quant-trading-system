@@ -342,9 +342,72 @@ def api_stock(code):
 @app.route("/api/stock/<code>/kline")
 @app.route("/api/stock/<code>/kline/<period>")
 def api_kline(code, period="day"):
-    """查询单只股票的K线数据, period: day/week/month"""
+    """K线查询: 优先网络实时数据, 断网降级到本地DB"""
     code = str(code).zfill(6)
-    import sqlite3
+
+    # ── 1. 尝试网络实时数据 ──
+    remote_data = _fetch_kline_remote(code, period)
+    if remote_data is not None:
+        remote_data["_source"] = "网络实时"
+        return jsonify(remote_data)
+
+    # ── 2. 降级到本地 DB ──
+    local_data = _fetch_kline_local(code, period)
+    if local_data is not None:
+        local_data["_source"] = "本地DB"
+        return jsonify(local_data)
+
+    return jsonify({"error": f"未找到K线 {code}"}), 404
+
+
+def _fetch_kline_remote(code, period="day"):
+    """从东财 push2 API 获取K线"""
+    import requests
+    market = 1 if code.startswith("6") else 0
+    secid = f"{market}.{code}"
+    klt_map = {"day": 101, "week": 102, "month": 103}
+    klt = klt_map.get(period, 101)
+    limit = 120
+
+    url = (
+        f"https://push2his.eastmoney.com/api/qt/stock/kline/get"
+        f"?secid={secid}&fields1=f1,f2,f3,f4,f5,f6"
+        f"&fields2=f51,f52,f53,f54,f55,f56,f57"
+        f"&klt={klt}&fqt=1&end=20500101&lmt={limit}"
+    )
+    try:
+        resp = requests.get(url, timeout=8, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://quote.eastmoney.com/",
+        })
+        data = resp.json()
+        if not data or not data.get("data") or not data["data"].get("klines"):
+            return None
+
+        klines = data["data"]["klines"]
+        dates, opens, highs, lows, closes, volumes = [], [], [], [], [], []
+        for line in klines[-limit:]:
+            parts = line.split(",")
+            if len(parts) < 6: continue
+            dates.append(parts[0])
+            opens.append(float(parts[1]))
+            closes.append(float(parts[2]))
+            highs.append(float(parts[3]))
+            lows.append(float(parts[4]))
+            volumes.append(float(parts[5]))
+
+        return {
+            "code": code, "period": period,
+            "dates": dates, "open": opens, "high": highs,
+            "low": lows, "close": closes, "volume": volumes,
+        }
+    except Exception:
+        return None
+
+
+def _fetch_kline_local(code, period="day"):
+    """从本地 DB 获取K线 (日线直出, 周月线聚合)"""
+    import sqlite3, pandas as pd
     db = PROJECT_ROOT / "database" / "quant.db"
     conn = sqlite3.connect(str(db))
     conn.row_factory = sqlite3.Row
@@ -355,29 +418,24 @@ def api_kline(code, period="day"):
     ).fetchall()
     conn.close()
 
-    if not rows:
-        return jsonify({"error": f"未找到K线 {code}"}), 404
+    if not rows: return None
 
     if period == "day":
         recent = rows[-120:]
-        return jsonify({
+        return {
             "code": code, "period": "day",
             "dates": [r["trade_date"] for r in recent],
-            "open": [r["open"] for r in recent],
-            "high": [r["high"] for r in recent],
-            "low": [r["low"] for r in recent],
-            "close": [r["close"] for r in recent],
+            "open": [r["open"] for r in recent], "high": [r["high"] for r in recent],
+            "low": [r["low"] for r in recent], "close": [r["close"] for r in recent],
             "volume": [r["volume"] for r in recent],
-        })
+        }
 
-    # 周线/月线：从日线聚合
-    import pandas as pd
     df = pd.DataFrame(rows, columns=["date","open","high","low","close","volume"])
     df["date"] = pd.to_datetime(df["date"])
 
     if period == "week":
         df["period"] = df["date"].dt.isocalendar().year.astype(str) + "-W" + df["date"].dt.isocalendar().week.astype(str).str.zfill(2)
-    else:  # month
+    else:
         df["period"] = df["date"].dt.strftime("%Y-%m")
 
     grouped = df.groupby("period").agg(
@@ -387,15 +445,13 @@ def api_kline(code, period="day"):
     ).reset_index(drop=True)
 
     recent = grouped.tail(120)
-    return jsonify({
+    return {
         "code": code, "period": period,
         "dates": [d.strftime("%Y-%m-%d") for d in recent["date"]],
-        "open": recent["open"].tolist(),
-        "high": recent["high"].tolist(),
-        "low": recent["low"].tolist(),
-        "close": recent["close"].tolist(),
+        "open": recent["open"].tolist(), "high": recent["high"].tolist(),
+        "low": recent["low"].tolist(), "close": recent["close"].tolist(),
         "volume": recent["volume"].tolist(),
-    })
+    }
 
 
 if __name__ == "__main__":
