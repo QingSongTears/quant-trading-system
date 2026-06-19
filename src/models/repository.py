@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, func, text
 from sqlalchemy.orm import Session, joinedload
 
 from ..config import get_config, get_db_url
-from .database import Base, StockBasic, DailyPrice, BenchmarkData, StrategyConfig, BacktestResult, DataSourceMeta, TechnicalIndicator, FinanceSummary, StockProfile
+from .database import Base, StockBasic, DailyPrice, BenchmarkData, StrategyConfig, BacktestResult, DataSourceMeta, TechnicalIndicator, FinanceSummary, StockProfile, FundFlowData
 
 
 class DataRepository:
@@ -360,3 +360,36 @@ class DataRepository:
                     updated += 1
             session.commit()
         return updated
+
+    # ===== 资金流向 (fund_flow_data) =====
+
+    def get_fund_flow_coverage(self) -> dict:
+        """获取资金流向数据覆盖概览"""
+        with self.get_session() as session:
+            total = session.query(func.count(FundFlowData.id)).scalar()
+            stocks = session.query(func.count(func.distinct(FundFlowData.code))).scalar()
+            min_d = session.query(func.min(FundFlowData.trade_date)).scalar()
+            max_d = session.query(func.max(FundFlowData.trade_date)).scalar()
+        return {
+            "total_records": total,
+            "total_stocks": stocks,
+            "date_range": {"start": min_d, "end": max_d},
+            "available": total > 0,
+        }
+
+    def get_fund_flow_for_code(self, code: str, end_date: str, lookback: int = 30) -> "pd.DataFrame":
+        """获取某只股票的资金流向数据"""
+        import pandas as pd
+        query = f"""
+            SELECT trade_date, main_net, super_large_net, large_net,
+                   medium_net, small_net
+            FROM fund_flow_data
+            WHERE code = '{code}'
+              AND trade_date <= '{end_date}'
+            ORDER BY trade_date DESC
+            LIMIT {lookback}
+        """
+        df = pd.read_sql(query, self.engine)
+        if not df.empty:
+            df = df.sort_values("trade_date").reset_index(drop=True)
+        return df
