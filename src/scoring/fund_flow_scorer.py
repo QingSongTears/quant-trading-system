@@ -51,23 +51,37 @@ class FundFlowScorer:
             self.engine = create_engine(db_url, echo=False)
         else:
             self.engine = engine
+        self._data_available = self._check_data()
+
+    def _check_data(self) -> bool:
+        """检查 fund_flow_data 表是否有数据"""
+        try:
+            cnt = pd.read_sql(
+                "SELECT COUNT(*) as n FROM fund_flow_data", self.engine
+            ).iloc[0, 0]
+            if cnt == 0:
+                print("[WARN] FundFlowScorer: fund_flow_data 表为空，"
+                      "评分将返回 0。待 #65 导入资金流数据。")
+            return cnt > 0
+        except Exception:
+            return False
 
     def _load_flow_data(
         self, code: str, as_of_date_str: str, lookback: int = 30
     ) -> pd.DataFrame:
         query = f"""
-            SELECT date, main_net, super_large_net, large_net,
+            SELECT trade_date, main_net, super_large_net, large_net,
                    medium_net, small_net
-            FROM fund_flow
+            FROM fund_flow_data
             WHERE code = '{code}'
-              AND date(date) <= '{as_of_date_str}'
-            ORDER BY date(date) DESC
+              AND trade_date <= '{as_of_date_str}'
+            ORDER BY trade_date DESC
             LIMIT {lookback}
         """
         df = pd.read_sql(query, self.engine)
         if df.empty:
             return df
-        df = df.sort_values("date").reset_index(drop=True)
+        df = df.sort_values("trade_date").reset_index(drop=True)
         return df
 
     def _load_market_cap(self, code: str) -> float:
@@ -83,12 +97,12 @@ class FundFlowScorer:
             return {}
         codes_str = "', '".join(codes)
         query = f"""
-            SELECT code, date, main_net, super_large_net, large_net,
+            SELECT code, trade_date, main_net, super_large_net, large_net,
                    medium_net, small_net
-            FROM fund_flow
+            FROM fund_flow_data
             WHERE code IN ('{codes_str}')
-              AND date(date) <= '{as_of_date_str}'
-            ORDER BY code, date(date) DESC
+              AND trade_date <= '{as_of_date_str}'
+            ORDER BY code, trade_date DESC
         """
         df = pd.read_sql(query, self.engine)
         if df.empty:
@@ -96,7 +110,7 @@ class FundFlowScorer:
 
         result = {}
         for code, group in df.groupby("code"):
-            group = group.sort_values("date").reset_index(drop=True)
+            group = group.sort_values("trade_date").reset_index(drop=True)
             if len(group) >= 5:
                 result[code] = group.tail(lookback)
         return result

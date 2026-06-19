@@ -334,3 +334,31 @@ class StockProfile(Base):
 
     def __repr__(self):
         return f"<StockProfile(code={self.code}, name={self.name}, industry={self.industry})>"
+
+
+class FundFlowData(Base):
+    """
+    资金流向表
+    数据来源: fund_flow_120d.csv — 主力/超大单/大单/中单/小单净流入
+    """
+    __tablename__ = "fund_flow_data"
+    __table_args__ = (
+        UniqueConstraint("code", "trade_date", name="uq_ff_code_date"),
+        Index("idx_ff_code", "code"),
+        Index("idx_ff_date", "trade_date"),
+        Index("idx_ff_code_date", "code", "trade_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(10), nullable=False, comment="股票代码")
+    market: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, comment="市场")
+    name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="股票名称")
+    trade_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, comment="交易日期")
+    main_net: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="主力净流入(万元)")
+    super_large_net: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="超大单净流入(万元)")
+    large_net: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="大单净流入(万元)")
+    medium_net: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="中单净流入(万元)")
+    small_net: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="小单净流入(万元)")
+
+    def __repr__(self):
+        return f"<FundFlowData(code={self.code}, date={self.trade_date})>"
