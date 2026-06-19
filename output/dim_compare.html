@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>维度贡献 · 牛股vs全市场IC对比</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px}
+header h1{font-size:1.1rem;font-weight:600}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem;margin-left:auto}
+header a:hover{color:var(--accent)}
+.container{max-width:1100px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+.card-title{font-size:0.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+.chart-wrap{position:relative;height:340px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.row{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse;font-size:0.82rem}
+td,th{padding:10px 12px;border-bottom:1px solid var(--border);text-align:center}
+th{color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase}
+.pos{color:var(--green)}.neg{color:var(--red)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.footer{text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border);margin-top:20px}
+.insight-box{background:#1a1d2e;border-left:3px solid var(--accent);padding:14px 18px;border-radius:4px;font-size:0.85rem;line-height:1.7}
+</style>
+</head>
+<body>
+<header><h1>🔬 维度贡献对比</h1><span style="font-size:0.75rem;color:var(--dim)">牛股样本 vs 全市场 IC对比</span><a href="/">← 返回调优面板</a></header>
+<div class="container">
+
+<div class="card"><div class="card-title">🎯 IC对比 — 牛股 vs 全市场</div>
+<div class="chart-wrap"><canvas id="icCompareChart"></canvas></div></div>
+
+<div class="row">
+<div class="card"><div class="card-title">📊 IC详细数据</div>
+<table><thead><tr><th>维度</th><th>牛股IC</th><th>全市场IC</th><th>差值</th><th>方向差异</th></tr></thead><tbody>
+<tr><td style="text-align:left"><span class="dot" style="background:#4fc3f7"></span>技术面</td>
+<td class="neg">-0.0624</td>
+<td class="pos">+0.0237</td>
+<td class="neg">-0.0861</td>
+<td>相反 🔄</td></tr>
+<tr><td style="text-align:left"><span class="dot" style="background:#66bb6a"></span>基本面</td>
+<td class="neg">-0.0090</td>
+<td class="pos">+0.0263</td>
+<td class="neg">-0.0353</td>
+<td>相反 🔄</td></tr>
+<tr><td style="text-align:left"><span class="dot" style="background:#ffa726"></span>资金面</td>
+<td class="neg">-0.0149</td>
+<td class="neg">-0.0228</td>
+<td class="pos">+0.0079</td>
+<td>一致 ✅</td></tr>
+<tr><td style="text-align:left"><span class="dot" style="background:#ab47bc"></span>机构面</td>
+<td class="neg">+0.0000</td>
+<td class="neg">+nan</td>
+<td class="neg">+nan</td>
+<td>一致 ✅</td></tr>
+<tr><td style="text-align:left"><span class="dot" style="background:#ef5350"></span>龙虎榜机构</td>
+<td class="pos">+0.0154</td>
+<td class="pos">+0.0097</td>
+<td class="pos">+0.0057</td>
+<td>一致 ✅</td></tr>
+<tr><td style="text-align:left"><span class="dot" style="background:#ec407a"></span>情绪面</td>
+<td class="pos">+0.0021</td>
+<td class="pos">+0.0073</td>
+<td class="neg">-0.0052</td>
+<td>一致 ✅</td></tr>
+<tr><td style="text-align:left"><span class="dot" style="background:#26c6da"></span>新闻事件</td>
+<td class="pos">+0.0442</td>
+<td class="neg">-0.0098</td>
+<td class="pos">+0.0540</td>
+<td>相反 🔄</td></tr>
+<tr><td style="text-align:left"><span class="dot" style="background:#8d6e63"></span>筹码面</td>
+<td class="pos">+0.0452</td>
+<td class="neg">-0.0874</td>
+<td class="pos">+0.1326</td>
+<td>相反 🔄</td></tr>
+</tbody></table></div>
+
+<div class="card"><div class="card-title">💡 关键发现</div>
+<div class="insight-box">
+<p><strong>最大差异：</strong><span class="neg">筹码面</span> — 牛股IC=+0.0452 vs 全市场IC=-0.0874（差值+0.1326）</p>
+<p>  在牛股中筹码集中意味着主力锁定筹码、后续看涨；在全市场中筹码集中反而是见顶信号。</p>
+<br>
+<p><strong>方向相反的维度（4个）：</strong></p>
+<ul>
+<li><span class="neg">技术面</span>：牛股IC=-0.0624 vs 全市场IC=+0.0237
+    <br><span style="color:var(--dim);font-size:0.8rem">牛股中反向信号，全市场中正向</span></li>
+<li><span class="neg">基本面</span>：牛股IC=-0.0090 vs 全市场IC=+0.0263
+    <br><span style="color:var(--dim);font-size:0.8rem">牛股中反向信号，全市场中正向</span></li>
+<li><span class="pos">新闻事件</span>：牛股IC=+0.0442 vs 全市场IC=-0.0098
+    <br><span style="color:var(--dim);font-size:0.8rem">牛股中正向信号，全市场中反向</span></li>
+<li><span class="pos">筹码面</span>：牛股IC=+0.0452 vs 全市场IC=-0.0874
+    <br><span style="color:var(--dim);font-size:0.8rem">牛股中正向信号，全市场中反向</span></li>
+</ul><br>
+<p><strong>方向一致的维度（4个）：</strong></p>
+<ul>
+<li><span class="neg">资金面</span>：牛股IC=-0.0149 · 全市场IC=-0.0228</li>
+<li><span class="pos">龙虎榜机构</span>：牛股IC=+0.0154 · 全市场IC=+0.0097</li>
+<li><span class="pos">情绪面</span>：牛股IC=+0.0021 · 全市场IC=+0.0073</li>
+</ul></div></div>
+<div class="footer">A股量化回测系统 · 维度贡献分析 · 基于192只牛股+12.2万全市场样本</div>
+</div>
+
+<script>
+const DATA = [{"cn": "技术面", "bull": -0.0624, "market": 0.0237, "diff": -0.0861, "dir": "相反 🔄"}, {"cn": "基本面", "bull": -0.009, "market": 0.0263, "diff": -0.0353, "dir": "相反 🔄"}, {"cn": "资金面", "bull": -0.0149, "market": -0.0228, "diff": 0.0079, "dir": "一致 ✅"}, {"cn": "机构面", "bull": 0.0, "market": NaN, "diff": NaN, "dir": "一致 ✅"}, {"cn": "龙虎榜机构", "bull": 0.0154, "market": 0.0097, "diff": 0.0057, "dir": "一致 ✅"}, {"cn": "情绪面", "bull": 0.0021, "market": 0.0073, "diff": -0.0052, "dir": "一致 ✅"}, {"cn": "新闻事件", "bull": 0.0442, "market": -0.0098, "diff": 0.054, "dir": "相反 🔄"}, {"cn": "筹码面", "bull": 0.0452, "market": -0.0874, "diff": 0.1326, "dir": "相反 🔄"}];
+
+// Grouped bar chart: bull vs market IC
+new Chart(document.getElementById('icCompareChart'), {
+  type: 'bar',
+  data: {
+    labels: DATA.map(d=>d.cn),
+    datasets: [
+      {label:'牛股IC', data:DATA.map(d=>d.bull),
+        backgroundColor:'rgba(79,195,247,0.8)', borderColor:'#4fc3f7', borderWidth:1},
+      {label:'全市场IC', data:DATA.map(d=>d.market),
+        backgroundColor:'rgba(255,167,38,0.8)', borderColor:'#ffa726', borderWidth:1}
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    plugins: {legend:{labels:{color:'#ccc',font:{size:11}}}},
+    scales: {
+      y:{grid:{color:'#2a2d3a'}, ticks:{color:'#888'}},
+      x:{grid:{display:false}, ticks:{color:'#ccc',font:{size:11}}}
+    }
+  }
+});
+</script></body></html>
