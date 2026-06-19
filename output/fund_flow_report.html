@@ -22,7 +22,7 @@ table{width:100%;border-collapse:collapse;font-size:0.82rem}
 td,th{padding:10px 12px;border-bottom:1px solid var(--border);text-align:center}
 th{color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase}
 .best-row{background:#0d2818!important}
-.pos{color:var(--green)}.neg{color:var(--red)}
+.pos{color:var(--red)}.neg{color:var(--green)}
 .metric-card{text-align:center;padding:16px}
 .metric-value{font-size:1.8rem;font-weight:700}
 .metric-label{font-size:0.75rem;color:var(--dim);margin-top:4px}
@@ -83,8 +83,8 @@ th{color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase}
 <div class="card"><div class="card-title">💡 结论</div>
 <div style="background:#1a1d2e;border-left:3px solid var(--green);padding:14px 18px;border-radius:4px;font-size:0.85rem;line-height:1.7">
 <p><strong>资金面评分器接入效果显著：</strong></p>
-<p>✅ 夏普从 <span style="color:var(--red)">0.09</span> 提升到 <span style="color:var(--green)">0.15</span>（<strong>+67%</strong>）</p>
-<p>✅ 年化从 <span style="color:var(--red)">+0.27%</span> 提升到 <span style="color:var(--green)">+1.96%</span>（<strong>7倍</strong>）</p>
+<p>✅ 夏普从 <span style="color:var(--green)">0.09</span> 提升到 <span style="color:var(--red)">0.15</span>（<strong>+67%</strong>）</p>
+<p>✅ 年化从 <span style="color:var(--green)">+0.27%</span> 提升到 <span style="color:var(--red)">+1.96%</span>（<strong>7倍</strong>）</p>
 <p>✅ 回撤不变（-28.88%），风险未增加</p>
 <p>✅ 交易次数不变（30笔），信号筛选未变</p>
 <br>
@@ -99,7 +99,7 @@ const DATA = [{"name": "v6 (纯信号)", "sharpe": 0.09, "annual_return": 0.27},
 new Chart(document.getElementById('sharpeChart'), {
   type:'bar',
   data:{labels:DATA.map(d=>d.name),datasets:[{label:'夏普',data:DATA.map(d=>d.sharpe),
-    backgroundColor:DATA.map(d=>d.sharpe>=0?'rgba(76,175,80,0.7)':'rgba(239,83,80,0.7)'),
+    backgroundColor:DATA.map(d=>d.sharpe>=0?'rgba(239,83,80,0.7':'rgba(76,175,80,0.7'),
     borderColor:DATA.map(d=>d.sharpe>=0?'#4caf50':'#ef5350'),borderWidth:1}]},
   options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
     scales:{y:{grid:{color:'#2a2d3a'},ticks:{color:'#888'}},x:{grid:{display:false},ticks:{color:'#ccc'}}}}});
@@ -107,7 +107,7 @@ new Chart(document.getElementById('sharpeChart'), {
 new Chart(document.getElementById('retChart'), {
   type:'bar',
   data:{labels:DATA.map(d=>d.name),datasets:[{label:'年化%',data:DATA.map(d=>d.annual_return),
-    backgroundColor:DATA.map(d=>d.annual_return>=0?'rgba(76,175,80,0.7)':'rgba(239,83,80,0.7)'),
+    backgroundColor:DATA.map(d=>d.annual_return>=0?'rgba(239,83,80,0.7':'rgba(76,175,80,0.7'),
     borderColor:DATA.map(d=>d.annual_return>=0?'#4caf50':'#ef5350'),borderWidth:1}]},
   options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
     scales:{y:{grid:{color:'#2a2d3a'},ticks:{color:'#888',callback:v=>v+'%'}},x:{grid:{display:false},ticks:{color:'#ccc'}}}}});

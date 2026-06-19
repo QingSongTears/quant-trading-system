@@ -128,7 +128,7 @@ function renderBarChart(d) {
   if (chart) { chart.destroy(); chart = null; }
   const labels = s.map(x => x.industry);
   const values = s.map(x => x.avg_score);
-  const colors = values.map(v => v>=8 ? 'rgba(239,83,80,0.7)' : v>=6 ? 'rgba(255,167,38,0.7)' : 'rgba(76,175,80,0.7)');
+  const colors = values.map(v => v>=8 ? 'rgba(76,175,80,0.7' : v>=6 ? 'rgba(255,167,38,0.7)' : 'rgba(239,83,80,0.7');
 
   const ctx = document.getElementById('barChart').getContext('2d');
   chart = new Chart(ctx, {
