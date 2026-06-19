@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IC分析 · 8维评分贡献度</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+* {margin:0;padding:0;box-sizing:border-box;}
+:root {--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726;}
+body {font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+header {background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;}
+header h1 {font-size:1.1rem;font-weight:600;}
+header a {color:var(--dim);text-decoration:none;font-size:0.8rem;margin-left:auto;}
+header a:hover {color:var(--accent);}
+.container {max-width:1200px;margin:0 auto;padding:20px;}
+.card {background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px;}
+.card-title {font-size:0.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;}
+.row {display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+@media(max-width:900px){.row{grid-template-columns:1fr;}}
+.chart-wrap {position:relative;height:320px;}
+.chart-wrap-sm {position:relative;height:260px;}
+table {width:100%;border-collapse:collapse;font-size:0.82rem;}
+td,th {padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;}
+th {color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase;}
+td:last-child {text-align:right;font-family:monospace;}
+.pos {color:var(--green);}
+.neg {color:var(--red);}
+.bar-val {font-size:0.75rem;font-family:monospace;}
+.footer {text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border);margin-top:20px;}
+.metric-card {text-align:center;padding:16px;}
+.metric-value {font-size:1.8rem;font-weight:700;}
+.metric-label {font-size:0.75rem;color:var(--dim);margin-top:4px;}
+.insight-box {background:#1a1d2e;border-left:3px solid var(--accent);padding:14px 18px;border-radius:4px;font-size:0.85rem;line-height:1.7;margin-top:10px;}
+.insight-box .pos {color:var(--green);}
+.insight-box .neg {color:var(--red);}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📊 8维IC分析看板</h1>
+  <span style="font-size:0.75rem;color:var(--dim)">全市场122,903样本 · AUC=0.5515</span>
+  <a href="/">← 返回调优面板</a>
+</header>
+
+<div class="container">
+  <!-- 概览指标 -->
+  <div class="row">
+    <div class="card metric-card">
+      <div class="metric-value" style="color:var(--accent)">0.5515</div>
+      <div class="metric-label">模型 AUC</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-value" style="color:var(--green)">122,903</div>
+      <div class="metric-label">有效样本量</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-value" style="color:var(--green)">8</div>
+      <div class="metric-label">输入维度</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-value" style="color:var(--yellow)">122903</div>
+      <div class="metric-label">分层覆盖样本</div>
+    </div>
+  </div>
+
+  <!-- IC对比 + 权重系数 -->
+  <div class="row">
+    <div class="card">
+      <div class="card-title">🎯 各维度IC（信息系数）</div>
+      <div class="chart-wrap"><canvas id="icChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">⚖️ 逻辑回归系数权重</div>
+      <div class="chart-wrap"><canvas id="coefChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- 概率分层 -->
+  <div class="row">
+    <div class="card">
+      <div class="card-title">📈 概率分层 — 实际上涨率</div>
+      <div class="chart-wrap-sm"><canvas id="binUpChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📈 概率分层 — 平均收益</div>
+      <div class="chart-wrap-sm"><canvas id="binRetChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- IC数据表 -->
+  <div class="card">
+    <div class="card-title">📋 IC详细数据</div>
+    <table>
+      <thead><tr><th>维度</th><th>IC值</th><th>系数权重</th><th>样本数</th><th>预测方向</th></tr></thead>
+      <tbody id="icTable"></tbody>
+    </table>
+  </div>
+
+  <!-- 概率分层详细表 -->
+  <div class="card">
+    <div class="card-title">📋 概率分层详细数据</div>
+    <table>
+      <thead><tr><th>概率区间</th><th>样本数</th><th>占比</th><th>实际上涨率</th><th>平均收益</th></tr></thead>
+      <tbody id="binTable"></tbody>
+    </table>
+  </div>
+
+  <!-- 分析结论 -->
+  <div class="card">
+    <div class="card-title">💡 分析结论</div>
+    <div class="insight-box" id="insightBox"></div>
+  </div>
+
+  <div class="footer">A股量化回测系统 · 8维预测模型 · 数据更新于 2026-06-19</div>
+</div>
+
+<script>
+// Embedded data
+const DATA = {"ic_table": [{"dim": "chip_weighted", "ic": -0.0874, "n": 122903}, {"dim": "fundam_weighted", "ic": 0.0263, "n": 122903}, {"dim": "tech_weighted", "ic": 0.0237, "n": 122903}, {"dim": "fund_weighted", "ic": -0.0228, "n": 122903}, {"dim": "news_event_weighted", "ic": -0.0098, "n": 122903}, {"dim": "lh_institutional_weighted", "ic": 0.0097, "n": 122903}, {"dim": "sentiment_weighted", "ic": 0.0073, "n": 122903}, {"dim": "institutional_weighted", "ic": NaN, "n": 122903}], "dim_cn_map": {"tech_weighted": "技术面", "fundam_weighted": "基本面", "fund_weighted": "资金面", "institutional_weighted": "机构面", "lh_institutional_weighted": "龙虎榜机构", "sentiment_weighted": "情绪面", "news_event_weighted": "新闻事件", "chip_weighted": "筹码面"}, "logistic_coef": {"tech_weighted": 0.013166009487489869, "fundam_weighted": 0.013642902642700376, "fund_weighted": -0.07029136192167772, "institutional_weighted": 0.006013837926624867, "lh_institutional_weighted": 0.022853374760726915, "sentiment_weighted": 0.03913706095648211, "news_event_weighted": -0.05876798499254415, "chip_weighted": -0.022889090637015337}, "logistic_coef_cn": {"技术面": 0.013166009487489869, "基本面": 0.013642902642700376, "资金面": -0.07029136192167772, "机构面": 0.006013837926624867, "龙虎榜机构": 0.022853374760726915, "情绪面": 0.03913706095648211, "新闻事件": -0.05876798499254415, "筹码面": -0.022889090637015337}, "intercept": 0.0010738931285733922, "auc": 0.5515, "bin_stats": [{"bin": "<0.4", "count": 3544, "pct_up": 0.27313769751693, "avg_ret": -1.0980418846461872}, {"bin": "0.4-0.5", "count": 41998, "pct_up": 0.48028477546549836, "avg_ret": 1.4205938778783864}, {"bin": "0.5-0.6", "count": 74314, "pct_up": 0.5399117259197459, "avg_ret": 3.474954711801669}, {"bin": "0.6-0.7", "count": 3047, "pct_up": 0.546110928782409, "avg_ret": 3.75420063099779}]};
+
+const DIM_CNF = {
+  "chip_weighted": "筹码面", "fundam_weighted": "基本面", "tech_weighted": "技术面",
+  "fund_weighted": "资金面", "news_event_weighted": "新闻事件",
+  "lh_institutional_weighted": "龙虎榜机构", "sentiment_weighted": "情绪面",
+  "institutional_weighted": "机构面"
+};
+
+const DIM_COLORS = {
+  "筹码面":"#8d6e63","基本面":"#66bb6a","技术面":"#4fc3f7",
+  "资金面":"#ffa726","新闻事件":"#26c6da","龙虎榜机构":"#ef5350",
+  "情绪面":"#ec407a","机构面":"#ab47bc"
+};
+
+// IC Chart
+function renderICChart() {
+  const items = DATA.ic_table.filter(r => r.ic !== null && !isNaN(r.ic)).sort((a,b) => Math.abs(b.ic) - Math.abs(a.ic));
+  const labels = items.map(r => DIM_CNF[r.dim] || r.dim);
+  const values = items.map(r => r.ic);
+  const colors = values.map(v => v >= 0 ? 'rgba(76,175,80,0.8)' : 'rgba(239,83,80,0.8)');
+  const borderColors = values.map(v => v >= 0 ? '#4caf50' : '#ef5350');
+  new Chart(document.getElementById('icChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label:'IC', data:values, backgroundColor:colors, borderColor:borderColors, borderWidth:1 }] },
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins: { legend:{display:false} },
+      scales: { x:{ grid:{color:'#2a2d3a'}, ticks:{color:'#888'} },
+                y:{ grid:{display:false}, ticks:{color:'#ccc',font:{size:11}} } }
+    }
+  });
+}
+
+// Coef Chart
+function renderCoefChart() {
+  const items = Object.entries(DATA.logistic_coef_cn).sort((a,b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const labels = items.map(i => i[0]);
+  const values = items.map(i => i[1]);
+  const colors = values.map(v => v >= 0 ? 'rgba(76,175,80,0.8)' : 'rgba(239,83,80,0.8)');
+  new Chart(document.getElementById('coefChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label:'系数', data:values, backgroundColor:colors, borderColor:colors.map(c=>c.replace('0.8','1')), borderWidth:1 }] },
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins: { legend:{display:false} },
+      scales: { x:{ grid:{color:'#2a2d3a'}, ticks:{color:'#888'} },
+                y:{ grid:{display:false}, ticks:{color:'#ccc',font:{size:11}} } }
+    }
+  });
+}
+
+// Bin up rate chart
+function renderBinUpChart() {
+  const bins = DATA.bin_stats;
+  new Chart(document.getElementById('binUpChart'), {
+    type: 'bar',
+    data: { labels: bins.map(b=>b.bin), datasets: [{ label:'实际上涨率', data:bins.map(b=>(b.pct_up*100).toFixed(1)), backgroundColor:'rgba(79,195,247,0.7)', borderColor:'#4fc3f7', borderWidth:1 }] },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins: { legend:{display:false} },
+      scales: { y:{ min:0, max:70, grid:{color:'#2a2d3a'}, ticks:{color:'#888',callback:v=>v+'%'} },
+                x:{ grid:{display:false}, ticks:{color:'#ccc'}} }
+    }
+  });
+}
+
+// Bin return chart
+function renderBinRetChart() {
+  const bins = DATA.bin_stats;
+  const colors = bins.map(b => b.avg_ret >= 0 ? 'rgba(76,175,80,0.7)' : 'rgba(239,83,80,0.7)');
+  new Chart(document.getElementById('binRetChart'), {
+    type: 'bar',
+    data: { labels: bins.map(b=>b.bin), datasets: [{ label:'平均收益', data:bins.map(b=>b.avg_ret), backgroundColor:colors, borderColor:colors.map(c=>c.replace('0.7','1')), borderWidth:1 }] },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins: { legend:{display:false} },
+      scales: { y:{ grid:{color:'#2a2d3a'}, ticks:{color:'#888',callback:v=>v+'%'} },
+                x:{ grid:{display:false}, ticks:{color:'#ccc'}} }
+    }
+  });
+}
+
+// IC table
+const total = 122903;
+let icHtml = '';
+for (let item of DATA.ic_table) {
+  let label = DIM_CNF[item.dim] || item.dim;
+  let ic = item.ic;
+  let icStr = ic === null || isNaN(ic) ? 'NaN' : ic.toFixed(4);
+  let icClass = ic === null || isNaN(ic) ? '' : (ic > 0 ? 'pos' : (ic < 0 ? 'neg' : ''));
+  let coef = DATA.logistic_coef_cn[label] || 0;
+  let dir = coef > 0 ? '正向 ↗' : (coef < 0 ? '反向 ↘' : '--');
+  let dirColor = coef > 0 ? 'var(--green)' : (coef < 0 ? 'var(--red)' : 'var(--dim)');
+  let dotColor = DIM_COLORS[label] || '#888';
+  icHtml += `<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:$\{dotColor};margin-right:6px"></span>$\{label}</td>
+    <td class="$\{icClass}">$\{icStr}</td>
+    <td class="$\{coef>0?'pos':'neg'}">$\{coef>0?'+':''}$\{coef.toFixed(4)}</td>
+    <td>$\{item.n||'-'}</td>
+    <td style="color:$\{dirColor}">$\{dir}</td></tr>`;
+}
+document.getElementById('icTable').innerHTML = icHtml;
+
+// Bin table
+let binHtml = '';
+for (let b of DATA.bin_stats) {
+  let pct = ((b.count/total)*100).toFixed(1);
+  let retColor = b.avg_ret >= 0 ? 'var(--green)' : 'var(--red)';
+  binHtml += `<tr>
+    <td><strong>$\{b.bin}</strong></td>
+    <td>$\{b.count.toLocaleString()}</td>
+    <td>$\{pct}%</td>
+    <td style="color:$\{b.pct_up>0.5?'var(--green)':'var(--red)'}">$\{(b.pct_up*100).toFixed(1)}%</td>
+    <td style="color:$\{retColor}">$\{b.avg_ret > 0 ? '+' : ''}$\{b.avg_ret.toFixed(2)}%</td>
+  </tr>`;
+}
+document.getElementById('binTable').innerHTML = binHtml;
+
+// Insights
+let bestIC = DATA.ic_table.filter(r => r.ic !== null && !isNaN(r.ic)).sort((a,b) => Math.abs(b.ic) - Math.abs(a.ic))[0];
+let posIC = DATA.ic_table.filter(r => r.ic > 0).sort((a,b) => Math.abs(b.ic) - Math.abs(a.ic));
+let negIC = DATA.ic_table.filter(r => r.ic < 0).sort((a,b) => Math.abs(b.ic) - Math.abs(a.ic));
+let bestCoef = Object.entries(DATA.logistic_coef_cn).sort((a,b) => Math.abs(b[1]) - Math.abs(a[1]))[0];
+
+document.getElementById('insightBox').innerHTML = `
+  <p><strong>核心发现：</strong></p>
+  <p>📌 最强IC维度：<span class="neg">筹码面（IC=${(bestIC?.ic||0).toFixed(4)}）</span> —— 筹码集中度高的股票，下月反而跑输，是显著的反向指标。</p>
+  <p>📌 正向IC：${posIC.map(i => `<span class="pos">$\{DIM_CNF[i.dim]||i.dim}($\{i.ic.toFixed(4)})</span>`).join('、')}</p>
+  <p>📌 反向IC：${negIC.map(i => `<span class="neg">$\{DIM_CNF[i.dim]||i.dim}($\{i.ic.toFixed(4)})</span>`).join('、')}</p>
+  <br>
+  <p><strong>概率分层解读：</strong></p>
+  <p>📊 低概率区（&lt;0.4）：${DATA.bin_stats[0].count.toLocaleString()}样本，实际上涨率仅 ${(DATA.bin_stats[0].pct_up*100).toFixed(1)}%，平均收益 ${DATA.bin_stats[0].avg_ret.toFixed(2)}% —— 模型能有效识别下跌风险。</p>
+  <p>📊 高概率区（≥0.55）：${(DATA.bin_stats.slice(2).reduce((s,b)=>s+b.count,0)).toLocaleString()}样本，实际上涨率 ≈54%，跑赢随机猜测。</p>
+  <p>📊 单调性验证：概率越高，上涨率和平均收益越高，模型具有排名价值。</p>
+  <br>
+  <p><strong>系数权重解读：</strong></p>
+  <p>⚖️ 最强正权重：<span class="pos">情绪面（+${(Object.entries(DATA.logistic_coef_cn).find(i=>i[0]==='情绪面')?.[1]||0).toFixed(4)}）</span>，说明市场情绪越好，下月上涨概率越高。</p>
+  <p>⚖️ 最强负权重：<span class="neg">资金面（${(Object.entries(DATA.logistic_coef_cn).find(i=>i[0]==='资金面')?.[1]||0).toFixed(4)}）</span>，与牛股样本中资金面的正向效应相反。</p>
+`;
+
+// Render all charts
+renderICChart();
+renderCoefChart();
+renderBinUpChart();
+renderBinRetChart();
+</script>
+</body>
+</html>

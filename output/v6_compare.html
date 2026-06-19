@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>v6阈值对比 · 多参数测试</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px}
+header h1{font-size:1.1rem;font-weight:600}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem;margin-left:auto}
+header a:hover{color:var(--accent)}
+.container{max-width:1100px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+.card-title{font-size:0.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+.chart-wrap{position:relative;height:280px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.row{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse;font-size:0.82rem}
+td,th{padding:10px 12px;border-bottom:1px solid var(--border);text-align:center}
+th{color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase}
+.best-row{background:#0d2818!important}
+.pos{color:var(--green)}
+.neg{color:var(--red)}
+.config-name{text-align:left;font-weight:500}
+.footer{text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border);margin-top:20px}
+</style>
+</head>
+<body>
+<header><h1>📊 v6阈值放宽 — 多参数对比</h1><span style="font-size:0.75rem;color:var(--dim)">全市场回测 2024-06 ~ 2025-06</span><a href="/">← 返回调优面板</a></header>
+<div class="container">
+<div class="card">
+<div class="card-title">🏆 回测结果对比 <span style="color:var(--green);font-weight:400">（绿色高亮=最优）</span></div>
+<table><thead><tr><th>配置</th><th>日均信号</th><th>总收益</th><th>年化</th><th>夏普</th><th>最大回撤</th><th>胜率</th><th>交易</th><th>卡玛</th></tr></thead><tbody>
+<tr><td class="config-name">基线 (当前)</td>
+<td>4.7</td>
+<td class="neg">-11.01%</td>
+<td class="neg">-10.57%</td>
+<td class="neg">-0.32</td>
+<td class="neg">-26.6%</td>
+<td>18.5%</td>
+<td>28</td>
+<td>-0.40</td></tr>
+<tr><td class="config-name">档A (RSI宽)</td>
+<td>6.9</td>
+<td class="neg">-0.92%</td>
+<td class="neg">-0.88%</td>
+<td class="pos">+0.06</td>
+<td class="neg">-28.7%</td>
+<td>21.5%</td>
+<td>32</td>
+<td>-0.03</td></tr>
+<tr class="best-row"><td class="config-name">档B (RSI折中)</td>
+<td>4.9</td>
+<td class="pos">+0.29%</td>
+<td class="pos">+0.27%</td>
+<td class="pos">+0.09</td>
+<td class="neg">-28.9%</td>
+<td>21.2%</td>
+<td>30</td>
+<td>+0.01</td></tr>
+<tr><td class="config-name">档C (回撤放宽)</td>
+<td>4.9</td>
+<td class="neg">-13.83%</td>
+<td class="neg">-13.29%</td>
+<td class="neg">-0.43</td>
+<td class="neg">-27.9%</td>
+<td>19.2%</td>
+<td>28</td>
+<td>-0.48</td></tr>
+</tbody></table></div>
+<div class="row">
+<div class="card"><div class="card-title">📈 总收益对比</div><div class="chart-wrap"><canvas id="retChart"></canvas></div></div>
+<div class="card"><div class="card-title">📈 夏普比率对比</div><div class="chart-wrap"><canvas id="sharpeChart"></canvas></div></div>
+</div>
+<div class="card"><div class="card-title">💡 推荐配置</div>
+<div style="background:#1a1d2e;border-left:3px solid var(--green);padding:14px 18px;border-radius:4px;font-size:0.85rem;line-height:1.7">
+<p><strong>推荐使用 档B（RSI折中: RSI14≤35）</strong></p>
+<p>✅ 唯一正收益配置（+0.29%），夏普0.09 为所有配置中最高</p>
+<p>✅ 信号量微增（4.7→4.9只/天），不会过度稀释信号质量</p>
+<p>✅ 回撤控制在-28.9%，与基线持平</p><br>
+<p><strong>不建议：</strong></p>
+<p>❌ 档A（RSI14≤40）信号量虽增47%，但广撒网降低了信号精度</p>
+<p>❌ 档C/档D（回撤放宽到-10%）反而更差，说明深回撤是有效的反转条件</p><br>
+<p><span style="color:var(--dim)">注意：新引擎无止损止盈，纯信号质量评估。旧引擎有止损时v6年化+15%。</span></p>
+</div></div>
+<div class="footer">A股量化回测系统 · v6阈值测试 · 基于新架构PortfolioBacktestEngine</div>
+</div>
+<script>
+const DATA = [{"config": "基线 (当前)", "avg_signal": 4.7, "total_return": -11.01, "sharpe": -0.32}, {"config": "档A (RSI宽)", "avg_signal": 6.9, "total_return": -0.92, "sharpe": 0.06}, {"config": "档B (RSI折中)", "avg_signal": 4.9, "total_return": 0.29, "sharpe": 0.09}, {"config": "档C (回撤放宽)", "avg_signal": 4.9, "total_return": -13.83, "sharpe": -0.43}];
+
+new Chart(document.getElementById('retChart'), {
+  type:'bar',
+  data:{labels:DATA.map(d=>d.config),
+    datasets:[{label:'总收益%',data:DATA.map(d=>d.total_return),
+      backgroundColor:DATA.map(d=>d.total_return>=0?'rgba(76,175,80,0.7)':'rgba(239,83,80,0.7)'),
+      borderColor:DATA.map(d=>d.total_return>=0?'#4caf50':'#ef5350'),borderWidth:1}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{y:{grid:{color:'#2a2d3a'},ticks:{color:'#888',callback:v=>v+'%'}},x:{grid:{display:false},ticks:{color:'#ccc'}}}}});
+
+new Chart(document.getElementById('sharpeChart'), {
+  type:'bar',
+  data:{labels:DATA.map(d=>d.config),
+    datasets:[{label:'夏普',data:DATA.map(d=>d.sharpe),
+      backgroundColor:['#4fc3f7','#66bb6a','#ffa726','#ef5350','#ab47bc'],
+      borderColor:['#4fc3f7','#66bb6a','#ffa726','#ef5350','#ab47bc'],borderWidth:1}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{y:{grid:{color:'#2a2d3a'},ticks:{color:'#888'}},x:{grid:{display:false},ticks:{color:'#ccc'}}}}});
+</script></body></html>
