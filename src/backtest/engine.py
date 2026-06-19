@@ -717,20 +717,27 @@ class BacktestEngine:
             return 0
 
     def _build_equity_curve(self, stats, index) -> List[Dict]:
-        """构建净值曲线数据"""
+        """构建净值曲线数据 — backtesting 返回 DataFrame/Series 都需兼容"""
         try:
             equity = stats.get("_equity_curve", None)
             if equity is None:
                 return []
             curve_data = []
-            # _equity_curve 是 pd.Series
-            if hasattr(equity, 'values'):
+            # backtesting 0.x+: 返回 pd.DataFrame (列: Equity, DrawdownPct, ...)
+            if hasattr(equity, 'columns'):
+                # DataFrame: 取第一列 (Equity)
+                first_col = equity.iloc[:, 0]
+                values = first_col.values
+            elif hasattr(equity, 'values'):
+                # Series
                 values = equity.values
-                for i, val in enumerate(values):
-                    curve_data.append({
-                        "date": str(index[min(i, len(index) - 1)].date()),
-                        "equity": float(val)
-                    })
+            else:
+                return []
+            for i, val in enumerate(values):
+                curve_data.append({
+                    "date": str(index[min(i, len(index) - 1)].date()),
+                    "equity": float(val)
+                })
             return curve_data
         except Exception:
             return []
@@ -757,17 +764,24 @@ class BacktestEngine:
             return []
 
     def _calc_monthly_returns(self, stats, index) -> Dict[str, float]:
-        """计算月度收益率"""
+        """计算月度收益率 (取每月最后一个交易日的权益值)"""
         try:
             equity = stats.get("_equity_curve", None)
             if equity is None:
                 return {}
+            # backtesting 返回 DataFrame 时取第一列 (Equity)
+            if hasattr(equity, 'columns'):
+                values = equity.iloc[:, 0].values
+            elif hasattr(equity, 'values'):
+                values = equity.values
+            else:
+                return {}
             monthly = {}
-            for i, val in enumerate(equity.values):
+            for i, val in enumerate(values):
                 dt = index[min(i, len(index) - 1)]
                 key = f"{dt.year}-{dt.month:02d}"
-                if key not in monthly:
-                    monthly[key] = float(val)
+                # 取每月最后一个值 (即月末权益)
+                monthly[key] = float(val)
             return monthly
         except Exception:
             return {}

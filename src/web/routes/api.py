@@ -19,6 +19,55 @@ from ..app import download_status as _download_status
 router = APIRouter()
 
 
+# ===== 序列化辅助函数 (处理 np.nan / np.float64) =====
+
+def _safe_float(v):
+    """numpy float / NaN / None → 原生 Python"""
+    if v is None:
+        return None
+    try:
+        import math
+        x = float(v)
+        if math.isnan(x) or math.isinf(x):
+            return None
+        return x
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_json(v):
+    """numpy 类型 + NaN 安全序列化为 JSON 字符串"""
+    if v is None:
+        return "[]"
+    if isinstance(v, str):
+        return v  # 已经是 JSON 字符串
+    try:
+        import numpy as np
+        # 转 list 时把 numpy 类型替换成原生类型
+        def _conv(o):
+            if isinstance(o, dict):
+                return {k: _conv(val) for k, val in o.items()}
+            if isinstance(o, (list, tuple)):
+                return [_conv(x) for x in o]
+            if isinstance(o, (np.integer,)):
+                return int(o)
+            if isinstance(o, (np.floating,)):
+                f = float(o)
+                if math.isnan(f) or math.isinf(f):
+                    return None
+                return f
+            if isinstance(o, float):
+                if math.isnan(o) or math.isinf(o):
+                    return None
+                return o
+            return o
+        import math
+        cleaned = _conv(v)
+        return json.dumps(cleaned, ensure_ascii=False, allow_nan=False)
+    except Exception:
+        return "[]"
+
+
 # ===== 请求模型 =====
 
 class BacktestRequest(BaseModel):
@@ -247,14 +296,26 @@ async def run_backtest(req: BacktestRequest):
             "success": True,
             "result_id": result_id,
             "report": {
-                "total_return": report.total_return,
-                "annual_return": report.annual_return,
-                "sharpe_ratio": report.sharpe_ratio,
-                "max_drawdown": report.max_drawdown,
-                "win_rate": report.win_rate,
+                "stock_code": report.stock_code,
+                "stock_name": report.stock_name,
+                "start_date": str(report.start_date),
+                "end_date": str(report.end_date),
+                "initial_capital": report.initial_capital,
+                "final_equity": report.final_equity,
+                "total_return": _safe_float(report.total_return),
+                "annual_return": _safe_float(report.annual_return),
+                "sharpe_ratio": _safe_float(report.sharpe_ratio),
+                "max_drawdown": _safe_float(report.max_drawdown),
+                "win_rate": _safe_float(report.win_rate),
                 "total_trades": report.total_trades,
-                "benchmark_return": report.benchmark_return,
-                "excess_return": report.excess_return,
+                "annual_volatility": _safe_float(report.annual_volatility),
+                "calmar_ratio": _safe_float(report.calmar_ratio),
+                "profit_factor": _safe_float(report.profit_factor),
+                "benchmark_return": _safe_float(report.benchmark_return),
+                "excess_return": _safe_float(report.excess_return),
+                "equity_curve": _safe_json(report.equity_curve),
+                "trades_detail": _safe_json(report.trades_detail),
+                "monthly_returns": _safe_json(report.monthly_returns),
             }
         }
 
@@ -333,14 +394,26 @@ async def run_portfolio_backtest(req: PortfolioBacktestRequest):
             "success": True,
             "result_id": result_id,
             "report": {
-                "total_return": report.total_return,
-                "annual_return": report.annual_return,
-                "sharpe_ratio": report.sharpe_ratio,
-                "max_drawdown": report.max_drawdown,
-                "win_rate": report.win_rate,
+                "stock_code": report.stock_code,
+                "stock_name": report.stock_name,
+                "start_date": str(report.start_date),
+                "end_date": str(report.end_date),
+                "initial_capital": report.initial_capital,
+                "final_equity": report.final_equity,
+                "total_return": _safe_float(report.total_return),
+                "annual_return": _safe_float(report.annual_return),
+                "sharpe_ratio": _safe_float(report.sharpe_ratio),
+                "max_drawdown": _safe_float(report.max_drawdown),
+                "win_rate": _safe_float(report.win_rate),
                 "total_trades": report.total_trades,
-                "benchmark_return": report.benchmark_return,
-                "excess_return": report.excess_return,
+                "annual_volatility": _safe_float(report.annual_volatility),
+                "calmar_ratio": _safe_float(report.calmar_ratio),
+                "profit_factor": _safe_float(report.profit_factor),
+                "benchmark_return": _safe_float(report.benchmark_return),
+                "excess_return": _safe_float(report.excess_return),
+                "equity_curve": _safe_json(report.equity_curve),
+                "trades_detail": _safe_json(report.trades_detail),
+                "monthly_returns": _safe_json(report.monthly_returns),
             }
         }
 
@@ -408,14 +481,26 @@ async def run_voting_backtest(req: VotingBacktestRequest):
             "success": True,
             "result_id": result_id,
             "report": {
-                "total_return": report.total_return,
-                "annual_return": report.annual_return,
-                "sharpe_ratio": report.sharpe_ratio,
-                "max_drawdown": report.max_drawdown,
-                "win_rate": report.win_rate,
+                "stock_code": report.stock_code,
+                "stock_name": report.stock_name,
+                "start_date": str(report.start_date),
+                "end_date": str(report.end_date),
+                "initial_capital": report.initial_capital,
+                "final_equity": report.final_equity,
+                "total_return": _safe_float(report.total_return),
+                "annual_return": _safe_float(report.annual_return),
+                "sharpe_ratio": _safe_float(report.sharpe_ratio),
+                "max_drawdown": _safe_float(report.max_drawdown),
+                "win_rate": _safe_float(report.win_rate),
                 "total_trades": report.total_trades,
-                "benchmark_return": report.benchmark_return,
-                "excess_return": report.excess_return,
+                "annual_volatility": _safe_float(report.annual_volatility),
+                "calmar_ratio": _safe_float(report.calmar_ratio),
+                "profit_factor": _safe_float(report.profit_factor),
+                "benchmark_return": _safe_float(report.benchmark_return),
+                "excess_return": _safe_float(report.excess_return),
+                "equity_curve": _safe_json(report.equity_curve),
+                "trades_detail": _safe_json(report.trades_detail),
+                "monthly_returns": _safe_json(report.monthly_returns),
             }
         }
 
