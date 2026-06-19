@@ -59,14 +59,14 @@ header a:hover { color:var(--accent); }
   display:flex; flex-direction:column; align-items:center; justify-content:center;
 }
 .gauge-pct { font-size:2.2rem; font-weight:700; }
-.gauge-pct.up { color:var(--green); }
+.gauge-pct.up { color:var(--red); }
 .gauge-pct.mid { color:var(--yellow); }
-.gauge-pct.down { color:var(--red); }
+.gauge-pct.down { color:var(--green); }
 .gauge-label { font-size:0.75rem; color:var(--dim); margin-bottom:2px; }
 .signal-badge { display:inline-block; padding:4px 16px; border-radius:20px; font-weight:600; font-size:0.9rem; }
-.signal-badge.buy { background:#1b3a1b; color:var(--green); }
+.signal-badge.buy { background:#3a1b1b; color:var(--red); }
 .signal-badge.hold { background:#3a3a1b; color:var(--yellow); }
-.signal-badge.avoid { background:#3a1b1b; color:var(--red); }
+.signal-badge.avoid { background:#1b3a1b; color:var(--green); }
 .meta { font-size:0.75rem; color:var(--dim); margin-top:8px; }
 
 /* 雷达图 */
@@ -438,7 +438,7 @@ function renderInsight(data) {
   } else if (pct >= 40) {
     lines.push(`下月上涨概率 <strong style="color:var(--yellow)">${pct.toFixed(1)}%</strong>，信号为 <strong style="color:var(--yellow)">${signal}</strong>，方向不明确。`);
   } else {
-    lines.push(`下月上涨概率 <strong style="color:var(--red)">${pct.toFixed(1)}%</strong>，信号为 <strong style="color:var(--red)">${signal}</strong>，建议回避。`);
+    lines.push(`下月上涨概率 <strong style="color:var(--green)">${pct.toFixed(1)}%</strong>，信号为 <strong style="color:var(--green)">${signal}</strong>，建议回避。`);
   }
 
   if (posDims.length > 0) {

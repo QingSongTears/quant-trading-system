@@ -22,8 +22,8 @@ table{width:100%;border-collapse:collapse;font-size:0.82rem}
 td,th{padding:10px 12px;border-bottom:1px solid var(--border);text-align:center}
 th{color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase}
 .best-row{background:#0d2818!important}
-.pos{color:var(--green)}
-.neg{color:var(--red)}
+.pos{color:var(--red)}
+.neg{color:var(--green)}
 .config-name{text-align:left;font-weight:500}
 .footer{text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border);margin-top:20px}
 </style>
@@ -95,7 +95,7 @@ new Chart(document.getElementById('retChart'), {
   type:'bar',
   data:{labels:DATA.map(d=>d.config),
     datasets:[{label:'总收益%',data:DATA.map(d=>d.total_return),
-      backgroundColor:DATA.map(d=>d.total_return>=0?'rgba(76,175,80,0.7)':'rgba(239,83,80,0.7)'),
+      backgroundColor:DATA.map(d=>d.total_return>=0?'rgba(239,83,80,0.7':'rgba(76,175,80,0.7'),
       borderColor:DATA.map(d=>d.total_return>=0?'#4caf50':'#ef5350'),borderWidth:1}]},
   options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
     scales:{y:{grid:{color:'#2a2d3a'},ticks:{color:'#888',callback:v=>v+'%'}},x:{grid:{display:false},ticks:{color:'#ccc'}}}}});

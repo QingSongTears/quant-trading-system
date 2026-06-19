@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>七维量化评分 · 参数调优面板</title>
 <style>
-:root { --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a; --text:#e0e0e0; --dim:#888; --accent:#4fc3f7; --green:#66bb6a; --red:#ef5350; --yellow:#ffa726; --orange:#ff7043; }
+:root { --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a; --text:#e0e0e0; --dim:#888; --accent:#4fc3f7; --green:#4caf50; --red:#ef5350; --yellow:#ffa726; --orange:#ff7043; }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
 header { background:var(--card); border-bottom:1px solid var(--border); padding:14px 24px; display:flex; align-items:center; gap:12px; justify-content:space-between; }
@@ -1014,7 +1014,7 @@ function drawKline(data) {
     let isGreen = data.close[i] >= data.open[i];
     let vh = (data.volume[i] / volMax) * volH;
     let x = pad.l + gap * i + gap/2 - barW/2;
-    ctx.fillStyle = isGreen ? 'rgba(239,83,80,0.3)' : 'rgba(38,166,154,0.3)';
+    ctx.fillStyle = isGreen ? 'rgba(76,175,80,0.3' : 'rgba(38,166,154,0.3)';
     ctx.fillRect(x, volBase - vh, barW, vh);
   }
   ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textAlign = 'right';
@@ -1241,7 +1241,7 @@ function drawBtEquity() {
       let si = map[t.entryDate], ei = map[t.exitDate];
       if (si!==undefined && ei!==undefined) {
         let x1 = pad.l+(cw/(n-1))*si, x2 = pad.l+(cw/(n-1))*ei;
-        ctx.fillStyle = t.returnPct>=0 ? 'rgba(102,187,106,0.08)' : 'rgba(239,83,80,0.08)';
+        ctx.fillStyle = t.returnPct>=0 ? 'rgba(102,187,106,0.08)' : 'rgba(76,175,80,0.08';
         ctx.fillRect(x1, pad.t, x2-x1, ch);
       }
     });
