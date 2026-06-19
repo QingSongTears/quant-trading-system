@@ -249,6 +249,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     const chart = echarts.init(chartDom);
+    if (window._registerChart) window._registerChart(chartDom, chart);
     
     if (scatterData.length > 0) {
         chart.setOption({
@@ -294,9 +295,6 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         chartDom.innerHTML = '<div class="text-center text-muted py-5">暂无回测数据可展示</div>';
     }
-    
-    // 响应式
-    window.addEventListener('resize', () => chart.resize());
 });
 </script>
 {% endblock %}

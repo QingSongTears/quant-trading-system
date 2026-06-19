@@ -299,16 +299,16 @@ const DRAWDOWN_DATA = {{ drawdown_curve | tojson }};
 const MONTHLY_DATA = {{ monthly_returns | tojson }};
 const INITIAL_CAPITAL = {{ (result.initial_capital or 0) | tojson }};
 
-// 图表实例引用 — 防止重复 init 导致内存泄漏
-let _equityChart = null, _ddChart = null, _heatChart = null;
-function _dispose(chart) { if (chart) { try { chart.dispose(); } catch(e) {} return null; } }
+// 图表实例由 base.html 的 _registerChart / _disposeChart 统一管理
+// 无需声明局部变量，也无需手动监听 resize
 
 document.addEventListener('DOMContentLoaded', function() {
     // 净值曲线 + 基准叠加
     if (EQUITY_DATA && EQUITY_DATA.length > 0) {
-        _equityChart = _dispose(_equityChart);
-        const chart = echarts.init(document.getElementById('equity-benchmark-chart'));
-        _equityChart = chart;
+        const dom = document.getElementById('equity-benchmark-chart');
+        if (window._disposeChart) window._disposeChart(dom);
+        const chart = echarts.init(dom);
+        if (window._registerChart) window._registerChart(dom, chart);
         const dates = EQUITY_DATA.map(d => d.date);
         const equity = EQUITY_DATA.map(d => d.equity);
 
@@ -361,14 +361,14 @@ document.addEventListener('DOMContentLoaded', function() {
             ]
         };
         chart.setOption(option);
-        window.addEventListener('resize', () => chart.resize());
     }
 
     // 回撤曲线
     if (DRAWDOWN_DATA && DRAWDOWN_DATA.length > 0) {
-        _ddChart = _dispose(_ddChart);
-        const ddChart = echarts.init(document.getElementById('drawdown-chart'));
-        _ddChart = ddChart;
+        const dom = document.getElementById('drawdown-chart');
+        if (window._disposeChart) window._disposeChart(dom);
+        const ddChart = echarts.init(dom);
+        if (window._registerChart) window._registerChart(dom, ddChart);
         ddChart.setOption({
             tooltip: { trigger: 'axis', formatter: p => `${p[0].axisValue}<br/>回撤: ${p[0].value}%` },
             grid: { left: 50, right: 15, top: 15, bottom: 30 },
@@ -381,16 +381,15 @@ document.addEventListener('DOMContentLoaded', function() {
             }],
             dataZoom: [{ type: 'inside' }, { type: 'slider', height: 15, bottom: 5 }]
         });
-        window.addEventListener('resize', () => ddChart.resize());
     }
 
     // 月度收益热力图
     const heatmapDom = document.getElementById('monthly-heatmap');
     const monthKeys = MONTHLY_DATA ? Object.keys(MONTHLY_DATA) : [];
     if (heatmapDom && monthKeys.length > 0) {
-        _heatChart = _dispose(_heatChart);
+        if (window._disposeChart) window._disposeChart(heatmapDom);
         const heatChart = echarts.init(heatmapDom);
-        _heatChart = heatChart;
+        if (window._registerChart) window._registerChart(heatmapDom, heatChart);
         const months = monthKeys.sort();
         const values = months.map(m => MONTHLY_DATA[m]);
         const maxAbs = Math.max(
@@ -428,7 +427,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 })),
             }]
         });
-        window.addEventListener('resize', () => heatChart.resize());
     } else if (heatmapDom) {
         heatmapDom.innerHTML = '<div class="text-center text-muted py-5"><small>暂无月度数据</small></div>';
     }
