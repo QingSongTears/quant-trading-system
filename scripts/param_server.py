@@ -296,6 +296,71 @@ def dim_compare():
     return send_from_directory(str(PROJECT_ROOT / "output"), "dim_compare.html")
 
 
+@app.route("/fund-flow-report")
+def fund_flow_report():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "fund_flow_report.html")
+
+
+# ── 股票搜索API ──
+SEARCH_INDEX = None  # 懒加载
+
+def _build_search_index():
+    """构建搜索索引: code/name/拼音首字母"""
+    global SEARCH_INDEX
+    if SEARCH_INDEX is not None:
+        return SEARCH_INDEX
+    try:
+        import sqlite3
+        from pypinyin import lazy_pinyin, Style
+        db = sqlite3.connect(str(PROJECT_ROOT / "database" / "quant.db"))
+        cur = db.cursor()
+        cur.execute("SELECT code, name FROM stock_basic WHERE name IS NOT NULL")
+        rows = cur.fetchall()
+        db.close()
+        index = []
+        for code, name in rows:
+            code = code.strip()
+            name = name.strip() if name else ""
+            initials = "".join(lazy_pinyin(name, style=Style.FIRST_LETTER)) if name else ""
+            full_py = "".join(lazy_pinyin(name)) if name else ""
+            index.append({"code": code, "name": name, "initials": initials, "full_py": full_py})
+        SEARCH_INDEX = index
+        print(f"  [搜索索引] {len(index)} 只股票已加载")
+    except Exception as e:
+        print(f"  [搜索索引] 失败: {e}")
+        SEARCH_INDEX = []
+    return SEARCH_INDEX
+
+
+@app.route("/api/stock/search")
+def api_stock_search():
+    """搜索股票: 支持代码/名称/拼音首字母模糊搜索"""
+    q = request.args.get("q", "").strip().lower()
+    if not q or len(q) < 1:
+        return jsonify({"results": []})
+    
+    index = _build_search_index()
+    results = []
+    for item in index:
+        # 代码匹配
+        if q in item["code"]:
+            results.append({"code": item["code"], "name": item["name"], "match": "code"})
+        # 名称匹配
+        elif q in item["name"].lower():
+            results.append({"code": item["code"], "name": item["name"], "match": "name"})
+        # 拼音首字母匹配
+        elif q in item["initials"]:
+            results.append({"code": item["code"], "name": item["name"], "match": "pinyin"})
+        # 全拼匹配
+        elif q in item["full_py"]:
+            results.append({"code": item["code"], "name": item["name"], "match": "pinyin"})
+        
+        if len(results) >= 20:
+            break
+    
+    return jsonify({"results": results})
+
+
 @app.route("/api/status")
 def api_status():
     return jsonify({"loaded": len(records), "dims": dim_cols, "task": task.snapshot()})
