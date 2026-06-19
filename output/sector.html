@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>行业板块 · 8维量化选股</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:1.1rem;font-weight:600}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem}
+header a:hover{color:var(--accent)}
+header .nav{margin-left:auto;display:flex;gap:12px}
+.container{max-width:1400px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px}
+.card-title{font-size:0.72rem;text-transform:uppercase;color:var(--dim);letter-spacing:0.8px;margin-bottom:10px;font-weight:600}
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.toolbar select{padding:7px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.82rem;outline:none}
+.toolbar select:focus{border-color:var(--accent)}
+.chart-wrap{height:420px;position:relative}
+table{width:100%;border-collapse:collapse;font-size:0.8rem}
+th{text-align:left;padding:8px 10px;color:var(--dim);font-weight:600;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card)}
+td{padding:7px 10px;border-bottom:1px solid rgba(42,45,58,0.3)}
+tr:hover td{background:rgba(255,255,255,0.02)}
+tr.clickable{cursor:pointer}
+.m-up{color:var(--red)}
+.m-down{color:var(--green)}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.7rem;font-weight:600}
+.badge-up{background:rgba(239,83,80,0.2);color:var(--red)}
+.badge-down{background:rgba(76,175,80,0.2);color:var(--green)}
+.badge-neutral{background:rgba(255,167,38,0.2);color:var(--yellow)}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.stat-card{text-align:center;padding:12px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid var(--border)}
+.stat-val{font-size:1.4rem;font-weight:700}
+.stat-label{font-size:0.7rem;color:var(--dim);margin-top:2px}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:200;align-items:center;justify-content:center}
+.modal.show{display:flex}
+.modal-box{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;width:90%;max-width:900px;max-height:85vh;overflow-y:auto}
+.modal-close{float:right;font-size:1.5rem;color:var(--dim);cursor:pointer}
+.loading{opacity:0.5;pointer-events:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>🏭 行业板块分析</h1>
+  <div class="nav">
+    <a href="/diagnose">诊断</a><a href="/backtest-lab">回测</a><a href="/predict">预测</a><a href="/">全部</a>
+  </div>
+</header>
+<div class="container">
+  <div class="toolbar">
+    <select id="sortSelect" onchange="loadSectors()">
+      <option value="avg_score">按综合评分</option>
+      <option value="stock_count">按成分股数量</option>
+      <option value="name">按行业名称</option>
+    </select>
+    <select id="minSelect" onchange="loadSectors()">
+      <option value="3">≥3只成分股</option><option value="5">≥5只</option><option value="10">≥10只</option><option value="20">≥20只</option>
+    </select>
+    <span id="sectorDate" style="font-size:0.78rem;color:var(--dim);flex:1;text-align:right"></span>
+  </div>
+
+  <div class="grid-4" id="statsBar"></div>
+
+  <div class="card">
+    <div class="card-title">📊 行业评分排名（横向柱状图）</div>
+    <div class="chart-wrap"><canvas id="barChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🏆 行业综合评分明细</div>
+    <div class="chart-wrap" style="height:60px;margin-bottom:8px;" id="miniHeatmap"></div>
+    <div class="table-wrap" style="max-height:500px;overflow-y:auto"><table><thead>
+      <tr><th>#</th><th>行业</th><th>成分股</th><th>综合评分</th><th>技术面</th><th>基本面</th><th>资金面</th><th>机构面</th><th>情绪面</th><th>趋势</th><th>Top成分股</th></tr>
+    </thead><tbody id="sectorBody"></tbody></table></div>
+  </div>
+</div>
+
+<div class="modal" id="detailModal"><div class="modal-box">
+  <span class="modal-close" onclick="closeDetail()">×</span>
+  <h3 id="detailTitle" style="margin-bottom:12px;font-size:1rem;"></h3>
+  <div id="detailContent" class="table-wrap" style="max-height:400px;overflow-y:auto"></div>
+</div></div>
+
+<script>
+let sectors = [];
+let chart = null;
+
+document.addEventListener('DOMContentLoaded', loadSectors);
+document.getElementById('detailModal').addEventListener('click', e => { if(e.target===e.currentTarget) closeDetail(); });
+
+async function loadSectors() {
+  const sort = document.getElementById('sortSelect').value;
+  const min = document.getElementById('minSelect').value;
+  try {
+    const r = await fetch(`/api/sector?sort_by=${sort}&min_stocks=${min}`);
+    const d = await r.json();
+    sectors = d.sectors || [];
+    renderStats(d);
+    renderBarChart(d);
+    renderTable(d);
+    document.getElementById('sectorDate').textContent = '数据日期: ' + (d.as_of_date || '');
+  } catch(e) { console.error(e); }
+}
+
+function renderStats(d) {
+  const s = d.sectors || [];
+  const total = s.length;
+  const up = s.filter(x => x.avg_score >= 8).length;
+  const mid = s.filter(x => x.avg_score >= 6 && x.avg_score < 8).length;
+  const down = s.filter(x => x.avg_score < 6).length;
+  const top3 = s.slice(0,3).map(x => x.industry).join(', ');
+  document.getElementById('statsBar').innerHTML = `
+    <div class="stat-card"><div class="stat-val" style="color:var(--accent)">${total}</div><div class="stat-label">行业总数</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:var(--red)">${up}</div><div class="stat-label">偏多(≥8)</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:var(--yellow)">${mid}</div><div class="stat-label">中性(6~8)</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:var(--green)">${down}</div><div class="stat-label">偏空(&lt;6)</div></div>
+  `;
+}
+
+function renderBarChart(d) {
+  const s = (d.sectors || []).slice(0, 30);
+  if (chart) { chart.destroy(); chart = null; }
+  const labels = s.map(x => x.industry);
+  const values = s.map(x => x.avg_score);
+  const colors = values.map(v => v>=8 ? 'rgba(239,83,80,0.7)' : v>=6 ? 'rgba(255,167,38,0.7)' : 'rgba(76,175,80,0.7)');
+
+  const ctx = document.getElementById('barChart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: '综合评分',
+        data: values,
+        backgroundColor: colors,
+        borderWidth: 0,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => '评分: ' + ctx.raw.toFixed(2) } }
+      },
+      scales: {
+        x: { min: 0, max: 15, ticks: { color:'#666', font:{size:9} }, grid: { color:'rgba(255,255,255,0.03)' } },
+        y: { ticks: { color:'#aaa', font:{size:9} }, grid: { display:false } }
+      }
+    }
+  });
+}
+
+// Mini heatmap
+function renderHeatmap(sectors) {
+  const el = document.getElementById('miniHeatmap');
+  const w = Math.min(6, Math.max(2, 100/sectors.length));
+  el.innerHTML = sectors.map(s =>
+    `<span style="display:inline-block;width:${w}px;height:60px;background:${scoreColor(s.avg_score)};border-radius:2px;margin-right:1px;position:relative;" title="${s.industry}: ${s.avg_score}"></span>`
+  ).join('');
+}
+
+function scoreColor(v) {
+  if (v >= 10) return '#c62828';
+  if (v >= 8) return '#ef5350';
+  if (v >= 7) return '#ff8a65';
+  if (v >= 6) return '#ffa726';
+  if (v >= 5) return '#ffd54f';
+  if (v >= 4) return '#aed581';
+  return '#66bb6a';
+}
+
+function renderTable(d) {
+  const s = d.sectors || [];
+  document.getElementById('sectorBody').innerHTML = s.map((x, i) => {
+    const top5 = (x.top_stocks || []).slice(0,3).map(st => `${st.code}`).join(', ');
+    return `<tr class="clickable" onclick="showDetail('${escHtml(x.industry)}')">
+      <td>${i+1}</td>
+      <td><strong>${escHtml(x.industry)}</strong></td>
+      <td>${x.stock_count}</td>
+      <td style="font-weight:700;color:${x.avg_score>=8?'var(--red)':x.avg_score>=6?'var(--yellow)':'var(--green)'}">${x.avg_score.toFixed(2)}</td>
+      ${dimLabels.map(d => `<td style="color:${(x.dim_scores[d]||0)>=8?'var(--red)':(x.dim_scores[d]||0)>=6?'var(--yellow)':'var(--green)'}">${(x.dim_scores[d]||0).toFixed(1)}</td>`).join('')}
+      <td><span class="badge ${x.trend==='up'?'badge-up':x.trend==='down'?'badge-down':'badge-neutral'}">${x.trend==='up'?'偏多':x.trend==='down'?'偏空':'中性'}</span></td>
+      <td style="font-size:0.72rem;color:var(--dim)">${escHtml(top5)}</td>
+    </tr>`;
+  }).join('');
+
+  renderHeatmap(s);
+}
+
+const dimLabels = ['tech_weighted','fundam_weighted','fund_weighted','institutional_weighted','sentiment_weighted'];
+
+async function showDetail(industry) {
+  try {
+    const r = await fetch('/api/sector/' + encodeURIComponent(industry));
+    const d = await r.json();
+    document.getElementById('detailTitle').textContent = industry + ' (' + d.total + '只成分股)';
+    document.getElementById('detailContent').innerHTML =
+      '<table><thead><tr><th>代码</th><th>名称</th><th>综合评分</th><th>20日收益</th><th>60日收益</th></tr></thead><tbody>' +
+      (d.stocks || []).map(s => `<tr>
+        <td style="font-family:monospace;color:var(--accent)">${s.code}</td>
+        <td>${escHtml(s.name)}</td>
+        <td style="font-weight:600;color:${s.avg_score>=8?'var(--red)':s.avg_score>=6?'var(--yellow)':'var(--green)'}">${s.avg_score.toFixed(2)}</td>
+        <td style="color:${(s.ret_20d||0)>=0?'var(--red)':'var(--green)'}">${s.ret_20d!=null?(s.ret_20d>=0?'+':'')+s.ret_20d.toFixed(2)+'%':'-'}</td>
+        <td style="color:${(s.ret_60d||0)>=0?'var(--red)':'var(--green)'}">${s.ret_60d!=null?(s.ret_60d>=0?'+':'')+s.ret_60d.toFixed(2)+'%':'-'}</td>
+      </tr>`).join('') + '</tbody></table>';
+    document.getElementById('detailModal').classList.add('show');
+  } catch(e) {}
+}
+
+function closeDetail() { document.getElementById('detailModal').classList.remove('show'); }
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+</script>
+</body>
+</html>

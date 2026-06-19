@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>持仓分析 · 8维量化选股</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:1.1rem;font-weight:600}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem}
+header a:hover{color:var(--accent)}
+header .nav{margin-left:auto;display:flex;gap:12px}
+.container{max-width:1400px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px}
+.card-title{font-size:0.72rem;text-transform:uppercase;color:var(--dim);letter-spacing:0.8px;margin-bottom:10px;font-weight:600}
+textarea{width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.82rem;font-family:monospace;outline:none;resize:vertical;min-height:100px}
+textarea:focus{border-color:var(--accent)}
+.btn{padding:8px 24px;border:none;border-radius:6px;background:var(--accent);color:#000;font-weight:600;cursor:pointer;font-size:0.85rem}
+.btn:hover{opacity:0.85}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.stat-card{text-align:center;padding:12px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid var(--border)}
+.stat-val{font-size:1.3rem;font-weight:700}
+.stat-label{font-size:0.68rem;color:var(--dim);margin-top:2px;text-transform:uppercase}
+.dim-val{font-size:1rem}
+.chart-wrap{height:320px}
+table{width:100%;border-collapse:collapse;font-size:0.8rem}
+th{text-align:left;padding:7px 8px;color:var(--dim);font-weight:600;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);font-size:0.72rem}
+td{padding:6px 8px;border-bottom:1px solid rgba(42,45,58,0.3)}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.m-up{color:var(--red)}.m-down{color:var(--green)}
+.table-wrap{max-height:400px;overflow-y:auto}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.hint{font-size:0.78rem;color:var(--dim);margin:6px 0}
+.badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:0.7rem;font-weight:600}
+.badge-good{background:rgba(76,175,80,0.2);color:var(--green)}
+.badge-warn{background:rgba(255,167,38,0.2);color:var(--yellow)}
+.badge-bad{background:rgba(239,83,80,0.2);color:var(--red)}
+</style>
+</head>
+<body>
+<header>
+  <h1>📦 持仓分析</h1>
+  <div class="nav">
+    <a href="/diagnose">诊断</a><a href="/sector">板块</a><a href="/screener">选股</a><a href="/">全部</a>
+  </div>
+</header>
+<div class="container">
+  <div class="card">
+    <div class="card-title">📝 输入持仓</div>
+    <p class="hint">每行一只股票，格式：代码 或 代码+空格+名称+空格+持仓比例(可选)</p>
+    <textarea id="portfolioInput" placeholder="000001 平安银行 20%
+600519 贵州茅台 30%
+000858 五粮液 15%
+002415 海康威视
+600036 招商银行 25%"></textarea>
+    <div style="margin-top:8px;display:flex;gap:10px;align-items:center;">
+      <button class="btn" onclick="analyze()">📊 分析持仓</button>
+      <span class="hint" id="parseStatus"></span>
+      <span style="flex:1"></span>
+      <button class="btn" style="background:var(--border);color:var(--text);" onclick="loadSample()">加载示例</button>
+    </div>
+  </div>
+
+  <div id="resultArea" style="display:none;">
+    <div class="grid-4" id="summaryCards"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+      <div class="card">
+        <div class="card-title">🎯 持仓综合评分雷达</div>
+        <div class="chart-wrap"><canvas id="radarChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">🏢 行业分布</div>
+        <div class="chart-wrap"><canvas id="pieChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📋 持仓明细</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>代码</th><th>名称</th><th>行业</th><th>持仓%</th><th>综合</th><th>技术</th><th>基本面</th><th>资金</th><th>机构</th><th>情绪</th><th>筹码</th><th>评分</th><th>建议</th></tr></thead>
+        <tbody id="portfolioBody"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <div id="emptyState" class="card" style="text-align:center;padding:40px;color:var(--dim);">
+    <div style="font-size:2.5rem;margin-bottom:8px;">📦</div>
+    <p>输入持仓股票代码，查看组合评分与风险分析</p>
+  </div>
+</div>
+
+<script>
+let charts = { radar: null, pie: null };
+
+document.addEventListener('DOMContentLoaded', loadSample);
+
+function loadSample() {
+  document.getElementById('portfolioInput').value =
+    '000001 平安银行 20%\n600519 贵州茅台 30%\n000858 五粮液 15%\n002415 海康威视 10%\n600036 招商银行 25%';
+}
+
+async function analyze() {
+  const text = document.getElementById('portfolioInput').value.trim();
+  if (!text) { alert('请输入持仓'); return; }
+
+  // Parse
+  const lines = text.split('\n').filter(l => l.trim());
+  const codes = [];
+  const weights = [];
+
+  lines.forEach(line => {
+    const parts = line.trim().split(/\s+/);
+    const code = parts[0].match(/\d{6}/);
+    if (code) {
+      codes.push(code[0]);
+      // Try to parse weight (百分比或小数)
+      let w = 0;
+      for (let p of parts) {
+        const m = p.match(/^(\d+(?:\.\d+)?)%?$/);
+        if (m) { w = parseFloat(m[1]); break; }
+      }
+      weights.push(w || 0);
+    }
+  });
+
+  if (!codes.length) { alert('未识别到有效股票代码'); return; }
+
+  // Normalize weights
+  const totalW = weights.reduce((a, b) => a + b, 0);
+  const normalized = totalW > 0 ? weights.map(w => w / totalW * 100) : weights.map(() => 100 / weights.length);
+
+  document.getElementById('parseStatus').textContent = `识别到 ${codes.length} 只股票`;
+
+  // Load data for each stock
+  const results = [];
+  for (let i = 0; i < codes.length; i++) {
+    try {
+      const r = await fetch('/api/stock/' + codes[i]);
+      const d = await r.json();
+      if (d.error) continue;
+      const latest = d.scores ? Object.fromEntries(
+        Object.entries(d.scores).map(([k, v]) => [k, Array.isArray(v) && v.length > 0 ? v[v.length-1] : 0])
+      ) : {};
+      const scores = {};
+      dimLabels.forEach((label, idx) => {
+        scores[dimNames[idx]] = latest[label] || 0;
+      });
+      const vals = dimNames.map(n => scores[n] || 0);
+      scores.avg = vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : 0;
+
+      const ind = await fetchIndustry(codes[i]);
+      results.push({
+        code: codes[i],
+        name: d.code === codes[i] ? '' : d.code,
+        industry: ind,
+        weight: normalized[i],
+        scores,
+      });
+    } catch(e) { console.error(codes[i], e); }
+  }
+
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('resultArea').style.display = 'block';
+  renderResults(results);
+}
+
+const dimNames = ['technical','fundamental','fund_flow','institutional','lh_institutional','sentiment','news_event','chip'];
+const dimLabels = ['技术面','基本面','资金面','机构面','龙虎榜','情绪面','新闻面','筹码面'];
+const dimColors = ['#4fc3f7','#66bb6a','#ffa726','#ab47bc','#ef5350','#26c6da','#ec407a','#7c4dff'];
+
+async function fetchIndustry(code) {
+  try {
+    const r = await fetch('/api/stock/screener?min_score=0&limit=1');
+    const d = await r.json();
+    const s = (d.stocks||[]).find(x => x.code === code);
+    return s ? s.industry : '-';
+  } catch(e) { return '-'; }
+}
+
+function renderResults(results) {
+  if (!results.length) { document.getElementById('resultArea').style.display = 'none'; return; }
+
+  // Summary
+  const avgScore = results.reduce((s, r) => s + r.scores.avg * r.weight / 100, 0);
+  const weighted = {};
+  dimNames.forEach(n => {
+    weighted[n] = results.reduce((s, r) => s + (r.scores[n]||0) * r.weight / 100, 0);
+  });
+  const avgDim = dimNames.reduce((s, n) => s + (weighted[n]||0), 0) / dimNames.length;
+  const highScore = results.filter(r => r.scores.avg >= 8).length;
+  const lowScore = results.filter(r => r.scores.avg < 5).length;
+
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="stat-card"><div class="stat-val" style="color:${avgScore>=7?'var(--red)':avgScore>=5?'var(--yellow)':'var(--green)'}">${avgScore.toFixed(2)}</div><div class="stat-label">加权综合评分</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:var(--yellow)">${results.length}</div><div class="stat-label">持仓数量</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:var(--red)">${highScore}</div><div class="stat-label">优质(≥8)</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:var(--green)">${lowScore}</div><div class="stat-label">偏低(&lt;5)</div></div>
+  `;
+
+  // Radar
+  if (charts.radar) charts.radar.destroy();
+  const radarCtx = document.getElementById('radarChart').getContext('2d');
+  charts.radar = new Chart(radarCtx, {
+    type: 'radar',
+    data: {
+      labels: dimLabels,
+      datasets: [{
+        label: '加权组合评分',
+        data: dimNames.map(n => weighted[n] || 0),
+        backgroundColor: 'rgba(79,195,247,0.12)',
+        borderColor: '#4fc3f7',
+        borderWidth: 2,
+        pointBackgroundColor: dimColors,
+        pointRadius: 4,
+      }, {
+        label: '组合均值',
+        data: dimNames.map(() => avgDim),
+        borderColor: 'rgba(255,255,255,0.2)',
+        borderWidth: 1,
+        borderDash: [4,4],
+        pointRadius: 0,
+        backgroundColor: 'transparent',
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#aaa', font: { size: 10 } } } },
+      scales: {
+        r: {
+          beginAtZero: true, max: 15,
+          ticks: { stepSize: 3, color: '#666', backdropColor: 'transparent', font: { size: 9 } },
+          grid: { color: 'rgba(255,255,255,0.06)' },
+          angleLines: { color: 'rgba(255,255,255,0.06)' },
+          pointLabels: { color: '#aaa', font: { size: 10 } }
+        }
+      }
+    }
+  });
+
+  // Pie chart (industry distribution)
+  if (charts.pie) charts.pie.destroy();
+  const indMap = {};
+  results.forEach(r => {
+    const ind = r.industry || '其他';
+    if (!indMap[ind]) indMap[ind] = 0;
+    indMap[ind] += r.weight;
+  });
+  const pieLabels = Object.keys(indMap);
+  const pieData = Object.values(indMap);
+  const pieColors = dimColors.slice(0, pieLabels.length);
+
+  const pieCtx = document.getElementById('pieChart').getContext('2d');
+  charts.pie = new Chart(pieCtx, {
+    type: 'doughnut',
+    data: {
+      labels: pieLabels,
+      datasets: [{ data: pieData, backgroundColor: pieColors, borderWidth: 0 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { color: '#aaa', font: { size: 9 }, boxWidth: 10 } },
+        tooltip: { callbacks: { label: ctx => ctx.label + ': ' + ctx.raw.toFixed(1) + '%' } }
+      }
+    }
+  });
+
+  // Detail table
+  document.getElementById('portfolioBody').innerHTML = results.map(r => {
+    const s = r.scores;
+    const advice = s.avg >= 7.5 ? '<span class="badge badge-good">持有</span>'
+      : s.avg >= 5 ? '<span class="badge badge-warn">观望</span>'
+      : '<span class="badge badge-bad">减仓</span>';
+    return `<tr>
+      <td style="font-family:monospace;color:var(--accent)">${r.code}</td>
+      <td>${escHtml(r.name||'')}</td>
+      <td style="color:var(--dim);font-size:0.75rem">${escHtml(r.industry)}</td>
+      <td>${r.weight.toFixed(1)}%</td>
+      <td style="font-weight:700;color:${colorScore(s.avg)}">${s.avg.toFixed(1)}</td>
+      ${dimNames.map(n => `<td style="color:${colorScore(s[n])}">${(s[n]||0).toFixed(1)}</td>`).join('')}
+      <td>${(s.avg||0).toFixed(1)}</td>
+      <td>${advice}</td>
+    </tr>`;
+  }).join('');
+}
+
+function colorScore(v) {
+  return v >= 8 ? 'var(--red)' : v >= 5 ? 'var(--yellow)' : 'var(--green)';
+}
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+</script>
+</body>
+</html>
