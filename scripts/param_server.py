@@ -311,6 +311,11 @@ def diagnose_page():
     return send_from_directory(str(PROJECT_ROOT / "output"), "diagnose.html")
 
 
+@app.route("/backtest-lab")
+def backtest_lab():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "backtest_lab.html")
+
+
 # ── 股票搜索API ──
 SEARCH_INDEX = None  # 懒加载
 
@@ -757,13 +762,39 @@ def _run_single_stock_backtest(code, strategy_id, params):
     if len(rows) < 60:
         return {"error": f"K线数据不足 ({len(rows)}条, 需≥60)"}
 
-    dates = [r["trade_date"] for r in rows]
-    opens = [r["open"] for r in rows]
-    highs = [r["high"] for r in rows]
-    lows = [r["low"] for r in rows]
-    closes = [r["close"] for r in rows]
-    volumes = [r["volume"] for r in rows]
+    dates_raw = [r["trade_date"] for r in rows]
+    opens_raw = [r["open"] for r in rows]
+    highs_raw = [r["high"] for r in rows]
+    lows_raw = [r["low"] for r in rows]
+    closes_raw = [r["close"] for r in rows]
+    volumes_raw = [r["volume"] for r in rows]
+
+    # 按日期区间切片
+    start_date = params.get("start", "")
+    end_date = params.get("end", "")
+    slice_start = 0
+    slice_end = len(dates_raw)
+    if start_date:
+        for i, d in enumerate(dates_raw):
+            if d >= start_date:
+                slice_start = max(0, i - 60)  # 预留60天计算指标
+                break
+    if end_date:
+        for i, d in enumerate(dates_raw):
+            if d > end_date:
+                slice_end = i
+                break
+
+    dates = dates_raw[slice_start:slice_end]
+    opens = opens_raw[slice_start:slice_end]
+    highs = highs_raw[slice_start:slice_end]
+    lows = lows_raw[slice_start:slice_end]
+    closes = closes_raw[slice_start:slice_end]
+    volumes = volumes_raw[slice_start:slice_end]
     n = len(dates)
+
+    if n < 60:
+        return {"error": f"区间K线数据不足 ({n}条, 需≥60)"}
 
     # 2. 计算技术指标
     ma5 = _calc_ma(closes, 5)
@@ -798,7 +829,7 @@ def _run_single_stock_backtest(code, strategy_id, params):
     bb_period_param = int(params.get("bb_period", 20))
 
     # 5. 逐日回测
-    initial_capital = 100000
+    initial_capital = int(params.get("initial_capital", 100000))
     cash = initial_capital
     shares = 0
     position = 0  # 0=空仓 1=持仓
@@ -1121,7 +1152,7 @@ def api_stock_backtest(code):
     code = str(code).zfill(6)
     strategy_id = request.args.get("strategy", "score_cross")
 
-    # 解析策略参数
+    # 解析策略参数 + 区间参数
     params = {}
     for key in request.args:
         if key in ("strategy", "threshold"):
@@ -1134,6 +1165,12 @@ def api_stock_backtest(code):
     # 兼容旧版 threshold 参数
     if "threshold" in params:
         params["threshold"] = params.pop("threshold") if "threshold" in params else float(request.args.get("threshold", 8))
+
+    # 解析日期区间和初始资金
+    params["start"] = request.args.get("start", "")
+    params["end"] = request.args.get("end", "")
+    try: params["initial_capital"] = float(request.args.get("capital", 100000))
+    except: params["initial_capital"] = 100000
 
     if strategy_id not in STRATEGY_REGISTRY:
         return jsonify({"error": f"未知策略: {strategy_id}", "available": list(STRATEGY_REGISTRY.keys())}), 400
