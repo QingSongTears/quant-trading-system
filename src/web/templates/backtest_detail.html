@@ -299,10 +299,16 @@ const DRAWDOWN_DATA = {{ drawdown_curve | tojson }};
 const MONTHLY_DATA = {{ monthly_returns | tojson }};
 const INITIAL_CAPITAL = {{ (result.initial_capital or 0) | tojson }};
 
+// 图表实例引用 — 防止重复 init 导致内存泄漏
+let _equityChart = null, _ddChart = null, _heatChart = null;
+function _dispose(chart) { if (chart) { try { chart.dispose(); } catch(e) {} return null; } }
+
 document.addEventListener('DOMContentLoaded', function() {
     // 净值曲线 + 基准叠加
     if (EQUITY_DATA && EQUITY_DATA.length > 0) {
+        _equityChart = _dispose(_equityChart);
         const chart = echarts.init(document.getElementById('equity-benchmark-chart'));
+        _equityChart = chart;
         const dates = EQUITY_DATA.map(d => d.date);
         const equity = EQUITY_DATA.map(d => d.equity);
 
@@ -360,7 +366,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 回撤曲线
     if (DRAWDOWN_DATA && DRAWDOWN_DATA.length > 0) {
+        _ddChart = _dispose(_ddChart);
         const ddChart = echarts.init(document.getElementById('drawdown-chart'));
+        _ddChart = ddChart;
         ddChart.setOption({
             tooltip: { trigger: 'axis', formatter: p => `${p[0].axisValue}<br/>回撤: ${p[0].value}%` },
             grid: { left: 50, right: 15, top: 15, bottom: 30 },
@@ -380,7 +388,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const heatmapDom = document.getElementById('monthly-heatmap');
     const monthKeys = MONTHLY_DATA ? Object.keys(MONTHLY_DATA) : [];
     if (heatmapDom && monthKeys.length > 0) {
+        _heatChart = _dispose(_heatChart);
         const heatChart = echarts.init(heatmapDom);
+        _heatChart = heatChart;
         const months = monthKeys.sort();
         const values = months.map(m => MONTHLY_DATA[m]);
         const maxAbs = Math.max(

@@ -63,10 +63,22 @@ async def index(request: Request):
         avg_sharpe = None
         win_rate = None
 
+    # 为首页散点图准备 JS 可直接消费的数据（避免前端从 DOM 爬取）
+    recent_js = []
+    for r in recent:
+        recent_js.append({
+            "strategy_name": r.strategy.name if r.strategy else "未知",
+            "stock_code": r.stock_code,
+            "stock_name": r.stock_name or "",
+            "total_return": r.total_return,
+            "sharpe_ratio": r.sharpe_ratio,
+        })
+
     ctx = _get_global_context()
     ctx.update({
         "coverage": coverage,
         "recent_backtests": recent,
+        "recent_backtests_js": recent_js,
         "total_strategies": total_strategies,
         "best_return": best_return,
         "avg_sharpe": avg_sharpe,

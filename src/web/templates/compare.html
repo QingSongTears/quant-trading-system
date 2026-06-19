@@ -106,7 +106,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // 净值叠加图
     const chartDom = document.getElementById('compare-equity-chart');
     if (chartDom) {
+        if (window._compareChart) { try { window._compareChart.dispose(); } catch(e) {} }
         const chart = echarts.init(chartDom);
+        window._compareChart = chart;
         const colors = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#14b8a6'];
 
         // 用第一条的日期作为统一 X 轴 (回测区间可能不同, 取交集)
@@ -137,7 +139,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // 雷达图
     const radarDom = document.getElementById('radar-chart');
     if (radarDom) {
+        if (window._radarChart) { try { window._radarChart.dispose(); } catch(e) {} }
         const radar = echarts.init(radarDom);
+        window._radarChart = radar;
         // 用所有结果中各指标的最大值动态调整 radar.max
         const maxR = Math.max(10, ...parsed.map(r => Math.abs(r.total_return || 0)));
         const maxSharpe = Math.max(0.5, ...parsed.map(r => r.sharpe_ratio || 0));
