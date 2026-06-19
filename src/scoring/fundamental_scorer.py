@@ -66,7 +66,7 @@ class FundamentalScorer:
             "f.NetProfitRatioTTM as net_margin, "
             "f.TotalAssets, "
             "f._date as report_date, "
-            "COALESCE(s.listedDate, '') as listed_date, "
+            "COALESCE(s.listed_date, '') as listed_date, "
             "COALESCE(s.industry, '') as industry, "
             "COALESCE(s.sector, '') as sector "
             "FROM finance_summary f "

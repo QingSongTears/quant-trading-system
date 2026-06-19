@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+⚠️ DEPRECATED — 请使用 import_csv_to_db_v2.py 替代
+
 CSV → SQLite (quant.db) 数据导入脚本
 =====================================
 将 tdrive 预置CSV文件导入新架构的 quant.db

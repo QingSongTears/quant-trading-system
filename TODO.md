@@ -125,7 +125,7 @@
 
 | 优先级 | Issue | 任务 | 预期夏普提升 | 工作量 | 备注 |
 |--------|-------|------|-------------|--------|------|
-| 🔴 P0 | [#53](https://github.com/QingSongTears/quant-trading-system/issues/53) | **0.1 重建quant.db** (finance_summary替代finance_snapshot) | 数据基础 | 中 | 100字段→真正基本面 |
+| 🔴 P0 | [#53](https://github.com/QingSongTears/quant-trading-system/issues/53) | **0.1 重建quant.db** (finance_summary替代finance_snapshot) | 数据基础 | 中 | ✅ 已完成 — finance_summary(4,709行) + stock_profile(5,065行) |
 | 🔴 P0 | [#54](https://github.com/QingSongTears/quant-trading-system/issues/54) | T1.1 放宽v6阈值 | +0.10~0.20 | 小 | 信号量32→80+ |
 | 🔴 P0 | [#55](https://github.com/QingSongTears/quant-trading-system/issues/55) | T2.1 资金面评分器 | +0.20~0.30 | 中 | margin_trading/fund_flow双数据源 |
 | 🟡 P1 | [#56](https://github.com/QingSongTears/quant-trading-system/issues/56) | T2.0 基本面评分v3 (基于finance_summary真实数据) | +0.15~0.25 | 中 | ROE/EPS/BPS/行业分组 |

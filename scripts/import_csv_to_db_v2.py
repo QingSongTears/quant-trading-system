@@ -98,56 +98,13 @@ def create_tables(engine):
 
     with engine.connect() as conn:
         # 先删除旧表（可能有旧schema）
-        conn.execute(text("DROP TABLE IF EXISTS finance_snapshot_v2"))
         conn.execute(text("DROP TABLE IF EXISTS dividend_data"))
         conn.execute(text("DROP TABLE IF EXISTS fund_flow_data"))
         conn.commit()
 
-        # finance_snapshot_v2 — 含派生指标
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS finance_snapshot_v2 (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                code VARCHAR(10) NOT NULL,
-                name VARCHAR(50),
-                report_date DATE,
-                total_revenue DOUBLE,
-                total_cost DOUBLE,
-                total_assets DOUBLE,
-                total_liabilities DOUBLE,
-                net_profit DOUBLE,
-                net_profit_total DOUBLE,
-                pe_ttm DOUBLE,
-                market_cap DOUBLE,
-                oper_cashflow DOUBLE,
-                invest_cashflow DOUBLE,
-                finance_cashflow DOUBLE,
-                employee_count DOUBLE,
-                flag INTEGER,
-                list_date_raw VARCHAR(20),
-                -- 派生指标 (from tencent_quotes join)
-                shares DOUBLE,
-                total_equity DOUBLE,
-                roe DOUBLE,
-                eps DOUBLE,
-                bps DOUBLE,
-                debt_ratio DOUBLE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """))
-        # 索引
-        for idx_sql in [
-            "CREATE INDEX IF NOT EXISTS idx_fs2_code ON finance_snapshot_v2(code)",
-            "CREATE INDEX IF NOT EXISTS idx_fs2_profit ON finance_snapshot_v2(net_profit)",
-            "CREATE INDEX IF NOT EXISTS idx_fs2_roe ON finance_snapshot_v2(roe)",
-            "CREATE INDEX IF NOT EXISTS idx_dp_code ON daily_price(code)",
-            "CREATE INDEX IF NOT EXISTS idx_dp_date ON daily_price(trade_date)",
-            "CREATE INDEX IF NOT EXISTS idx_dp_code_date ON daily_price(code, trade_date)",
-            "CREATE INDEX IF NOT EXISTS idx_sb_market ON stock_basic(market)",
-        ]:
-            try:
-                conn.execute(text(idx_sql))
-            except Exception as e:
-                print(f"  [WARN] 索引跳过: {e}")
+        # NOTE: finance_snapshot_v2 已被 finance_summary 替代（#53），不再创建
+        # NOTE: finance_summary 由 scripts/import_finance_summary.py 创建
+        # NOTE: stock_profile 由 scripts/import_stock_profile.py 创建
 
         # dividend_data 表
         conn.execute(text("""
@@ -534,13 +491,13 @@ def verify_data(engine):
                    MIN(trade_date) as date_from, MAX(trade_date) as date_to
             FROM daily_price
         """,
-        "finance_snapshot_v2": """
+        "finance_summary": """
             SELECT COUNT(*) as cnt, COUNT(DISTINCT code) as codes,
-                   COUNT(CASE WHEN net_profit > 0 THEN 1 END) as profit_positive,
-                   COUNT(CASE WHEN roe IS NOT NULL THEN 1 END) as roe_available,
-                   ROUND(AVG(roe)*100, 2) as avg_roe_pct,
-                   ROUND(AVG(debt_ratio)*100, 2) as avg_debt_ratio_pct
-            FROM finance_snapshot_v2
+                   COUNT(CASE WHEN NPParentCompanyOwnersTTM > 0 THEN 1 END) as profit_positive,
+                   COUNT(CASE WHEN ROETTM IS NOT NULL THEN 1 END) as roe_available,
+                   ROUND(AVG(ROETTM), 2) as avg_roe_ttm,
+                   ROUND(AVG(DebtAssetsRatio), 2) as avg_debt_ratio
+            FROM finance_summary
         """,
         "dividend_data": """
             SELECT COUNT(*) as cnt, COUNT(DISTINCT code) as codes,
@@ -596,10 +553,10 @@ def main():
     print(f"\n[0/6] 建表...")
     create_tables(engine)
 
-    # Step 1-5: 导入
+    # Step 1-4: 导入 (移除 finance_snapshot_v2，已由 finance_summary 替代)
     n_stocks = import_stock_basic(engine, CSV_DIR)
     n_prices = import_daily_price(engine, CSV_DIR)
-    n_finance = import_finance_snapshot(engine, CSV_DIR)
+    # n_finance = import_finance_snapshot(engine, CSV_DIR)  # 已废弃 → finance_summary
     n_div = import_dividend_data(engine, CSV_DIR)
     n_ff = import_fund_flow_data(engine, CSV_DIR)
 
@@ -624,7 +581,8 @@ def main():
     print(f"导入完成!")
     print(f"  stock_basic:         {n_stocks} 条")
     print(f"  daily_price:         {n_prices:,} 条")
-    print(f"  finance_snapshot_v2: {n_finance} 条")
+    print(f"  # finance_summary 由 scripts/import_finance_summary.py 导入")
+    print(f"  # stock_profile    由 scripts/import_stock_profile.py 导入")
     print(f"  dividend_data:       {n_div:,} 条")
     print(f"  fund_flow_data:      {n_ff:,} 条")
     print(f"  DB 文件大小:         {size_mb:.1f} MB")
