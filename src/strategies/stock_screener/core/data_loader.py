@@ -15,7 +15,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Optional, Tuple
 
-from config import DATA_RAW_DIR, DATA_PROCESSED_DIR
+from config import DATA_RAW_DIR, DATA_PROCESSED_DIR, REFERENCE_DATA_DIR, IMPORTED_DATA_DIR
 
 # ============================================================
 # 全局缓存
@@ -37,7 +37,10 @@ _FINANCE_LOADED: bool = False
 
 def load_kline(force_reload: bool = False) -> pd.DataFrame:
     """
-    加载日K线数据 (kline_daily.csv)
+    加载日K线数据
+    支持两种数据布局（自动检测）：
+      1. DATA_RAW_DIR / "kline_daily.csv"  （单文件，旧格式）
+      2. DATA_RAW_DIR / "kline_daily/" 目录下的 kline_daily_YYYY.csv（分年文件，新格式）
     惰性加载 + 内存缓存，首次调用约需 2-3 秒
 
     返回列: code, market, name, date, open, high, low, close, volume, amount
@@ -47,22 +50,55 @@ def load_kline(force_reload: bool = False) -> pd.DataFrame:
     if _KLINE_LOADED and not force_reload:
         return _KLINE_DF if _KLINE_DF is not None else pd.DataFrame()
 
-    path = DATA_RAW_DIR / "kline_daily.csv"
-    if not path.exists():
-        print(f"[ERROR] kline_daily.csv 不存在: {path}")
+    # 优先使用分年文件目录（新格式）
+    split_dir = DATA_RAW_DIR / "kline_daily"
+    single_file = DATA_RAW_DIR / "kline_daily.csv"
+
+    col_names = ["code", "market", "name", "date", "open", "high", "low", "close", "volume", "amount"]
+    df_parts = []
+
+    if split_dir.is_dir():
+        csv_files = sorted(split_dir.glob("kline_daily_*.csv"))
+        if not csv_files:
+            print(f"[ERROR] kline_daily/ 目录存在但无 CSV 文件: {split_dir}")
+            _KLINE_LOADED = True
+            return pd.DataFrame()
+        print(f"[DATA] 加载日K线（分年文件，共 {len(csv_files)} 个）...")
+        for fp in csv_files:
+            # 跳过 Git LFS 指针文件（内容以 "version https://git-lfs" 开头）
+            if fp.stat().st_size < 1024:
+                try:
+                    with open(fp) as f:
+                        first_line = f.readline()
+                        if first_line.startswith("version https://git-lfs"):
+                            print(f"  · 跳过 LFS 指针文件: {fp.name}")
+                            continue
+                except Exception:
+                    pass
+
+            size_mb = fp.stat().st_size / 1e6
+            print(f"  · 读取 {fp.name} ({size_mb:.1f}MB)...")
+            part = pd.read_csv(fp, dtype={
+                "code": str, "market": str, "name": str,
+                "open": float, "high": float, "low": float, "close": float,
+                "volume": float, "amount": float,
+            })
+            df_parts.append(part)
+        df = pd.concat(df_parts, ignore_index=True)
+    elif single_file.exists():
+        print(f"[DATA] 加载日K线（单文件 {single_file.stat().st_size/1e6:.0f}MB）...")
+        # 旧格式无表头，用 names= 指定列名
+        df = pd.read_csv(single_file, names=col_names, header=None, dtype={
+            "code": str, "market": str, "name": str, "date": str,
+            "open": float, "high": float, "low": float, "close": float,
+            "volume": float, "amount": float,
+        })
+    else:
+        print(f"[ERROR] kline_daily 数据不存在: 已检查 {split_dir}/ 和 {single_file}")
         _KLINE_LOADED = True
         return pd.DataFrame()
 
-    size_mb = path.stat().st_size / 1e6
-    print(f"[DATA] 加载日K线 ({size_mb:.0f}MB)...")
-
-    col_names = ["code", "market", "name", "date", "open", "high", "low", "close", "volume", "amount"]
-    df = pd.read_csv(path, names=col_names, header=None, dtype={
-        "code": str, "market": str, "name": str, "date": str,
-        "open": float, "high": float, "low": float, "close": float,
-        "volume": float, "amount": float,
-    })
-
+    # 统一后处理
     df["code"] = df["code"].astype(str).str.zfill(6)
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df = df.dropna(subset=["date"]).sort_values(["code", "date"])
@@ -91,9 +127,22 @@ def load_quotes(force_reload: bool = False) -> pd.DataFrame:
     if _QUOTES_LOADED and not force_reload:
         return _QUOTES_DF if _QUOTES_DF is not None else pd.DataFrame()
 
-    path = DATA_RAW_DIR / "tencent_quotes.csv"
-    if not path.exists():
-        print(f"[ERROR] tencent_quotes.csv 不存在: {path}")
+    # 搜索多个可能的位置
+    candidates = [
+        DATA_RAW_DIR / "tencent_quotes.csv",
+        REFERENCE_DATA_DIR / "tencent_quotes.csv",
+        IMPORTED_DATA_DIR / "tencent_quotes.csv",
+    ]
+    path = None
+    for c in candidates:
+        if c.exists():
+            path = c
+            break
+
+    if path is None:
+        print(f"[ERROR] tencent_quotes.csv 不存在，已搜索:")
+        for c in candidates:
+            print(f"         {c}")
         _QUOTES_LOADED = True
         return pd.DataFrame()
 
@@ -102,7 +151,7 @@ def load_quotes(force_reload: bool = False) -> pd.DataFrame:
 
     _QUOTES_DF = df
     _QUOTES_LOADED = True
-    print(f"[DATA] ✅ 行情快照: {len(df)} 只")
+    print(f"[DATA] ✅ 行情快照: {len(df)} 只 (来源: {path.parent.name}/)")
     return df
 
 
@@ -123,9 +172,22 @@ def load_finance(force_reload: bool = False) -> pd.DataFrame:
     if _FINANCE_LOADED and not force_reload:
         return _FINANCE_DF if _FINANCE_DF is not None else pd.DataFrame()
 
-    path = DATA_RAW_DIR / "finance_snapshot.csv"
-    if not path.exists():
-        print(f"[ERROR] finance_snapshot.csv 不存在: {path}")
+    # 搜索多个可能的位置
+    candidates = [
+        DATA_RAW_DIR / "finance_snapshot.csv",
+        IMPORTED_DATA_DIR / "finance_snapshot.csv",
+        REFERENCE_DATA_DIR / "finance_snapshot.csv",
+    ]
+    path = None
+    for c in candidates:
+        if c.exists():
+            path = c
+            break
+
+    if path is None:
+        print(f"[ERROR] finance_snapshot.csv 不存在，已搜索:")
+        for c in candidates:
+            print(f"         {c}")
         _FINANCE_LOADED = True
         return pd.DataFrame()
 
@@ -149,7 +211,7 @@ def load_finance(force_reload: bool = False) -> pd.DataFrame:
 
     _FINANCE_DF = df
     _FINANCE_LOADED = True
-    print(f"[DATA] ✅ 财务数据: {len(df)} 只")
+    print(f"[DATA] ✅ 财务数据: {len(df)} 只 (来源: {path.parent.name}/)")
     return df
 
 

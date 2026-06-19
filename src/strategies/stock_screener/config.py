@@ -7,7 +7,16 @@ from pathlib import Path
 # 路径（相对 — 唯一来源）
 # ============================================================
 ROOT_DIR = Path(__file__).resolve().parent
-DATA_DIR = ROOT_DIR / "data" / "raw"     # 向后兼容：旧代码直接用 DATA_DIR 加载 CSV
+# 项目根目录：从 src/strategies/stock_screener/ 向上三级到 quant-trading-system/
+PROJECT_ROOT = ROOT_DIR.parent.parent.parent
+# 数据文件的实际位置（优先用 A股全市场数据/raw/，fallback 到 data/raw/）
+RAW_DATA_DIR = PROJECT_ROOT / "A股全市场数据" / "raw"
+REFERENCE_DATA_DIR = PROJECT_ROOT / "A股全市场数据" / "reference"
+IMPORTED_DATA_DIR = PROJECT_ROOT / "A股全市场数据" / "imported"
+if RAW_DATA_DIR.exists():
+    DATA_DIR = RAW_DATA_DIR
+else:
+    DATA_DIR = ROOT_DIR / "data" / "raw"      # 向后兼容：旧代码直接用 DATA_DIR 加载 CSV
 DATA_RAW_DIR = DATA_DIR                  # 新代码用 DATA_RAW_DIR
 DATA_PROCESSED_DIR = DATA_DIR / "processed"
 OUTPUT_DIR = ROOT_DIR / "output"

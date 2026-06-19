@@ -1,182 +1,212 @@
 """
-优化轮次4 — 广度紧急清仓降回撤
-基于轮次3发现：广度入口过滤对v3无效(信号自然避开差市)，但-79%回撤
-是因为持股硬扛暴跌。本轮加广度紧急清仓：SMA5上涨占比跌破阈值时强制平仓。
+参数扫描 — v5_hybrid 放宽超卖阈值
+=====================================
+扫描 v5_hybrid 策略的核心入场参数，找到夏普比率最优组合。
 
-测试变体（基础策略: v3基线）:
-  A. v3基线 (参考)
-  B. v3 + 广度清仓 SMA5<35%
-  C. v3 + 广度清仓 SMA5<40%
-  D. v3 + 广度清仓 SMA5<45%
-  E. v3 + 广度清仓 SMA5<45% + 入口过滤 SMA5<45%
-  F. v3_dynamic + 广度清仓 SMA5<40%
-  G. v5_1of3 + 广度清仓 SMA5<40%
-  H. v5_1of3 + 广度清仓 SMA5<40% + 入口过滤 SMA5<45%
+扫描维度 (共 6x5x5x2 = 300 种):
+  1. MAX_RSI_14: [32, 34, 36, 38, 40, 42]
+  2. MAX_BB_POSITION: [0.10, 0.12, 0.15, 0.18, 0.20]
+  3. MAX_DRAWDOWN_60D: [-8, -10, -12, -14, -16]
+  4. TREND_CHECKS_MIN: [1, 2]
 
-目标: 降低回撤到-25%以内，同时不杀死太多信号
+输出: output/param_scan_v5.csv (按夏普排序，取前20)
 """
 import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
+import time
 import pandas as pd
 import numpy as np
-import time
-from typing import Dict, Any
+from typing import Dict, Any, List
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import OUTPUT_COMBINED_DIR
 from core.data_loader import load_kline, load_quotes, load_finance
 from backtest.engine import BacktestEngine
-from strategies.v3_reversal import V3ReversalStrategy
-from strategies.v3_reversal_dynamic import V3ReversalDynamicStrategy
 from strategies.v5_hybrid import V5HybridStrategy
+
 
 OUTPUT_COMBINED_DIR.mkdir(parents=True, exist_ok=True)
 
-print("=" * 70)
-print("📊 优化轮次4 — 广度紧急清仓降回撤")
-print("=" * 70)
-print("[INIT] 预加载数据...")
-kline = load_kline()
-quotes = load_quotes()
-finance = load_finance()
-print(f"[INIT] ✅ 就绪: K线{len(kline):,}行, 行情{len(quotes)}只")
+# 全局预加载（避免每次回测重复加载）
+print("[MAIN] 预加载数据（仅一次）...")
+_KLINE   = load_kline()
+_QUOTES   = load_quotes()
+_FINANCE  = load_finance()
+print(f"[MAIN] 数据就绪: K线={len(_KLINE):,}行, 行情={len(_QUOTES)}只, 财务={len(_FINANCE)}只\n")
 
-def run_one(name, strategy_class, strategy_kwargs,
-            use_exit=False, exit_thresh=0.40,
-            use_filter=False, filter_thresh=0.45):
+
+def run_backtest(params: Dict[str, Any]) -> Dict[str, Any]:
+    """运行一次回测，返回结果字典"""
     engine = BacktestEngine(
         initial_capital=1_000_000,
         start_date="2025-01-01",
         end_date="2026-06-12",
         max_positions=10,
         single_position_pct=0.10,
-        use_breadth_filter=use_filter,
-        breadth_min_up_ratio=filter_thresh,
-        use_breadth_exit=use_exit,
-        breadth_exit_threshold=exit_thresh,
-        breadth_exit_smoothed=True,
     )
-    strategy = strategy_class(**strategy_kwargs)
+
+    strategy = V5HybridStrategy(**params)
     engine.add_strategy(strategy, weight=1.0)
-    
-    t0 = time.time()
-    result = engine.run(verbose=False, kline=kline, quotes=quotes, finance=finance)
-    elapsed = time.time() - t0
-    
+
+    try:
+        result = engine.run(
+            verbose=False,
+            kline=_KLINE,
+            quotes=_QUOTES,
+            finance=_FINANCE,
+        )
+    except Exception as e:
+        return {"error": str(e)[:200]}
+
     if result is None:
-        return {"name": name, "error": "回测失败"}
+        return {
+            "params": "", "trades": 0, "return": 0.0,
+            "annual_ret": 0.0, "max_dd": 0.0, "sharpe": 0.0,
+            "win_rate": 0.0, "profit_factor": 0.0, "elapsed": 0.0,
+        }
+
     sr = result.strategies.get(strategy.name)
     if not sr or not sr.trades:
-        return {"name": name, "trades": 0, "return": 0, "max_dd": 0, "sharpe": 0, "win_rate": 0}
+        return {
+            "params": "", "trades": 0, "return": 0.0,
+            "annual_ret": 0.0, "max_dd": 0.0, "sharpe": 0.0,
+            "win_rate": 0.0, "profit_factor": 0.0, "elapsed": 0.0,
+        }
 
     trades = sr.trades
-    wins = [t.return_pct for t in trades if t.return_pct > 0]
-    losses = [t.return_pct for t in trades if t.return_pct <= 0]
-    wr = len(wins)/len(trades)*100 if trades else 0
-    pf = sum(wins)/abs(sum(losses)) if wins and losses and sum(losses)!=0 else 0
-    avg_hold = np.mean([t.hold_days for t in trades]) if trades else 0
-    
-    # 按离场原因统计
-    reasons = {}
-    for t in trades:
-        reasons[t.exit_reason] = reasons.get(t.exit_reason, 0) + 1
-    
-    days = (pd.Timestamp("2026-06-12") - pd.Timestamp("2025-01-01")).days
-    annual_ret = ((1 + result.total_return/100) ** (365/days) - 1) * 100
-    
+    wins   = [t for t in trades if t.return_pct > 0]
+    losses = [t for t in trades if t.return_pct <= 0]
+    wr  = len(wins) / len(trades) * 100 if trades else 0
+    pf_num = sum(t.return_pct for t in wins)
+    pf_den = abs(sum(t.return_pct for t in losses)) if losses else 0
+    pf  = pf_num / pf_den if pf_den else 0
+
+    days     = (pd.Timestamp("2026-06-12") - pd.Timestamp("2025-01-01")).days
+    annual_ret = ((1 + result.total_return / 100) ** (365 / days) - 1) * 100
+
     return {
-        "name": name, "trades": len(trades),
-        "return": round(result.total_return, 2),
+        "params":    ",".join(f"{k}={v}" for k, v in params.items()),
+        "trades":    len(trades),
+        "return":    round(result.total_return, 2),
         "annual_ret": round(annual_ret, 2),
-        "max_dd": round(result.max_drawdown, 2),
-        "sharpe": round(result.sharpe, 2),
-        "win_rate": round(wr, 1),
+        "max_dd":    round(result.max_drawdown, 2),
+        "sharpe":    round(result.sharpe, 2),
+        "win_rate":   round(wr, 1),
         "profit_factor": round(pf, 2),
-        "avg_hold": round(avg_hold, 0),
-        "elapsed": round(elapsed, 1),
-        "exit_reasons": str(reasons),
-        "breadth_exits": reasons.get("breadth_exit", 0),
+        "elapsed":    0.0,
     }
 
-variants = []
 
-# A: v3基线
-print("\n[A] v3基线 (参考)...")
-variants.append(run_one("A_v3基线", V3ReversalStrategy, {}))
+def main():
+    """
+    参数网格
+    small_grid=True:  ~60组，预计~4小时
+    small_grid=False: 300组，预计~20小时
+    """
+    small_grid = True   # ← 改为 False 跑全量
 
-# B: v3 + 广度清仓 SMA5<35%
-print("\n[B] v3 + breadthExit SMA35...")
-variants.append(run_one("B_v3+清仓SMA35", V3ReversalStrategy, {},
-    use_exit=True, exit_thresh=0.35))
+    if small_grid:
+        rsi_list   = [34, 38, 42]
+        bb_list    = [0.10, 0.15, 0.20]
+        dd_list    = [-8, -12, -16]
+        trend_list = [1, 2]
+    else:
+        rsi_list   = [32, 34, 36, 38, 40, 42]
+        bb_list    = [0.10, 0.12, 0.15, 0.18, 0.20]
+        dd_list    = [-8, -10, -12, -14, -16]
+        trend_list = [1, 2]
 
-# C: v3 + 广度清仓 SMA5<40%
-print("\n[C] v3 + breadthExit SMA40...")
-variants.append(run_one("C_v3+清仓SMA40", V3ReversalStrategy, {},
-    use_exit=True, exit_thresh=0.40))
+    grid = []
+    for rsi in rsi_list:
+        for bb in bb_list:
+            for dd in dd_list:
+                for tr in trend_list:
+                    grid.append({
+                        "MAX_RSI_14":       rsi,
+                        "MAX_RSI_6":         26,
+                        "MAX_BB_POSITION":   bb,
+                        "MAX_DRAWDOWN_60D": dd,
+                        "TREND_CHECKS_MIN":  tr,
+                    })
 
-# D: v3 + 广度清仓 SMA5<45%
-print("\n[D] v3 + breadthExit SMA45...")
-variants.append(run_one("D_v3+清仓SMA45", V3ReversalStrategy, {},
-    use_exit=True, exit_thresh=0.45))
+    # 快速验证模式：只跑前 2 组
+    test_mode = False   # ← 改为 True 只跑前2组
+    total = len(grid)
+    if test_mode:
+        grid  = grid[:2]
+        total = len(grid)
+        print(f"[TEST MODE] 仅跑前 {total} 组参数\n")
 
-# E: v3 + 清仓SMA45 + 入口SMA45 (双管齐下)
-print("\n[E] v3 + 清仓+入口 SMA45...")
-variants.append(run_one("E_v3+清仓入口SMA45", V3ReversalStrategy, {},
-    use_exit=True, exit_thresh=0.45, use_filter=True, filter_thresh=0.45))
+    print("📊 参数扫描启动")
+    print(f"  网格大小: {total} 种组合")
+    print(f"  RSI14: {rsi_list}")
+    print(f"  BB位置: {bb_list}")
+    print(f"  DD60:  {dd_list}")
+    print(f"  趋势确认: {trend_list}")
+    print(f"  预计耗时: ~{total * 4 // 60} 分钟（实测校准）")
+    print()
 
-# F: v3_dynamic + 广度清仓 SMA40
-print("\n[F] v3动态止盈 + breadthExit SMA40...")
-variants.append(run_one("F_v3动态+清仓SMA40", V3ReversalDynamicStrategy, {},
-    use_exit=True, exit_thresh=0.40))
+    results = []
+    t0 = time.time()
 
-# G: v5_1of3 + 广度清仓 SMA40
-print("\n[G] v5_1of3 + breadthExit SMA40...")
-variants.append(run_one("G_v5_1of3+清仓SMA40", V5HybridStrategy, {"trend_checks_min": 1},
-    use_exit=True, exit_thresh=0.40))
+    for i, params in enumerate(grid):
+        t_start = time.time()
+        r = run_backtest(params)
+        t_elapsed = time.time() - t_start
 
-# H: v5_1of3 + 清仓SMA40 + 入口SMA45
-print("\n[H] v5_1of3 + 清仓SMA40 + 入口SMA45...")
-variants.append(run_one("H_v5_1of3+清仓入口", V5HybridStrategy, {"trend_checks_min": 1},
-    use_exit=True, exit_thresh=0.40, use_filter=True, filter_thresh=0.45))
+        if "error" in r:
+            print(f"  [{i+1}/{total}] ❌ {params} → {r['error'][:60]}")
+            continue
 
-# ===== 汇总 =====
-print("\n" + "=" * 90)
-print("📊 优化轮次4 汇总结果")
-print("=" * 90)
-df = pd.DataFrame(variants)
-df = df.sort_values("return", ascending=False)
+        r["elapsed"] = round(t_elapsed, 1)
+        results.append(r)
 
-print(f"\n{'变体':<30s} {'交易':>4s} {'强平':>4s} {'胜率':>6s} {'收益':>7s} {'年化':>7s} {'回撤':>8s} {'夏普':>5s} {'盈亏比':>6s} {'均持':>4s}")
-print("-" * 95)
-for _, r in df.iterrows():
-    if "error" in r:
-        print(f"{r['name']:<30s} ❌ {r['error']}")
-        continue
-    be = r.get("breadth_exits", 0)
-    print(f"{r['name']:<30s} {r['trades']:4.0f} {be:4.0f} {r['win_rate']:5.1f}% {r['return']:+6.2f}% "
-          f"{r['annual_ret']:+6.2f}% {r['max_dd']:+7.1f}% {r['sharpe']:4.2f} {r['profit_factor']:5.2f} {r['avg_hold']:4.0f}d")
+        # 实时打印夏普>0.5 的结果
+        if r.get("sharpe", 0) >= 0.5 and r.get("trades", 0) >= 10:
+            print(f"  🏆 [{i+1}/{total}] sharpe={r['sharpe']:.2f} "
+                  f"annual={r.get('annual_ret',0):+.1f}% "
+                  f"dd={r.get('max_dd',0):+.1f}% trades={r['trades']}")
 
-# 目标达成
-print(f"\n{'='*90}")
-print("🎯 目标达成: 年化>15% | 回撤<-25% | 交易≥75笔 | 夏普>1.0")
-print(f"{'='*90}")
-for _, r in df.iterrows():
-    if "error" in r: continue
-    ann, dd, tr, sh = r.get("annual_ret", 0), r.get("max_dd", -100), r.get("trades", 0), r.get("sharpe", 0)
-    c = [("✅" if ann>=15 else "❌"), ("✅" if dd>-25 else "❌"), ("✅" if tr>=75 else "❌"), ("✅" if sh>=1.0 else "❌")]
-    print(f"  {r['name']:<30s} {c[0]}{c[1]}{c[2]}{c[3]}  {c.count('✅')}/4 | 年化{ann:+.1f}% 回撤{dd:+.1f}% 交易{tr:.0f} 夏普{sh:.2f}")
+        # 每 10 个保存一次
+        if (i + 1) % 10 == 0:
+            df_batch = pd.DataFrame(results)
+            df_batch.to_csv(
+                OUTPUT_COMBINED_DIR / "param_scan_v5_partial.csv",
+                index=False, encoding="utf-8-sig"
+            )
+            elapsed_total = time.time() - t0
+            avg_each = elapsed_total / (i + 1)
+            eta_min = (total - i - 1) * avg_each / 60
+            best = df_batch["sharpe"].max() if not df_batch.empty else 0
+            print(f"  💾 [{i+1}/{total}] 完成, "
+                  f"最佳夏普={best:.2f}, ETA≈{eta_min:.0f}min")
 
-df.to_csv(OUTPUT_COMBINED_DIR / "optimization_round4.csv", index=False, encoding="utf-8-sig")
-print(f"\n💾 已保存: {OUTPUT_COMBINED_DIR / 'optimization_round4.csv'}")
+    # 汇总
+    df = pd.DataFrame(results)
+    df = df.sort_values("sharpe", ascending=False)
 
-# 对比轮次3（无清仓）→ 轮次4（有清仓）的回撤改善
-print(f"\n{'='*90}")
-print("📈 回撤改善对比 (vs 轮次3 v3基线: -79.2%)")
-print(f"{'='*90}")
-for _, r in df.iterrows():
-    if "error" in r: continue
-    improvement = abs(r['max_dd']) - 79.2
-    print(f"  {r['name']:<30s} 回撤{r['max_dd']:+6.1f}% → 改善{improvement:+.1f}%")
+    out_path = OUTPUT_COMBINED_DIR / "param_scan_v5.csv"
+    df.to_csv(out_path, index=False, encoding="utf-8-sig")
+    print(f"\n{'='*70}")
+    print(f"📊 参数扫描完成 — 共 {len(results)} 个有效结果")
+    print(f"{'='*70}")
 
-print("\n✅ 优化轮次4完成")
+    # 打印前 10
+    print(f"\n🏆 夏普比率 TOP 10:")
+    hdr = f"  {'排名':<4s} {'夏普':>6s} {'年化':>7s} {'回撤':>7s} {'交易':>4s} {'胜率':>5s} 参数"
+    print(hdr)
+    print(f"  {'-'*90}")
+    for idx, (_, r) in enumerate(df.head(10).iterrows()):
+        print(f"  {idx+1:<4.0f} {r.get('sharpe',0):>6.2f} {r.get('annual_ret',0):>+7.1f}% "
+              f"{r.get('max_dd',0):>+7.1f}% {r.get('trades',0):>4.0f} {r.get('win_rate',0):>5.1f}% "
+              f"{r.get('params','')}")
+
+    print(f"\n✅ 结果已保存: {out_path}")
+
+
+if __name__ == "__main__":
+    # 强制实时刷新输出（方便 nohup/后台查看日志）
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+    main()
