@@ -306,6 +306,11 @@ def backtest_view():
     return send_from_directory(str(PROJECT_ROOT / "output"), "backtest_view.html")
 
 
+@app.route("/diagnose")
+def diagnose_page():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "diagnose.html")
+
+
 # ── 股票搜索API ──
 SEARCH_INDEX = None  # 懒加载
 
@@ -1350,7 +1355,7 @@ def api_predict(code):
     
     x = np.array([[latest.get(c, 0) for c in dim_cols]])
     logit = x @ coef + intercept
-    proba = float(1 / (1 + np.exp(-logit)))
+    proba = float((1 / (1 + np.exp(-logit))).item())
     
     signal = "买入" if proba >= 0.55 else ("回避" if proba < 0.4 else "中性")
     
@@ -1385,7 +1390,7 @@ def api_predict_batch():
     for s in scores:
         x = np.array([[s.get(c, 0) for c in dim_cols]])
         logit = x @ coef + intercept
-        proba = float(1 / (1 + np.exp(-logit)))
+        proba = float((1 / (1 + np.exp(-logit))).item())
         signal = "买入" if proba >= 0.55 else ("回避" if proba < 0.4 else "中性")
         results.append({
             "code": s['code'],
