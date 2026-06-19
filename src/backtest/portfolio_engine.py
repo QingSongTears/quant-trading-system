@@ -116,7 +116,7 @@ class PortfolioBacktestEngine:
     def _load_all_data(self, start: date, end: date) -> pd.DataFrame:
         """加载全市场 daily_price 数据"""
         query = f"""
-            SELECT dp.code, sb.name, sb.list_date, sb.mcap_yi, dp.trade_date,
+            SELECT dp.code, sb.name, sb.list_date, dp.trade_date,
                    dp.open, dp.high, dp.low, dp.close,
                    dp.volume, dp.amount, dp.pct_change, dp.turnover
             FROM daily_price dp
@@ -164,7 +164,6 @@ class PortfolioBacktestEngine:
         agg_dict = {
             "name": "last",
             "list_date": "first",
-            "mcap_yi": "last",      # 从 stock_basic 获取市值
             "close": "last",
             "amount": "mean",      # 日均成交额
             "turnover": "mean",     # 日均换手率
@@ -173,7 +172,7 @@ class PortfolioBacktestEngine:
 
         factors = recent.groupby("code").agg(agg_dict).reset_index()
         factors.columns = [
-            "code", "name", "list_date", "mcap_from_db", "close",
+            "code", "name", "list_date", "close",
             "avg_amount", "avg_turnover",
             "avg_return", "volatility"
         ]
@@ -182,8 +181,7 @@ class PortfolioBacktestEngine:
         factors["avg_amount_wan"] = factors["avg_amount"] / 10000
 
         # 估算总市值 (亿元)
-        # 优先使用 stock_basic.mcap_yi (来自实时行情数据)
-        # 回退: 成交额/换手率*100/1e8 (需要换手率数据)
+        # 方法: 成交额/换手率*100/1e8 (需要换手率数据)
         valid_turnover = factors["avg_turnover"].notna() & (factors["avg_turnover"] > 0.01)
         factors["market_cap_yi"] = None
         factors.loc[valid_turnover, "market_cap_yi"] = (
@@ -191,10 +189,6 @@ class PortfolioBacktestEngine:
             / factors.loc[valid_turnover, "avg_turnover"]
             * 100 / 100000000
         )
-        # 回退到 DB 中的市值数据
-        has_db_mcap = factors["mcap_from_db"].notna() & (factors["mcap_from_db"] > 0)
-        no_calc_mcap = factors["market_cap_yi"].isna()
-        factors.loc[no_calc_mcap & has_db_mcap, "market_cap_yi"] = factors.loc[no_calc_mcap & has_db_mcap, "mcap_from_db"]
 
         # 近N日累计收益率
         factors["return_Nd"] = (
@@ -205,7 +199,6 @@ class PortfolioBacktestEngine:
         factors["volatility_Nd"] = factors["volatility"]
 
         # 清理
-        factors = factors.drop(columns=["mcap_from_db"], errors="ignore")
         factors = factors.dropna(subset=["close", "avg_amount_wan"])
         factors = factors[factors["close"] > 0]
 
