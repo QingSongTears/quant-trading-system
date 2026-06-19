@@ -268,6 +268,11 @@ def load_data():
 # ── API ──
 @app.route("/")
 def index():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "index.html")
+
+
+@app.route("/tuning")
+def tuning_panel():
     return send_from_directory(str(PROJECT_ROOT / "output"), "tuning_panel.html")
 
 
@@ -314,6 +319,26 @@ def diagnose_page():
 @app.route("/backtest-lab")
 def backtest_lab():
     return send_from_directory(str(PROJECT_ROOT / "output"), "backtest_lab.html")
+
+
+@app.route("/sector")
+def sector_page():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "sector.html")
+
+
+@app.route("/data-monitor")
+def data_monitor():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "data_monitor.html")
+
+
+@app.route("/screener")
+def screener_page():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "screener.html")
+
+
+@app.route("/portfolio")
+def portfolio_page():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "portfolio.html")
 
 
 # ── 股票搜索API ──
@@ -379,6 +404,53 @@ def api_stock_search():
 @app.route("/api/status")
 def api_status():
     return jsonify({"loaded": len(records), "dims": dim_cols, "task": task.snapshot()})
+
+
+@app.route("/api/data/db-status")
+def api_db_status():
+    """数据库状态：各表行数、最新/最早日期"""
+    import sqlite3
+    db = PROJECT_ROOT / "database" / "quant.db"
+    conn = sqlite3.connect(str(db))
+    tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
+    result = []
+    for t in tables:
+        name = t[0]
+        try:
+            row = conn.execute(f"SELECT COUNT(*) FROM \"{name}\"").fetchone()
+            count = row[0] if row else 0
+            latest = None
+            earliest = None
+            # 尝试获取日期列的最新值
+            for date_col in ['trade_date', 'date', 'as_of_date', 'created_at', 'report_date']:
+                try:
+                    r = conn.execute(f"SELECT MAX({date_col}) FROM \"{name}\"").fetchone()
+                    if r and r[0]:
+                        latest = r[0]
+                        r2 = conn.execute(f"SELECT MIN({date_col}) FROM \"{name}\"").fetchone()
+                        if r2 and r2[0]:
+                            earliest = r2[0]
+                        break
+                except:
+                    continue
+            descriptions = {
+                "daily_price": "日K线数据", "stock_basic": "股票基本信息",
+                "tencent_quotes": "腾讯实时行情", "stock_profile": "股票档案",
+                "fund_flow": "资金流向", "technical_indicators": "技术指标",
+                "lhb_institutional": "龙虎榜机构", "margin_trading": "融资融券",
+                "shareholder_count": "股东人数", "finance_summary": "财务摘要",
+                "backtest_result": "回测结果", "strategy_config": "策略配置",
+            }
+            result.append({
+                "name": name, "row_count": count,
+                "latest_date": str(latest)[:10] if latest else None,
+                "earliest_date": str(earliest)[:10] if earliest else None,
+                "description": descriptions.get(name, ""),
+            })
+        except:
+            pass
+    conn.close()
+    return jsonify({"tables": result})
 
 
 @app.route("/api/backtest", methods=["POST"])
@@ -1144,6 +1216,203 @@ def _run_single_stock_backtest(code, strategy_id, params):
             "indicators": verify_signals,
         }
     }
+
+
+# ── 行业板块API ──
+
+@app.route("/api/sector")
+def api_sector():
+    """行业板块分析: 按行业聚合评分、排名、成分股列表"""
+    import numpy as np
+    from collections import defaultdict
+
+    # 按行业聚合最新评分
+    # 获取每只股票最新一条记录
+    latest = {}
+    for r in records:
+        code = r.get("code", "")
+        date = r.get("as_of_date", "")
+        if code not in latest or date > latest[code]["date"]:
+            latest[code] = {"date": date, "record": r}
+
+    # 按行业分组
+    ind_stocks = defaultdict(list)
+    ind_data = defaultdict(lambda: {
+        "codes": [], "names": [], "scores": [],
+        "dim_scores": defaultdict(list), "stock_count": 0
+    })
+
+    for code, data in latest.items():
+        ind = industry_map.get(code, "其他")
+        r = data["record"]
+        vals = [r.get(d, 0) or 0 for d in dim_cols]
+        avg = round(sum(vals) / len(vals), 2)
+
+        ind_data[ind]["codes"].append(code)
+        ind_data[ind]["names"].append(r.get("name", ""))
+        ind_data[ind]["scores"].append(avg)
+        ind_data[ind]["stock_count"] += 1
+        for i, d in enumerate(dim_cols):
+            ind_data[ind]["dim_scores"][d].append(vals[i])
+
+    # 计算行业维度
+    min_stocks = request.args.get("min_stocks", 3, type=int)
+    sort_by = request.args.get("sort_by", "avg_score")
+
+    sectors = []
+    for ind, data in ind_data.items():
+        if data["stock_count"] < min_stocks:
+            continue
+        avg_all = round(sum(data["scores"]) / len(data["scores"]), 2)
+        dim_avg = {}
+        for d in dim_cols:
+            vals = data["dim_scores"][d]
+            dim_avg[d] = round(sum(vals) / len(vals), 2) if vals else 0
+
+        # 计算行业趋势（最近 vs 之前）
+        trend = "up" if avg_all > 8 else ("down" if avg_all < 6 else "neutral")
+
+        sectors.append({
+            "industry": ind,
+            "stock_count": data["stock_count"],
+            "avg_score": avg_all,
+            "dim_scores": dim_avg,
+            "trend": trend,
+            "top_stocks": sorted(
+                [{"code": c, "name": n} for c, n in zip(data["codes"], data["names"])],
+                key=lambda x: latest.get(x["code"], {}).get("record", {}).get("tech_weighted", 0) or 0,
+                reverse=True
+            )[:5],
+        })
+
+    # 排序
+    sort_map = {
+        "avg_score": lambda x: -x["avg_score"],
+        "stock_count": lambda x: -x["stock_count"],
+        "name": lambda x: x["industry"],
+    }
+    key_fn = sort_map.get(sort_by, sort_map["avg_score"])
+    sectors.sort(key=key_fn)
+
+    return jsonify({
+        "total": len(sectors),
+        "sectors": sectors,
+        "dim_labels": dim_cols,
+        "as_of_date": max((r.get("as_of_date", "") for r in records), default="")
+    })
+
+
+@app.route("/api/sector/<industry>")
+def api_sector_detail(industry):
+    """行业成分股详细数据"""
+    from urllib.parse import unquote
+    industry = unquote(industry)
+
+    latest = {}
+    for r in records:
+        code = r.get("code", "")
+        date = r.get("as_of_date", "")
+        if code not in latest or date > latest[code]["date"]:
+            latest[code] = {"date": date, "record": r}
+
+    stocks = []
+    for code, data in latest.items():
+        ind = industry_map.get(code, "其他")
+        if ind != industry:
+            continue
+        r = data["record"]
+        vals = [r.get(d, 0) or 0 for d in dim_cols]
+        avg = round(sum(vals) / len(vals), 2)
+        stocks.append({
+            "code": code,
+            "name": r.get("name", ""),
+            "avg_score": avg,
+            "dim_scores": {d: round(r.get(d, 0) or 0, 2) for d in dim_cols},
+            "ret_20d": r.get("ret_20d"),
+            "ret_60d": r.get("ret_60d"),
+        })
+
+    stocks.sort(key=lambda x: -x["avg_score"])
+    return jsonify({
+        "industry": industry,
+        "total": len(stocks),
+        "stocks": stocks,
+        "dim_labels": dim_cols,
+    })
+
+
+# ── 选股筛选API ──
+
+@app.route("/api/stock/screener")
+def api_stock_screener():
+    """选股筛选: 多条件过滤"""
+    import numpy as np
+
+    # 获取每只股票最新记录
+    latest = {}
+    for r in records:
+        code = r.get("code", "")
+        date = r.get("as_of_date", "")
+        if code not in latest or date > latest[code]["date"]:
+            latest[code] = {"date": date, "record": r}
+
+    # 筛选参数
+    min_score = request.args.get("min_score", 0, type=float)
+    max_score = request.args.get("max_score", 15, type=float)
+    industry = request.args.get("industry", "")
+    min_ret = request.args.get("min_ret", -100, type=float)
+    tech_min = request.args.get("tech_min", 0, type=float)
+    fund_min = request.args.get("fund_min", 0, type=float)
+    inst_min = request.args.get("inst_min", 0, type=float)
+    chip_min = request.args.get("chip_min", 0, type=float)
+    sort_by = request.args.get("sort_by", "avg_score")
+    limit = request.args.get("limit", 50, type=int)
+
+    results = []
+    for code, data in latest.items():
+        r = data["record"]
+        ind = industry_map.get(code, "其他")
+
+        # 行业过滤
+        if industry and industry != "全部" and ind != industry:
+            continue
+
+        vals = [r.get(d, 0) or 0 for d in dim_cols]
+        avg = round(sum(vals) / len(vals), 2)
+
+        if avg < min_score or avg > max_score:
+            continue
+        if r.get("ret_20d", 0) is not None and (r["ret_20d"] or 0) < min_ret:
+            continue
+        if (r.get("tech_weighted", 0) or 0) < tech_min:
+            continue
+        if (r.get("fund_weighted", 0) or 0) < fund_min:
+            continue
+        if (r.get("institutional_weighted", 0) or 0) < inst_min:
+            continue
+        if (r.get("chip_weighted", 0) or 0) < chip_min:
+            continue
+
+        results.append({
+            "code": code,
+            "name": r.get("name", ""),
+            "industry": ind,
+            "avg_score": avg,
+            "dim_scores": {d: round(r.get(d, 0) or 0, 2) for d in dim_cols},
+            "ret_20d": r.get("ret_20d"),
+            "ret_60d": r.get("ret_60d"),
+        })
+
+    sort_map = {
+        "avg_score": lambda x: -x["avg_score"],
+        "ret_20d": lambda x: -(x["ret_20d"] or 0),
+        "tech_weighted": lambda x: -(x["dim_scores"].get("tech_weighted", 0)),
+    }
+    key_fn = sort_map.get(sort_by, sort_map["avg_score"])
+    results.sort(key=key_fn)
+    results = results[:limit]
+
+    return jsonify({"total": len(results), "stocks": results})
 
 
 @app.route("/api/stock/<code>/backtest")
