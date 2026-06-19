@@ -77,88 +77,97 @@
 {% block scripts %}
 {% if results %}
 <script>
+// 后端预先序列化的数据 (|tojson 已安全转义 HTML/JS 特殊字符)
+const COMPARE_DATA = [
+    {% for r in results %}
+    {
+        strategy_name: {{ (r.strategy.name if r.strategy else "策略" ~ loop.index) | tojson }},
+        equity_curve: {{ (r.equity_curve or "[]") | tojson }},
+        total_return: {{ r.total_return or 0 }},
+        sharpe_ratio: {{ r.sharpe_ratio or 0 }},
+        max_drawdown: {{ r.max_drawdown or 0 }},
+        win_rate: {{ r.win_rate or 0 }},
+        profit_factor: {{ r.profit_factor or 0 }},
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+
 document.addEventListener('DOMContentLoaded', function() {
+    // 解析每条 equity_curve 字符串为对象数组
+    const parsed = COMPARE_DATA.map(r => {
+        let curve = [];
+        try { curve = typeof r.equity_curve === 'string' ? JSON.parse(r.equity_curve) : (r.equity_curve || []); }
+        catch(e) { curve = []; }
+        return { ...r, curve };
+    }).filter(r => r.curve && r.curve.length > 0);
+
+    if (parsed.length === 0) return;
+
     // 净值叠加图
     const chartDom = document.getElementById('compare-equity-chart');
     if (chartDom) {
         const chart = echarts.init(chartDom);
-        const colors = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
-        const series = [];
-        
-        {% for r in results %}
-        (function() {
-            const data = JSON.parse('{{ r.equity_curve | safe }}');
-            if (!data || data.length === 0) return;
-            
-            const dates = data.map(d => d.date);
-            const equities = data.map(d => d.equity);
+        const colors = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#14b8a6'];
+
+        // 用第一条的日期作为统一 X 轴 (回测区间可能不同, 取交集)
+        const dates = parsed[0].curve.map(d => d.date);
+        const series = parsed.map((r, i) => {
+            const equities = r.curve.map(d => d.equity);
             const firstEquity = equities[0] || 1;
-            
-            series.push({
-                name: '{{ r.strategy.name if r.strategy else "策略" ~ loop.index }}',
+            return {
+                name: r.strategy_name,
                 type: 'line',
-                data: equities.map(e => (e / firstEquity * 100).toFixed(2)),
+                data: equities.map(e => +(e / firstEquity * 100).toFixed(2)),
                 smooth: true,
                 showSymbol: false,
-                lineStyle: { width: 2, color: colors[{{ loop.index0 }} % colors.length] }
-            });
-        })();
-        {% endfor %}
-        
+                lineStyle: { width: 2, color: colors[i % colors.length] }
+            };
+        });
+
         chart.setOption({
             tooltip: { trigger: 'axis' },
             legend: { bottom: 0 },
             grid: { left: 60, right: 20, top: 20, bottom: 40 },
-            xAxis: { 
-                type: 'category', 
-                data: (function() {
-                    {% for r in results %}
-                    if ('{{ r.equity_curve | safe }}') {
-                        const d = JSON.parse('{{ r.equity_curve | safe }}');
-                        if (d && d.length > 0) return d.map(x => x.date);
-                    }
-                    {% endfor %}
-                    return [];
-                })(),
-                axisLabel: { rotate: 45, fontSize: 10 }
-            },
-            yAxis: { type: 'value', name: '净值 (基准=100)', axisLabel: { formatter: v => v.toFixed(0) } },
-            series: series
+            xAxis: { type: 'category', data: dates, axisLabel: { rotate: 45, fontSize: 10 } },
+            yAxis: { type: 'value', name: '净值 (起点=100)', axisLabel: { formatter: v => Number(v).toFixed(0) } },
+            series
         });
     }
-    
+
     // 雷达图
     const radarDom = document.getElementById('radar-chart');
     if (radarDom) {
         const radar = echarts.init(radarDom);
+        // 用所有结果中各指标的最大值动态调整 radar.max
+        const maxR = Math.max(10, ...parsed.map(r => Math.abs(r.total_return || 0)));
+        const maxSharpe = Math.max(0.5, ...parsed.map(r => r.sharpe_ratio || 0));
+        const maxDD = Math.max(10, ...parsed.map(r => Math.abs(r.max_drawdown || 0)));
+        const maxPF = Math.max(1, ...parsed.map(r => r.profit_factor || 0));
+
         radar.setOption({
             tooltip: {},
             legend: { bottom: 0 },
             radar: {
                 indicator: [
-                    { name: '收益率', max: 100 },
-                    { name: '夏普比率', max: 3 },
-                    { name: '抗回撤', max: 100 },
-                    { name: '胜率', max: 100 },
-                    { name: '盈亏比', max: 5 }
+                    { name: '收益率%', max: Math.ceil(maxR * 1.2) },
+                    { name: '夏普比率', max: Math.ceil(maxSharpe * 1.5 * 10) / 10 || 3 },
+                    { name: '抗回撤%', max: Math.ceil(maxDD * 1.2) },
+                    { name: '胜率%', max: 100 },
+                    { name: '盈亏比', max: Math.ceil(maxPF * 1.5 * 10) / 10 || 5 },
                 ]
             },
             series: [{
                 type: 'radar',
-                data: [
-                    {% for r in results %}
-                    {
-                        name: '{{ r.strategy.name if r.strategy else "策略" ~ loop.index }}',
-                        value: [
-                            {{ (r.total_return or 0) if (r.total_return or 0) < 100 else 100 }},
-                            {{ (r.sharpe_ratio or 0) if (r.sharpe_ratio or 0) < 3 else 3 }},
-                            {{ 100 - ((r.max_drawdown or 0)|abs) if ((r.max_drawdown or 0)|abs) < 100 else 0 }},
-                            {{ (r.win_rate or 0) }},
-                            {{ (r.profit_factor or 0) if (r.profit_factor or 0) < 5 else 5 }}
-                        ]
-                    }{% if not loop.last %},{% endif %}
-                    {% endfor %}
-                ]
+                data: parsed.map(r => ({
+                    name: r.strategy_name,
+                    value: [
+                        r.total_return || 0,
+                        r.sharpe_ratio || 0,
+                        maxDD - Math.abs(r.max_drawdown || 0),
+                        r.win_rate || 0,
+                        r.profit_factor || 0,
+                    ]
+                }))
             }]
         });
     }

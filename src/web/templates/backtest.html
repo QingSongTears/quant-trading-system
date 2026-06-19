@@ -200,6 +200,12 @@ document.getElementById('strategy-select').addEventListener('change', async func
     } catch(e) {}
 });
 
+// HTML 转义工具
+function escHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 // 股票搜索（防抖）
 let stockSearchTimer = null;
 document.getElementById('stock-code').addEventListener('input', function() {
@@ -216,9 +222,9 @@ document.getElementById('stock-code').addEventListener('input', function() {
             const div = document.getElementById('stock-suggestions');
             if (data.success && data.data.length > 0) {
                 div.innerHTML = data.data.slice(0, 8).map(s =>
-                    `<button type="button" class="list-group-item list-group-item-action py-1 small" 
-                        onclick="selectStock('${s.code}','${s.name}')">
-                        <span class="stock-tag">${s.code}</span> ${s.name}
+                    `<button type="button" class="list-group-item list-group-item-action py-1 small"
+                        data-stock-code="${escHtml(s.code)}" data-stock-name="${escHtml(s.name)}">
+                        <span class="stock-tag">${escHtml(s.code)}</span> ${escHtml(s.name)}
                     </button>`
                 ).join('');
             } else {
@@ -228,10 +234,22 @@ document.getElementById('stock-code').addEventListener('input', function() {
     }, 200);
 });
 
+// 事件委托: 避免内联 onclick XSS
+document.getElementById('stock-suggestions').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-stock-code]');
+    if (!btn) return;
+    selectStock(btn.dataset.stockCode, btn.dataset.stockName);
+});
+
 function selectStock(code, name) {
     document.getElementById('stock-code').value = code;
     document.getElementById('stock-suggestions').innerHTML = '';
 }
+
+// 数字格式化（null/None 安全）
+const num = (v, d=2) => (v == null || isNaN(v)) ? '-' : Number(v).toFixed(d);
+const pct = (v, d=2) => { const n = num(v, d); return n === '-' ? n : n + '%'; };
+const posNeg = (v) => v == null ? '' : (v > 0 ? 'profit' : 'loss');
 
 // 回测提交
 document.getElementById('backtest-form').addEventListener('submit', async function(e) {
@@ -300,34 +318,34 @@ document.getElementById('backtest-form').addEventListener('submit', async functi
         document.getElementById('metrics-row').innerHTML = `
             <div class="col-4"><div class="card p-2 text-center">
                 <div class="metric-label">总收益率</div>
-                <div class="metric-value ${r.total_return > 0 ? 'profit' : 'loss'}">${r.total_return.toFixed(2)}%</div>
+                <div class="metric-value ${posNeg(r.total_return)}">${pct(r.total_return)}</div>
             </div></div>
             <div class="col-4"><div class="card p-2 text-center">
                 <div class="metric-label">夏普比率</div>
-                <div class="metric-value">${r.sharpe_ratio.toFixed(2)}</div>
+                <div class="metric-value">${num(r.sharpe_ratio)}</div>
             </div></div>
             <div class="col-4"><div class="card p-2 text-center">
                 <div class="metric-label">最大回撤</div>
-                <div class="metric-value loss">${r.max_drawdown.toFixed(2)}%</div>
+                <div class="metric-value loss">${pct(r.max_drawdown)}</div>
             </div></div>
             <div class="col-4"><div class="card p-2 text-center">
                 <div class="metric-label">胜率</div>
-                <div class="metric-value">${r.win_rate.toFixed(1)}%</div>
+                <div class="metric-value">${pct(r.win_rate, 1)}</div>
             </div></div>
             <div class="col-4"><div class="card p-2 text-center">
                 <div class="metric-label">交易次数</div>
-                <div class="metric-value">${r.total_trades}</div>
+                <div class="metric-value">${num(r.total_trades, 0)}</div>
             </div></div>
             <div class="col-4"><div class="card p-2 text-center">
                 <div class="metric-label">超额收益</div>
-                <div class="metric-value ${r.excess_return > 0 ? 'profit' : 'loss'}">${r.excess_return.toFixed(2)}%</div>
+                <div class="metric-value ${posNeg(r.excess_return)}">${pct(r.excess_return)}</div>
             </div></div>
         `;
         
         // 次要指标
         document.getElementById('result-secondary-metrics').innerHTML = `
-            <div class="card p-2 text-center"><small class="text-muted">年化收益</small><strong>${r.annual_return.toFixed(2)}%</strong></div>
-            <div class="card p-2 text-center"><small class="text-muted">基准收益</small><strong>${r.benchmark_return.toFixed(2)}%</strong></div>
+            <div class="card p-2 text-center"><small class="text-muted">年化收益</small><strong>${pct(r.annual_return)}</strong></div>
+            <div class="card p-2 text-center"><small class="text-muted">基准收益</small><strong>${pct(r.benchmark_return)}</strong></div>
         `;
         
         // 更新详情链接
@@ -350,8 +368,8 @@ document.getElementById('backtest-form').addEventListener('submit', async functi
                     series: [{
                         type: 'line', data: [payload.initial_capital, payload.initial_capital * (1 + r.total_return/100)],
                         smooth: true, symbol: 'none',
-                        lineStyle: { color: r.total_return > 0 ? '#22c55e' : '#ef4444', width: 3 },
-                        areaStyle: { color: r.total_return > 0 ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)' },
+                        lineStyle: { color: (r.total_return == null || r.total_return > 0) ? '#22c55e' : '#ef4444', width: 3 },
+                        areaStyle: { color: (r.total_return == null || r.total_return > 0) ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)' },
                         markLine: { silent: true, data: [{ yAxis: payload.initial_capital, label: { formatter: '初始' } }] }
                     }]
                 });

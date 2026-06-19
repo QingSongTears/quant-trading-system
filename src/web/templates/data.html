@@ -46,9 +46,10 @@
         <div class="card p-3 text-center h-100">
             <div class="metric-label">数据源状态</div>
             <div class="metric-value fs-5">
-                <span class="text-success"><i class="bi bi-check-circle-fill"></i> AKShare</span>
+                <span class="text-success"><i class="bi bi-check-circle-fill"></i> WeStock</span>
+                <span class="text-muted fs-6">(+ AKShare)</span>
             </div>
-            <small class="text-muted">主数据源就绪</small>
+            <small class="text-muted">腾讯自选股批量 + 东方财富兜底</small>
         </div>
     </div>
 </div>
@@ -68,10 +69,10 @@
         <div class="col-md-3">
             <label class="form-label">操作</label>
             <div>
-                <button class="btn btn-primary w-100" id="download-btn" onclick="startDownload()">
+                <button class="btn btn-primary w-100" id="download-btn">
                     <i class="bi bi-download"></i> 开始下载
                 </button>
-                <button class="btn btn-outline-danger w-100 mt-1 d-none" id="cancel-btn" onclick="cancelDownload()">
+                <button class="btn btn-outline-danger w-100 mt-1 d-none" id="cancel-btn">
                     <i class="bi bi-x-circle"></i> 取消
                 </button>
             </div>
@@ -96,8 +97,9 @@
     </div>
     
     <div class="ai-disclaimer mt-3">
-        🔵 <strong>数据来源声明</strong>: 所有数据来自 AKShare (akshare.readthedocs.io) 
-        封装的东方财富/新浪财经公开接口，原始数据未经任何修改或模拟。下载速率受限于 AKShare 服务端限流策略。
+        🟢 <strong>数据来源</strong>: <code>westock-data</code> (腾讯自选股接口 qt.gtimg.cn, 批量50只/批)
+        · 备选: AKShare (akshare.readthedocs.io)
+        · 原始数据未经任何修改或模拟。下载速率 ~30只/秒 (westock) vs AKShare ~1只/秒 (易被限流)。
     </div>
 </div>
 
@@ -179,9 +181,9 @@
         <tbody>
             <tr>
                 <td>A股日线行情</td>
-                <td>AKShare → 东方财富</td>
-                <td><code>ak.stock_zh_a_hist()</code></td>
-                <td>对比东方财富网页K线图</td>
+                <td><strong>WeStock → 腾讯自选股</strong></td>
+                <td><code>node westock-data kline --period day</code></td>
+                <td>对比腾讯自选股App / 同花顺</td>
             </tr>
             <tr>
                 <td>股票列表</td>
@@ -196,9 +198,15 @@
                 <td>对比中证指数官网</td>
             </tr>
             <tr>
-                <td>技术指标验证</td>
-                <td>WeStock Data（腾讯自选股）</td>
-                <td><code>npx westock-data-clawhub technical</code></td>
+                <td>技术指标</td>
+                <td>WeStock (预计算)</td>
+                <td>本地 <code>technical_indicators</code> 表</td>
+                <td>MACD/RSI/KDJ/BOLL 验证通过</td>
+            </tr>
+            <tr>
+                <td>实时行情/分时</td>
+                <td>WeStock</td>
+                <td><code>westock-data quote sh600000</code></td>
                 <td>对比腾讯自选股App</td>
             </tr>
         </tbody>
@@ -214,6 +222,12 @@
 <script>
 let downloadPollTimer = null;
 let downloadStartTime = null;
+
+// HTML 转义工具
+function escHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 
 // 股票搜索（防抖）
 let searchTimer = null;
@@ -233,10 +247,11 @@ async function searchStocks(q) {
         const resp = await fetch(`/api/data/search?q=${encodeURIComponent(q)}`);
         const data = await resp.json();
         if (data.success && data.data.length > 0) {
-            resultsDiv.innerHTML = data.data.map(s => 
-                `<button class="list-group-item list-group-item-action py-2" onclick="showStockDetail('${s.code}','${s.name}','${s.market || ''}')">
-                    <span class="stock-tag">${s.code}</span> <strong>${s.name}</strong>
-                    <small class="text-muted ms-2">${s.market || ''}</small>
+            resultsDiv.innerHTML = data.data.map(s =>
+                `<button class="list-group-item list-group-item-action py-2"
+                    data-stock-code="${escHtml(s.code)}" data-stock-name="${escHtml(s.name)}" data-stock-market="${escHtml(s.market || '')}">
+                    <span class="stock-tag">${escHtml(s.code)}</span> <strong>${escHtml(s.name)}</strong>
+                    <small class="text-muted ms-2">${escHtml(s.market || '')}</small>
                 </button>`
             ).join('');
         } else {
@@ -247,16 +262,26 @@ async function searchStocks(q) {
     }
 }
 
+// 事件委托: 避免内联 onclick XSS
+document.getElementById('search-results').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-stock-code]');
+    if (!btn) return;
+    showStockDetail(btn.dataset.stockCode, btn.dataset.stockName, btn.dataset.stockMarket);
+});
+
 function showStockDetail(code, name, market) {
     const detail = document.getElementById('stock-detail');
     detail.classList.remove('d-none');
-    document.getElementById('stock-detail-content').innerHTML = 
-        `<strong>${name}</strong> <span class="stock-tag">${code}</span> 
-         <small class="text-muted">${market}</small>
+    document.getElementById('stock-detail-content').innerHTML =
+        `<strong>${escHtml(name)}</strong> <span class="stock-tag">${escHtml(code)}</span>
+         <small class="text-muted">${escHtml(market)}</small>
          <a href="/backtest" class="btn btn-sm btn-outline-primary ms-3">对该股回测 →</a>`;
 }
 
-// 下载控制
+// 下载控制（事件绑定）
+document.getElementById('download-btn')?.addEventListener('click', startDownload);
+document.getElementById('cancel-btn')?.addEventListener('click', cancelDownload);
+
 async function startDownload() {
     const mode = document.getElementById('download-mode').value;
     const progressDiv = document.getElementById('download-progress');
@@ -298,38 +323,42 @@ async function pollDownloadStatus() {
     try {
         const resp = await fetch('/api/data/download/status');
         const data = await resp.json();
-        
+
         if (!data.success) return;
-        
+
         const bar = document.getElementById('progress-bar');
         const pctDisplay = document.getElementById('progress-pct');
         const currentLabel = document.getElementById('progress-current');
         const etaLabel = document.getElementById('progress-eta');
-        
+
         if (data.total > 0) {
-            const pct = Math.round(data.progress / data.total * 100);
+            const pct = Math.min(100, Math.max(0, Math.round(data.progress / data.total * 100)));
             bar.style.width = pct + '%';
             bar.textContent = pct + '%';
             pctDisplay.textContent = pct + '%';
-            
+
             // 预估剩余时间
             if (downloadStartTime && data.progress > 0) {
                 const elapsed = (Date.now() - downloadStartTime) / 1000;
                 const rate = data.progress / elapsed;
-                const remaining = (data.total - data.progress) / rate;
-                const mins = Math.floor(remaining / 60);
-                const secs = Math.floor(remaining % 60);
-                etaLabel.textContent = `预计剩余: ${mins}分${secs}秒`;
+                const remaining = rate > 0 ? (data.total - data.progress) / rate : 0;
+                // 避免显示极大值 (下载刚启动时)
+                if (remaining > 0 && remaining < 86400) {
+                    const mins = Math.floor(remaining / 60);
+                    const secs = Math.floor(remaining % 60);
+                    etaLabel.textContent = `预计剩余: ${mins}分${secs}秒`;
+                }
             }
         }
-        
+
         currentLabel.textContent = data.current || '处理中...';
-        
+
         if (data.error) {
             showDownloadError(data.error);
             stopPollingAndReset();
+            return;
         }
-        
+
         if (!data.running) {
             // 下载完成
             clearInterval(downloadPollTimer);
@@ -344,7 +373,7 @@ async function pollDownloadStatus() {
             document.getElementById('download-btn').disabled = false;
         }
     } catch (e) {
-        // 轮询失败不显示错误，继续重试
+        console.warn('下载轮询失败 (继续重试):', e);
     }
 }
 

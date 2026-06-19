@@ -36,8 +36,10 @@ async def index(request: Request):
         all_backtests = repo.get_recent_backtests(limit=100)
         
         # 计算仪表盘聚合统计
-        total_strategies = len(repo.get_all_strategies())
-        
+        # 数据源: config/strategies.yaml (与 /api/strategies 一致)
+        from ...config import load_strategies
+        total_strategies = len(load_strategies().get("strategies", []))
+
         # 聚合回测统计
         best_return = None
         avg_sharpe = None
@@ -177,26 +179,22 @@ async def backtest_detail(request: Request, result_id: int):
 
 @router.get("/strategies", response_class=HTMLResponse)
 async def strategies_page(request: Request):
-    """策略管理页"""
-    repo = DataRepository()
+    """策略管理页 — 数据源: config/strategies.yaml (与 /api/strategies 一致)"""
     try:
-        strategies = repo.get_all_strategies()
-        # 预处理策略，解析 JSON 参数字段供模板使用
-        strategies_data = []
-        for s in strategies:
-            params = {}
-            if s.params:
-                try:
-                    params = json.loads(s.params) if isinstance(s.params, str) else s.params
-                except (json.JSONDecodeError, TypeError):
-                    params = {}
-            strategies_data.append({
-                "name": s.name,
-                "description": s.description,
-                "class_path": s.class_path,
-                "source": s.source,
-                "params": params,
-            })
+        from ...config import load_strategies
+        yaml_strategies = load_strategies().get("strategies", [])
+        # yaml 里 params 已经是 dict，直接传
+        strategies_data = [
+            {
+                "name": s.get("name", ""),
+                "description": s.get("description", ""),
+                "class_path": s.get("class_path", ""),
+                "source": s.get("source", ""),
+                "strategy_type": s.get("strategy_type", "signal"),
+                "params": s.get("params", {}) or {},
+            }
+            for s in yaml_strategies
+        ]
     except Exception:
         strategies_data = []
 
@@ -234,9 +232,14 @@ async def compare_page(
 async def workbench_page(request: Request):
     """交互式回测工作台"""
     repo = DataRepository()
+    # 策略来源: yaml（与 /api/strategies 一致）
+    from ...config import load_strategies
+    yaml_strategies = load_strategies().get("strategies", [])
     ctx = _get_global_context()
     ctx.update({
         "all_backtests": repo.get_recent_backtests(limit=30),
-        "strategies": repo.get_all_strategies() if hasattr(repo, 'get_all_strategies') else [],
+        "strategies": yaml_strategies,
+        "default_start": (date.today() - timedelta(days=365)).strftime("%Y-%m-%d"),
+        "default_end": date.today().strftime("%Y-%m-%d"),
     })
     return templates.TemplateResponse(request, "workbench.html", ctx)
