@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, func, text
 from sqlalchemy.orm import Session, joinedload
 
 from ..config import get_config, get_db_url
-from .database import Base, StockBasic, DailyPrice, BenchmarkData, StrategyConfig, BacktestResult, DataSourceMeta, TechnicalIndicator
+from .database import Base, StockBasic, DailyPrice, BenchmarkData, StrategyConfig, BacktestResult, DataSourceMeta, TechnicalIndicator, FinanceSummary, StockProfile
 
 
 class DataRepository:
@@ -272,3 +272,91 @@ class DataRepository:
             "total_stocks": total_stocks,
             "date_range": {"start": min_date, "end": max_date}
         }
+
+    # ===== 财务摘要 (finance_summary) =====
+
+    def get_finance_summary(self, code: str) -> Optional[dict]:
+        """获取某只股票的最新财务摘要"""
+        with self.get_session() as session:
+            result = session.query(FinanceSummary) \
+                .filter(FinanceSummary.code == code) \
+                .first()
+            if not result:
+                return None
+            return {c.name: getattr(result, c.name) for c in result.__table__.columns}
+
+    def get_latest_finance_for_codes(self, codes: List[str]) -> pd.DataFrame:
+        """批量获取多只股票的最新财务摘要
+
+        Returns:
+            DataFrame with code, NPParentCompanyOwnersTTM, ROETTM, TotalShareholderEquity, etc.
+        """
+        if not codes:
+            return pd.DataFrame()
+        codes_str = ", ".join([f"'{c}'" for c in codes])
+        query = f"""
+            SELECT code, _date, ROETTM, EPSTTM, NAPS,
+                   DebtAssetsRatio, OperatingRevenueGrowRate,
+                   NPParentCompanyOwnersTTM, NPParentCompanyYOY,
+                   NetOperateCashFlowTTM, TotalShareholderEquity,
+                   NetProfitRatioTTM, TotalAssets
+            FROM finance_summary
+            WHERE code IN ({codes_str})
+        """
+        return pd.read_sql(query, self.engine)
+
+    def get_profitable_codes(self) -> List[str]:
+        """获取所有 NPParentCompanyOwnersTTM > 0 的股票代码"""
+        with self.get_session() as session:
+            results = session.query(FinanceSummary.code) \
+                .filter(FinanceSummary.NPParentCompanyOwnersTTM > 0) \
+                .all()
+            return [r[0] for r in results]
+
+    # ===== 股票概况 (stock_profile) =====
+
+    def get_stock_profile(self, code: str) -> Optional[dict]:
+        """获取某只股票的概况信息"""
+        with self.get_session() as session:
+            result = session.query(StockProfile) \
+                .filter(StockProfile.code == code) \
+                .first()
+            if not result:
+                return None
+            return {c.name: getattr(result, c.name) for c in result.__table__.columns}
+
+    def get_industry_distribution(self) -> pd.DataFrame:
+        """获取行业分布统计"""
+        query = """
+            SELECT sp.industry, COUNT(*) as stock_count
+            FROM stock_profile sp
+            WHERE sp.industry IS NOT NULL AND sp.industry != ''
+            GROUP BY sp.industry
+            ORDER BY stock_count DESC
+        """
+        return pd.read_sql(query, self.engine)
+
+    def enrich_stock_basic_with_profile(self) -> int:
+        """从 stock_profile 补充 stock_basic 中缺失的 industry 和 list_date
+
+        Returns:
+            更新的行数
+        """
+        updated = 0
+        with self.get_session() as session:
+            profiles = session.query(StockProfile).all()
+            for sp in profiles:
+                stock = session.query(StockBasic).filter(StockBasic.code == sp.code).first()
+                if not stock:
+                    continue
+                changed = False
+                if sp.industry and (not stock.industry or stock.industry == ''):
+                    stock.industry = sp.industry
+                    changed = True
+                if sp.listed_date and not stock.list_date:
+                    stock.list_date = sp.listed_date
+                    changed = True
+                if changed:
+                    updated += 1
+            session.commit()
+        return updated

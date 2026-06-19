@@ -71,17 +71,9 @@ class FundFlowScorer:
         return df
 
     def _load_market_cap(self, code: str) -> float:
-        """获取流通市值 (万元)"""
-        query = f"""
-            SELECT shares FROM finance_snapshot_v2
-            WHERE code = '{code}'
-        """
-        try:
-            df = pd.read_sql(query, self.engine)
-            if not df.empty:
-                return float(df.iloc[0]["shares"])
-        except:
-            pass
+        """获取流通市值 — 待 #64 补充流通股本数据后恢复"""
+        # TODO: 需要 stock_basic 或 finance_summary 增加 shares(流通股本) 字段
+        # 当前退化：返回 NaN，触发绝对金额判断逻辑（>1亿=2分，>1千万=1分）
         return np.nan
 
     def _load_bulk_flow_data(

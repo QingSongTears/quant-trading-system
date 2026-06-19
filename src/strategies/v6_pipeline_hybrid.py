@@ -74,7 +74,8 @@ class V6PipelineHybridStrategy(V6ReversalSelectionStrategy):
     def _financial_filter(self, candidates: List[dict]) -> List[dict]:
         """
         财务质量过滤: 排除净利润为负或PE极端异常的股票
-        使用 finance_snapshot_v2 表
+        使用 finance_summary 表（替代已删除的 finance_snapshot_v2）
+        PE = TotalShareholderEquity / |NPParentCompanyOwnersTTM| 近似估算
         """
         if not candidates:
             return candidates
@@ -84,8 +85,10 @@ class V6PipelineHybridStrategy(V6ReversalSelectionStrategy):
 
         try:
             query = f"""
-                SELECT code, net_profit, pe_ttm
-                FROM finance_snapshot_v2
+                SELECT code,
+                       NPParentCompanyOwnersTTM AS net_profit,
+                       TotalShareholderEquity / NULLIF(ABS(NPParentCompanyOwnersTTM), 0) AS pe_ttm
+                FROM finance_summary
                 WHERE code IN ({codes_str})
             """
             df = pd.read_sql(query, self.engine)

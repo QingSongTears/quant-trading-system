@@ -236,3 +236,101 @@ class TechnicalIndicator(Base):
 
     def __repr__(self):
         return f"<TechnicalIndicator(code={self.code}, date={self.trade_date})>"
+
+
+class FinanceSummary(Base):
+    """
+    季度财务摘要表（真实财报数据）
+    数据来源: A股全市场数据/finance_summary.csv — 东方财富季度财报
+    替代旧的 finance_snapshot_v2，提供 100+ 字段的专业财报数据。
+    当前保留 34 个量化核心字段，均为最新季度数据。
+    """
+    __tablename__ = "finance_summary"
+    __table_args__ = (
+        UniqueConstraint("code", "_date", name="uq_fs_code_date"),
+        Index("idx_fs_code", "code"),
+        Index("idx_fs_roe", "ROETTM"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(10), nullable=False, comment="股票代码")
+    _date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, comment="数据日期")
+    EndDate: Mapped[Optional[date]] = mapped_column(Date, nullable=True, comment="报告期截止日")
+
+    # 盈利能力
+    ROE: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="ROE(%)")
+    ROETTM: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="ROE TTM(%)")
+    ROEWeighted: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="加权ROE(%)")
+    EPS: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="每股收益")
+    EPSTTM: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="每股收益 TTM")
+    BasicEPS: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="基本每股收益")
+    DilutedEPS: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="稀释每股收益")
+    NAPS: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="每股净资产")
+    NetProfitRatio: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="净利率(%)")
+    NetProfitRatioTTM: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="净利率 TTM(%)")
+
+    # 负债与结构
+    DebtAssetsRatio: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="资产负债率(%)")
+    DebtEquityRatio: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="权益乘数")
+
+    # 营收与利润
+    OperatingRevenue: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="营业收入")
+    OperatingRevenueTTM: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="营业收入 TTM")
+    OperatingRevenueGrowRate: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="营收增长率(%)")
+    OperatingProfit: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="营业利润")
+    OperatingProfitTTM: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="营业利润 TTM")
+    TotalOperatingRevenue: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="营业总收入")
+    NPParentCompanyOwners: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="归母净利润")
+    NPParentCompanyOwnersTTM: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="归母净利润 TTM")
+    NPParentCompanyYOY: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="归母净利润同比(%)")
+
+    # 现金流
+    NetOperateCashFlow: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="经营活动现金流净额")
+    NetOperateCashFlowTTM: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="经营活动现金流 TTM")
+
+    # 资产与股东权益
+    TotalAssets: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="总资产")
+    TotalShareholderEquity: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="股东权益合计")
+    TotalLiability: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="总负债")
+
+    # 增长率
+    NetAssetGrowRate: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="净资产增长率(%)")
+    TotalAssetGrowRate: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="总资产增长率(%)")
+
+    # 每股现金流
+    CashFlowPS: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="每股现金流")
+    OperCashFlowPS: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="每股经营现金流")
+    MainIncomePS: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="每股主营收入")
+
+    def __repr__(self):
+        return f"<FinanceSummary(code={self.code}, date={self._date})>"
+
+
+class StockProfile(Base):
+    """
+    股票概况表
+    数据来源: A股全市场数据/stock_profile.csv — 包含行业/板块/上市日期/注册资本等
+    """
+    __tablename__ = "stock_profile"
+    __table_args__ = (
+        Index("idx_sp_code", "code"),
+        Index("idx_sp_industry", "industry"),
+        Index("idx_sp_sector", "sector"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(10), nullable=False, comment="股票代码（纯数字）")
+    name: Mapped[str] = mapped_column(String(50), nullable=False, comment="股票名称")
+    listed_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, comment="上市日期")
+    industry: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="所属行业")
+    sector: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="所属板块")
+    issue_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="发行价")
+    reg_capital: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="注册资本(万元)")
+    chairman: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="董事长")
+    establish_date: Mapped[Optional[str]] = mapped_column(String(30), nullable=True, comment="成立日期")
+    website: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, comment="公司网站")
+    business: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="主营业务")
+    reg_address: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, comment="注册地址")
+
+    def __repr__(self):
+        return f"<StockProfile(code={self.code}, name={self.name}, industry={self.industry})>"

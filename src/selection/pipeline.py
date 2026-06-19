@@ -196,11 +196,11 @@ class SelectionPipeline:
         if f.exclude_st and "name" in df.columns:
             df = df[~df["name"].str.contains("ST|退|\\*ST", na=False, regex=True)]
 
-        # PE 负排除 — 需要从 finance_snapshot_v2 获取
+        # PE 负排除 — 从 finance_summary 获取（替代已删除的 finance_snapshot_v2）
         if f.exclude_pe_negative:
             try:
                 pe_data = pd.read_sql(
-                    "SELECT code FROM finance_snapshot_v2 WHERE net_profit > 0",
+                    "SELECT code FROM finance_summary WHERE NPParentCompanyOwnersTTM > 0",
                     self.engine
                 )
                 pe_data["code"] = pe_data["code"].astype(str).str.zfill(6)
