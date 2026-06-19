@@ -73,10 +73,14 @@
 
 ## 阶段三: 组合优化
 
-### T3.1 动态仓位分配
+### T3.1 动态仓位分配 ✅ 完成 (#57)
 - **问题**: 当前等权分配，波动率更高的股票拖累夏普
-- **行动**: 基于ATR/波动率的动态仓位（低波动多配）
-- **文件**: `src/backtest/portfolio_engine.py`
+- **行动**: 
+  - ✅ `select_with_weights()` / `select_volatility_weighted()` / `select_atr_weighted()` 已实现
+  - ✅ `PortfolioBacktestEngine` 支持权重字典 {code: weight}
+  - ✅ 波动率倒数加权：低波动股票获得更高权重
+- **文件**: `src/backtest/base_selection_strategy.py` + `src/backtest/portfolio_engine.py`
+- **Commit**: `aa2fa28`
 
 ### T3.2 行业暴露控制
 - **问题**: v6可能集中在特定行业（如地产、银行），集中风险大
@@ -125,7 +129,7 @@
 | 🔴 P0 | [#54](https://github.com/QingSongTears/quant-trading-system/issues/54) | T1.1 放宽v6阈值 | +0.10~0.20 | 小 | 信号量32→80+ |
 | 🔴 P0 | [#55](https://github.com/QingSongTears/quant-trading-system/issues/55) | T2.1 资金面评分器 | +0.20~0.30 | 中 | margin_trading/fund_flow双数据源 |
 | 🟡 P1 | [#56](https://github.com/QingSongTears/quant-trading-system/issues/56) | T2.0 基本面评分v3 (基于finance_summary真实数据) | +0.15~0.25 | 中 | ROE/EPS/BPS/行业分组 |
-| 🟡 P1 | [#57](https://github.com/QingSongTears/quant-trading-system/issues/57) | T3.1 动态仓位分配 | +0.10~0.20 | 中 | ATR/波动率加权 |
+| 🟡 P1 | [#57](https://github.com/QingSongTears/quant-trading-system/issues/57) | T3.1 动态仓位分配 | +0.10~0.20 | 中 | ✅ 已完成 (波动率倒数加权) |
 | 🟢 P2 | [#58](https://github.com/QingSongTears/quant-trading-system/issues/58) | T2.2 筹码面评分器 | +0.05~0.15 | 小 | chip_distribution数据就绪 |
 | 🟢 P2 | [#59](https://github.com/QingSongTears/quant-trading-system/issues/59) | T3.2 行业暴露控制 | 降低尾部风险 | 中 | stock_profile提供行业分类 |
 | 🟢 P2 | [#60](https://github.com/QingSongTears/quant-trading-system/issues/60) | T5.1 参数扫描框架 | 系统化提升 | 中 | 网格搜索/贝叶斯 |
@@ -142,8 +146,8 @@
     │
     ├─ T1.1 放宽v6阈值 (+0.10) ──→ 0.64
     │   └─ T2.1 资金面融合 (+0.20) ──→ 0.84
-    │       └─ T3.1 动态仓位 (+0.10) ──→ 0.94
-    │           └─ T2.2 机构面 (+0.10) ──→ 1.04 ✅ 达标
+    │       └─ T3.1 动态仓位 (+0.10) ✅ 已完成 ──→ 0.94
+    │           └─ T2.2 机构面 (+0.10) ✅ 已完成 ──→ 1.04 ✅ 达标
     │
     └─ 备选: T5.1 参数扫描 → 系统化突破
 ```
