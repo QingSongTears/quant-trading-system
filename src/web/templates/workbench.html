@@ -47,11 +47,11 @@
             <div class="row g-2 mb-3">
                 <div class="col-6">
                     <label class="form-label fw-semibold small text-secondary">📅 开始日期</label>
-                    <input type="date" id="start-date" class="form-control" value="2024-01-01">
+                    <input type="date" id="start-date" class="form-control" value="{{ default_start }}">
                 </div>
                 <div class="col-6">
                     <label class="form-label fw-semibold small text-secondary">📅 结束日期</label>
-                    <input type="date" id="end-date" class="form-control" value="2024-12-31">
+                    <input type="date" id="end-date" class="form-control" value="{{ default_end }}">
                 </div>
             </div>
 
@@ -76,10 +76,10 @@
 
             <!-- 操作按钮 -->
             <div class="d-grid gap-2">
-                <button id="btn-run" class="btn btn-primary btn-lg" onclick="runBacktest()" disabled>
+                <button id="btn-run" class="btn btn-primary btn-lg" disabled>
                     <i class="bi bi-play-fill"></i> 开始回测
                 </button>
-                <button id="btn-compare-all" class="btn btn-outline-indigo" onclick="compareAll()" disabled>
+                <button id="btn-compare-all" class="btn btn-outline-indigo" disabled>
                     <i class="bi bi-lightning-fill"></i> 一键对比全部模型
                 </button>
             </div>
@@ -299,7 +299,7 @@
     }
     .compare-legend span:hover { background: #f1f5f9; }
 </style>
-
+{% raw %}
 <script>
 // ==================== 全局状态 ====================
 const CHART_COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#f97316'];
@@ -322,7 +322,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadHistory();
     setupStockSearch();
     setupFormWatchers();
+    setupHistoryRowClick();
+    setupCompareTableClick();
+    // 按钮事件绑定（替代内联 onclick）
+    const btnRun = $('btn-run');
+    if (btnRun) btnRun.addEventListener('click', runBacktest);
+    const btnCompare = $('btn-compare-all');
+    if (btnCompare) btnCompare.addEventListener('click', compareAll);
 });
+
+/** 历史回测行点击: 事件委托避免 onclick 注入 */
+function setupHistoryRowClick() {
+    $('history-table').addEventListener('click', e => {
+        const row = e.target.closest('tr[data-id]');
+        if (!row) return;
+        loadHistoryResult(row.dataset.id, row.dataset.strategy, row.dataset.code, row.dataset.name);
+    });
+}
+
+/** 对比表行点击: 通过 data-idx 定位避免 onclick 注入 */
+function setupCompareTableClick() {
+    $('compare-table').addEventListener('click', e => {
+        const row = e.target.closest('tr[data-idx]');
+        if (!row) return;
+        highlightCompare(Number(row.dataset.idx));
+    });
+}
 
 async function loadModels() {
     try {
@@ -354,15 +379,22 @@ async function loadHistory() {
             tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">暂无历史记录</td></tr>';
             return;
         }
-        tbody.innerHTML = data.data.map(r => `
-            <tr onclick="loadHistoryResult('${r.id}','${r.strategy_name}','${r.stock_code}','${r.stock_name||''}')"
-                style="cursor:pointer;" title="点击回填配置">
+        tbody.innerHTML = data.data.map(r => {
+            const tr = document.createElement('tr');
+            tr.style.cursor = 'pointer';
+            tr.title = '点击回填配置';
+            tr.dataset.id = r.id;
+            tr.dataset.strategy = r.strategy_name || '';
+            tr.dataset.code = r.stock_code || '';
+            tr.dataset.name = r.stock_name || '';
+            tr.innerHTML = `
                 <td class="text-nowrap">${esc(r.strategy_name)}</td>
                 <td><span class="stock-tag">${esc(r.stock_code)}</span> ${esc(r.stock_name||'')}</td>
                 <td class="${r.total_return>0?'profit':'loss'}">${r.total_return!=null?(r.total_return>0?'+':'')+r.total_return.toFixed(2)+'%':'-'}</td>
                 <td class="text-muted small">${r.created_at?.slice(0,16)||''}</td>
-            </tr>
-        `).join('');
+            `;
+            return tr.outerHTML;
+        }).join('');
     } catch(e) { /* ignore */ }
 }
 
@@ -387,7 +419,7 @@ function setupStockSearch() {
                 }
                 suggestions.innerHTML = data.data.slice(0,10).map(s => `
                     <div class="list-group-item list-group-item-action py-2 px-3"
-                         onclick="selectStock('${esc(s.code)}','${esc(s.name)}')">
+                         data-stock-code="${esc(s.code)}" data-stock-name="${esc(s.name)}">
                         <span class="stock-tag me-2">${esc(s.code)}</span>${esc(s.name)}
                         ${s.industry ? `<span class="text-muted small ms-2">${esc(s.industry)}</span>` : ''}
                     </div>
@@ -395,6 +427,13 @@ function setupStockSearch() {
                 suggestions.style.display = 'block';
             } catch(e) { /* ignore */ }
         }, 200);
+    });
+
+    // 事件委托: 避免内联 onclick 注入风险
+    suggestions.addEventListener('click', e => {
+        const item = e.target.closest('[data-stock-code]');
+        if (!item) return;
+        selectStock(item.dataset.stockCode, item.dataset.stockName);
     });
 
     document.addEventListener('click', e => {
@@ -555,33 +594,49 @@ function renderMetrics(r) {
 
 function renderEquityChart(report) {
     const dom = $('equity-chart');
-    if (state.equityChart) state.equityChart.dispose();
+    if (state.equityChart) {
+        ResizeManager.detach(state.equityChart);
+        state.equityChart.dispose();
+        state.equityChart = null;
+    }
     if (!dom.clientWidth) { setTimeout(() => renderEquityChart(report), 100); return; }
 
     const chart = echarts.init(dom);
     state.equityChart = chart;
 
-    // 解析净值数据
+    // 解析净值数据 (可能为对象数组 [{date, equity, ...}], 字符串, 或数字数组)
     let equityData = report._equity || report.equity_curve || [];
     let benchmarkData = report._benchmark || [];
     let tradesDetail = report.trades_detail || [];
 
-    // 如果是 JSON 字符串
-    if (typeof equityData === 'string') {
-        try { equityData = JSON.parse(equityData); } catch(e) { equityData = []; }
-    }
-    if (typeof benchmarkData === 'string') {
-        try { benchmarkData = JSON.parse(benchmarkData); } catch(e) { benchmarkData = []; }
-    }
-    if (typeof tradesDetail === 'string') {
-        try { tradesDetail = JSON.parse(tradesDetail); } catch(e) { tradesDetail = []; }
-    }
+    const tryParse = (v) => {
+        if (typeof v === 'string') {
+            try { return JSON.parse(v); } catch(e) { return []; }
+        }
+        return v;
+    };
+    equityData = tryParse(equityData);
+    benchmarkData = tryParse(benchmarkData);
+    tradesDetail = tryParse(tradesDetail);
 
-    const dates = equityData.map ? equityData.map((_,i) => i) : [];
+    if (!Array.isArray(equityData)) equityData = [];
+    if (!Array.isArray(benchmarkData)) benchmarkData = [];
+    if (!Array.isArray(tradesDetail)) tradesDetail = [];
+
+    // 标准化数据格式: 提取 {date, equity} 对
+    const normEquity = equityData.map(d => {
+        if (d == null) return null;
+        if (typeof d === 'object') return { date: d.date || d.trade_date, equity: Number(d.equity ?? d.value) };
+        return null;
+    }).filter(Boolean);
+
+    const dates = normEquity.map(d => d.date);
+    const equityValues = normEquity.map(d => d.equity);
+
     const series = [{
         name: '策略净值',
         type: 'line',
-        data: Array.isArray(equityData) ? equityData : Object.values(equityData||{}),
+        data: equityValues,
         smooth: true,
         lineStyle: { color: CHART_COLORS[0], width: 2.5 },
         areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[
@@ -591,47 +646,71 @@ function renderEquityChart(report) {
         symbol: 'none',
     }];
 
-    // 买卖点标注
+    // 买卖点标注: data 必须是 [x, y] 格式 (xAxis 类别索引 或 时间字符串)
+    // 用日期字符串作类别轴 x 索引 — ECharts 类别轴自动按 dates 数组下标定位
+    const dateToIdx = new Map(dates.map((d, i) => [String(d), i]));
     const buyPoints = [], sellPoints = [];
-    if (Array.isArray(tradesDetail)) {
-        tradesDetail.forEach(t => {
-            if (t.entry_date && t.entry_price != null) buyPoints.push({name:'买入',coord:[t.entry_date,t.entry_price]});
-            if (t.exit_date && t.exit_price != null) sellPoints.push({name:'卖出',coord:[t.exit_date,t.exit_price]});
-        });
-    }
+    tradesDetail.forEach(t => {
+        const eIdx = t.entry_date != null ? dateToIdx.get(String(t.entry_date)) : -1;
+        const xIdx = t.exit_date != null ? dateToIdx.get(String(t.exit_date)) : -1;
+        if (eIdx != null && eIdx >= 0 && t.entry_price != null) {
+            buyPoints.push([eIdx, Number(t.entry_price), t.entry_date]);
+        }
+        if (xIdx != null && xIdx >= 0 && t.exit_price != null) {
+            sellPoints.push([xIdx, Number(t.exit_price), t.exit_date]);
+        }
+    });
 
     if (buyPoints.length) series.push({
         name: '买入', type: 'scatter',
-        data: buyPoints, symbolSize: 10,
+        data: buyPoints, symbolSize: 11,
         itemStyle: { color: '#22c55e', borderColor:'#fff', borderWidth:2 },
+        tooltip: { formatter: p => `买入<br/>${p.data[2] || ''}<br/>¥${p.data[1]?.toFixed(2)}` },
     });
     if (sellPoints.length) series.push({
         name: '卖出', type: 'scatter',
-        data: sellPoints, symbolSize: 10,
+        data: sellPoints, symbolSize: 11,
         itemStyle: { color: '#ef4444', borderColor:'#fff', borderWidth:2 },
+        tooltip: { formatter: p => `卖出<br/>${p.data[2] || ''}<br/>¥${p.data[1]?.toFixed(2)}` },
     });
 
-    // 基准
-    const benchValues = Array.isArray(benchmarkData) ? benchmarkData : Object.values(benchmarkData||{});
-    if (benchValues.length > 0) {
+    // 基准曲线: 标准化为 {date, value}
+    const normBench = benchmarkData.map(d => {
+        if (d == null) return null;
+        if (typeof d === 'object') return { date: d.date || d.trade_date, value: Number(d.value ?? d.equity) };
+        return null;
+    }).filter(Boolean);
+    // 用统一日期轴, 缺失点用 null 让 ECharts 跳过
+    const benchByDate = new Map(normBench.map(b => [String(b.date), b.value]));
+    const benchValues = dates.map(d => benchByDate.has(String(d)) ? benchByDate.get(String(d)) : null);
+
+    if (benchValues.some(v => v != null)) {
         series.push({
             name: '沪深300', type: 'line', data: benchValues,
             lineStyle: { color: '#94a3b8', width: 1.5, type: 'dashed' },
             symbol: 'none',
+            connectNulls: true,
         });
     }
 
     chart.setOption({
-        tooltip: { trigger: 'axis' },
+        tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
         legend: { bottom: 0, textStyle: { fontSize: 12 } },
         grid: { left: '3%', right: '4%', bottom: '12%', top: '5%', containLabel: true },
-        xAxis: { type: 'category', data: dates, axisLabel: { fontSize: 10 } },
-        yAxis: { type: 'value', axisLabel: { formatter: v => (v/10000).toFixed(0)+'万' } },
+        xAxis: {
+            type: 'category',
+            data: dates,
+            axisLabel: {
+                fontSize: 10,
+                formatter: v => String(v).slice(0, 7), // YYYY-MM
+            },
+        },
+        yAxis: { type: 'value', scale: true, axisLabel: { formatter: v => (v/10000).toFixed(0)+'万' } },
         dataZoom: [{ type: 'inside' }, { type: 'slider', bottom: 24, height: 20 }],
         series,
     });
 
-    window.addEventListener('resize', () => chart.resize());
+    ResizeManager.attach(chart);
 }
 
 function renderTrades(report) {
@@ -690,8 +769,8 @@ async function compareAll() {
     let completed = 0;
     const results = [];
 
-    $('compare-body').innerHTML = signalModels.map(m => `
-        <tr id="cr-${slugify(m.name)}">
+    $('compare-body').innerHTML = signalModels.map((m, i) => `
+        <tr id="cr-${i}" data-name="${esc(m.name)}">
             <td class="fw-semibold">${esc(m.name)}</td>
             <td colspan="7" class="text-muted small">
                 <span class="spinner-border spinner-border-sm me-1"></span>等待中...
@@ -700,7 +779,7 @@ async function compareAll() {
     `).join('');
 
     // Run all models in parallel
-    const promises = signalModels.map(async (m) => {
+    const promises = signalModels.map(async (m, i) => {
         try {
             const res = await fetch('/api/backtest/run', {
                 method: 'POST',
@@ -721,7 +800,7 @@ async function compareAll() {
             results.push({ strategy_name: m.name, error: e.message });
         }
         completed++;
-        updateCompareProgress(m.name, results[results.length-1], completed, total);
+        updateCompareProgress(i, m.name, results[results.length-1], completed, total);
     });
 
     await Promise.allSettled(promises);
@@ -730,8 +809,8 @@ async function compareAll() {
     setCompareLoading(false);
 }
 
-function updateCompareProgress(modelName, result, done, total) {
-    const row = $(`cr-${slugify(modelName)}`);
+function updateCompareProgress(idx, modelName, result, done, total) {
+    const row = $(`cr-${idx}`);
     if (!row) return;
     if (result.error) {
         row.innerHTML = `<td class="fw-semibold">${esc(modelName)}</td>
@@ -763,9 +842,9 @@ function renderCompare(models) {
     withData.sort((a,b) => (b.total_return||0) - (a.total_return||0));
 
     $('compare-body').innerHTML = withData.map((m,i) => `
-        <tr onclick="highlightCompare(${i})" data-idx="${i}" class="${i===0?'table-success':''}">
+        <tr data-idx="${i}" class="${i===0?'table-success':''}" style="cursor:pointer">
             <td class="fw-semibold">${i===0?'👑 ':''}${esc(m.strategy_name)}</td>
-            <td class="${m.total_return>0?'profit':'loss'} fw-semibold">${(m.total_return>0?'+':'')+m.total_return.toFixed(2)}%</td>
+            <td class="${m.total_return>0?'profit':'loss'} fw-semibold">${(m.total_return>0?'+':'')+(m.total_return==null?'-':m.total_return.toFixed(2))}%</td>
             <td>${m.annual_return!=null?m.annual_return.toFixed(2)+'%':'-'}</td>
             <td>${m.sharpe_ratio!=null?m.sharpe_ratio.toFixed(2):'-'}</td>
             <td class="loss">${m.max_drawdown!=null?m.max_drawdown.toFixed(2)+'%':'-'}</td>
@@ -777,7 +856,11 @@ function renderCompare(models) {
 
     // Bar chart showing all models
     const dom = $('compare-chart');
-    if (state.compareChart) state.compareChart.dispose();
+    if (state.compareChart) {
+        ResizeManager.detach(state.compareChart);
+        state.compareChart.dispose();
+        state.compareChart = null;
+    }
     if (!dom.clientWidth) { setTimeout(() => renderCompare(models), 200); return; }
     const chart = echarts.init(dom);
     state.compareChart = chart;
@@ -808,7 +891,7 @@ function renderCompare(models) {
               itemStyle: { color: '#f59e0b', borderRadius: [8,8,0,0] }, barWidth: '35%' },
         ],
     });
-    window.addEventListener('resize', () => chart.resize());
+    ResizeManager.attach(chart);
 }
 
 function highlightCompare(idx) {
@@ -872,6 +955,7 @@ function setLoading(loading) {
     state.isLoading = loading;
     const btn = $('btn-run');
     if (loading) {
+        btn.disabled = true;
         btn.classList.add('btn-loading');
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>回测中...';
         $('result-loading').classList.remove('d-none');
@@ -881,6 +965,8 @@ function setLoading(loading) {
         btn.classList.remove('btn-loading');
         btn.innerHTML = '<i class="bi bi-play-fill"></i> 开始回测';
         $('result-loading').classList.add('d-none');
+        // 重新评估按钮可用性 (依赖配置完整度)
+        updateConfigStatus();
     }
 }
 
@@ -889,6 +975,7 @@ function setCompareLoading(loading) {
     const btn = $('btn-compare-all');
     const badge = $('compare-progress-badge');
     if (loading) {
+        btn.disabled = true;
         btn.classList.add('btn-loading');
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>对比中...';
         badge.classList.remove('d-none');
@@ -897,24 +984,48 @@ function setCompareLoading(loading) {
         btn.classList.remove('btn-loading');
         btn.innerHTML = '<i class="bi bi-lightning-fill"></i> 一键对比全部模型';
         badge.classList.add('d-none');
+        updateConfigStatus();
     }
 }
 
 function slugify(str) {
-    return String(str).replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_').slice(0, 40);
+    return String(str).replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_');
 }
 
 function hideResults() {
     $('result-content').classList.add('d-none');
     $('result-empty').classList.add('d-none');
     $('compare-section').classList.add('d-none');
-    if (state.equityChart) { state.equityChart.dispose(); state.equityChart = null; }
-    if (state.compareChart) { state.compareChart.dispose(); state.compareChart = null; }
+    if (state.equityChart) { ResizeManager.detach(state.equityChart); state.equityChart.dispose(); state.equityChart = null; }
+    if (state.compareChart) { ResizeManager.detach(state.compareChart); state.compareChart.dispose(); state.compareChart = null; }
 }
 
 function esc(str) {
     if (!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+
+/**
+ * 通用 Resize 监听器管理: 防止重复绑定导致内存泄漏
+ */
+const ResizeManager = {
+    _handlers: new WeakMap(),
+    attach(chart) {
+        if (!chart) return;
+        this.detach(chart); // 先解除旧的避免重复
+        const handler = () => { try { chart.resize(); } catch(e) {} };
+        this._handlers.set(chart, handler);
+        window.addEventListener('resize', handler);
+    },
+    detach(chart) {
+        if (!chart) return;
+        const handler = this._handlers.get(chart);
+        if (handler) {
+            window.removeEventListener('resize', handler);
+            this._handlers.delete(chart);
+        }
+    }
+};
 </script>
+{% endraw %}
 {% endblock %}

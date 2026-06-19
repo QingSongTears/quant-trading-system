@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from ...models.repository import DataRepository
 from ...data.downloader import DataDownloader
+from ...data.westock_downloader import WestockDownloader
 from ...backtest.engine import BacktestEngine
 from ...backtest.portfolio_engine import PortfolioBacktestEngine
 from ..app import download_status as _download_status
@@ -73,8 +74,22 @@ async def search_stocks(q: str = Query(..., min_length=1)):
     repo = DataRepository()
     try:
         df = repo.get_stock_list()
-        mask = df["name"].str.contains(q) | df["code"].str.contains(q)
+        # 兼容 NaN: name 可能含 NaN
+        df["name"] = df["name"].fillna("")
+        df["industry"] = df["industry"].fillna("")
+        mask = df["name"].str.contains(q, na=False) | df["code"].str.contains(q, na=False)
         results = df[mask].head(20).to_dict("records")
+        # 处理 NaT/NaN → None/空串
+        for r in results:
+            for k, v in list(r.items()):
+                if v is None:
+                    continue
+                # pandas NaT
+                if hasattr(v, '__class__') and v.__class__.__name__ == 'NaTType':
+                    r[k] = None
+                # float NaN
+                elif isinstance(v, float) and v != v:
+                    r[k] = None
         return {"success": True, "data": results}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -111,7 +126,18 @@ async def trigger_download(mode: str = "incremental"):
 
     def _run():
         try:
-            downloader = DataDownloader()
+            # 优先使用 westock-data 下载器 (批量快速, 不限流)
+            # 仅在 westock 不可用时回退到 AKShare
+            try:
+                downloader = WestockDownloader()
+                source_name = "WeStock-Data (腾讯自选股)"
+            except Exception as init_err:
+                logger.warning(f"westock 初始化失败, 回退 AKShare: {init_err}")
+                downloader = DataDownloader()
+                source_name = "AKShare"
+
+            _download_status["current"] = f"使用 {source_name} 下载中..."
+
             if mode == "full":
                 result = downloader.download_full(
                     progress_callback=lambda c, t, code, name: _download_status.update(
@@ -124,6 +150,7 @@ async def trigger_download(mode: str = "incremental"):
                         {"progress": c, "total": t, "current": f"{code} {name}"}
                     )
                 )
+            result["source"] = result.get("source", source_name)
             _download_status["running"] = False
             _download_status["result"] = result
         except Exception as e:

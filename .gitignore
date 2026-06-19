@@ -36,3 +36,4 @@ data/raw/
 data/quant.db
 data/all_7d_scores.json
 A股全市场数据/imported/
+.workbuddy/
