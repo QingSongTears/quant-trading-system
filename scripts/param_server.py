@@ -276,6 +276,16 @@ def predict_dashboard():
     return send_from_directory(str(PROJECT_ROOT / "output"), "predict_dashboard.html")
 
 
+@app.route("/ic")
+def ic_analysis():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "ic_analysis.html")
+
+
+@app.route("/v6-compare")
+def v6_compare():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "v6_compare.html")
+
+
 @app.route("/api/status")
 def api_status():
     return jsonify({"loaded": len(records), "dims": dim_cols, "task": task.snapshot()})
