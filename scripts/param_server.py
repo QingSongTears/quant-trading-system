@@ -301,6 +301,11 @@ def fund_flow_report():
     return send_from_directory(str(PROJECT_ROOT / "output"), "fund_flow_report.html")
 
 
+@app.route("/backtest-view")
+def backtest_view():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "backtest_view.html")
+
+
 # ── 股票搜索API ──
 SEARCH_INDEX = None  # 懒加载
 

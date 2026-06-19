@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>策略回测 · 可视化</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:1.1rem;font-weight:600}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem;margin-left:auto}
+header a:hover{color:var(--accent)}
+.container{max-width:1200px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+.card-title{font-size:0.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+.chart-wrap{position:relative;height:400px}
+.row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+@media(max-width:900px){.row{grid-template-columns:1fr 1fr}}
+table{width:100%;border-collapse:collapse;font-size:0.82rem}
+td,th{padding:8px 10px;border-bottom:1px solid var(--border);text-align:center}
+th{color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase}
+.pos{color:var(--green)}.neg{color:var(--red)}
+.metric-card{text-align:center;padding:16px}
+.metric-value{font-size:1.6rem;font-weight:700}
+.metric-label{font-size:0.7rem;color:var(--dim);margin-top:2px}
+.search-row{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:end}
+.search-row label{font-size:0.75rem;color:var(--dim);display:block;margin-bottom:4px}
+.search-row input,.search-row select{padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.85rem}
+.search-row button{padding:8px 20px;border:none;border-radius:6px;background:var(--accent);color:#000;font-weight:600;cursor:pointer}
+.search-row button:hover{opacity:0.85}
+.footer{text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border);margin-top:20px}
+</style>
+</head>
+<body>
+<header>
+<h1>📈 策略回测可视化</h1><span style="font-size:0.75rem;color:var(--dim)">单股票逐笔回测</span>
+<a href="/">← 返回调优面板</a>
+</header>
+<div class="container">
+
+<div class="search-row">
+<div><label>股票代码</label><input id="code" value="000001" style="width:100px"></div>
+<div><label>策略</label>
+<select id="strategy">
+<option value="bull_wave">bull_wave</option>
+<option value="score_cross">score_cross</option>
+<option value="ma_cross">ma_cross</option>
+<option value="oversold">oversold</option>
+<option value="trend_follow">trend_follow</option>
+<option value="bollinger">bollinger</option>
+<option value="combo">combo</option>
+</select></div>
+<div><label>开始</label><input id="start" value="2024-01-01" style="width:115px"></div>
+<div><label>结束</label><input id="end" value="2025-06-30" style="width:115px"></div>
+<button onclick="runBacktest()">▶ 回测</button>
+</div>
+
+<div id="loading" style="display:none;text-align:center;padding:40px;color:var(--dim)">⏳ 回测运行中...</div>
+<div id="error" style="display:none" class="card" style="border-left:3px solid var(--red)"></div>
+<div id="result" style="display:none">
+
+<div class="row" id="metricsRow"></div>
+
+<div class="card"><div class="card-title">📈 净值曲线</div>
+<div class="chart-wrap"><canvas id="equityChart"></canvas></div></div>
+
+<div class="card"><div class="card-title">📋 交易明细</div>
+<div style="overflow-x:auto"><table><thead><tr>
+<th>#</th><th>买入日</th><th>买入价</th><th>卖出日</th><th>卖出价</th><th>持仓</th><th>收益</th><th>收益率</th></tr></thead>
+<tbody id="tradeTable"></tbody></table></div>
+<div id="noTrades" class="empty-state" style="display:none;text-align:center;padding:20px;color:var(--dim)">该区间内无交易信号</div>
+</div>
+</div>
+
+<div class="footer">A股量化回测系统 · 策略回测可视化</div>
+</div>
+
+<script>
+const STRATEGY_NAMES = {bull_wave:'七维共振牛股',score_cross:'评分交叉',ma_cross:'均线交叉',oversold:'超跌反弹',trend_follow:'趋势跟踪',bollinger:'布林突破',combo:'综合多信号'};
+
+async function runBacktest(){
+  let code=document.getElementById('code').value.trim().padStart(6,'0');
+  let strategy=document.getElementById('strategy').value;
+  let start=document.getElementById('start').value;
+  let end=document.getElementById('end').value;
+  document.getElementById('loading').style.display='block';
+  document.getElementById('result').style.display='none';
+  document.getElementById('error').style.display='none';
+  try{
+    let resp=await fetch(`/api/stock/$\{code}/backtest?strategy=$\{strategy}&start=$\{start}&end=$\{end}`);
+    if(!resp.ok)throw new Error('回测失败');
+    let data=await resp.json();
+    document.getElementById('loading').style.display='none';
+    if(data.error){document.getElementById('error').style.display='block';document.getElementById('error').textContent=data.error;return;}
+    document.getElementById('result').style.display='block';
+    renderMetrics(data);
+    renderEquityChart(data);
+    renderTrades(data);
+  }catch(e){
+    document.getElementById('loading').style.display='none';
+    document.getElementById('error').style.display='block';
+    document.getElementById('error').innerHTML=`❌ $\{e.message}`;
+  }
+}
+
+function renderMetrics(data){
+  let m=data.metrics||{};
+  let items=[
+    {label:'总收益率',val:(m.totalReturn||0).toFixed(2)+'%',cls:m.totalReturn>=0?'pos':'neg'},
+    {label:'年化收益率',val:(m.annualReturn||0).toFixed(2)+'%',cls:m.annualReturn>=0?'pos':'neg'},
+    {label:'夏普比率',val:(m.sharpe||0).toFixed(2),cls:m.sharpe>0?'pos':'neg'},
+    {label:'最大回撤',val:(m.maxDrawdown||0).toFixed(2)+'%',cls:'neg'},
+    {label:'交易次数',val:m.totalTrades||0,cls:''},
+    {label:'胜率',val:(m.winRate||0).toFixed(1)+'%',cls:m.winRate>50?'pos':'neg'},
+    {label:'买入持有',val:(m.bhReturn||0).toFixed(2)+'%',cls:m.bhReturn>=0?'pos':'neg'},
+    {label:'超额收益',val:((m.totalReturn||0)-(m.bhReturn||0)).toFixed(2)+'%',cls:(m.totalReturn||0)>(m.bhReturn||0)?'pos':'neg'},
+  ];
+  let h=items.map(i=>'<div class="card metric-card"><div class="metric-value '+i.cls+'">'+i.val+'</div><div class="metric-label">'+i.label+'</div></div>').join('');
+  document.getElementById('metricsRow').innerHTML=h;
+}
+
+let chart=null;
+function renderEquityChart(data){
+  let eq=data.equityCurve||[];
+  let bh=data.bhCurve||[];
+  if(chart)chart.destroy();
+  chart=new Chart(document.getElementById('equityChart'),{
+    type:'line',
+    data:{
+      labels:eq.map(d=>d.date),
+      datasets:[
+        {label:'策略净值',data:eq.map(d=>d.value),borderColor:'#4fc3f7',backgroundColor:'rgba(79,195,247,0.06)',fill:true,tension:0.2,pointRadius:0,borderWidth:2},
+        {label:'买入持有',data:bh.map(d=>d.value),borderColor:'#ffa726',backgroundColor:'rgba(255,167,38,0.05)',fill:true,tension:0.2,pointRadius:0,borderWidth:1.5,borderDash:[5,3]}
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#ccc',font:{size:11}}}},
+      scales:{x:{grid:{color:'#2a2d3a'},ticks:{color:'#666',maxTicksLimit:12}},
+              y:{grid:{color:'#2a2d3a'},ticks:{color:'#888'}}}}
+  });
+}
+
+function renderTrades(data){
+  let trades=data.trades||[];
+  let tbody=document.getElementById('tradeTable');
+  let no=document.getElementById('noTrades');
+  if(trades.length===0){tbody.innerHTML='';no.style.display='block';return;}
+  no.style.display='none';
+  tbody.innerHTML=trades.map((t,i)=>{
+    let retCls=t.returnPct>=0?'pos':'neg';
+    return '<tr><td>'+(i+1)+'</td><td>'+(t.buyDate||'-')+'</td><td>'+(t.buyPrice?t.buyPrice.toFixed(2):'-')+'</td><td>'+(t.sellDate||'-')+'</td><td>'+(t.sellPrice?t.sellPrice.toFixed(2):'-')+'</td><td>'+(t.holdingDays||'-')+'</td><td class="'+retCls+'">'+(t.returnAmt?((t.returnAmt>0?'+':'')+t.returnAmt.toFixed(2)):'-')+'</td><td class="'+retCls+'">'+(t.returnPct?((t.returnPct>0?'+':'')+t.returnPct.toFixed(2)+'%'):'-')+'</td></tr>';
+  }).join('');
+}
+
+// 默认加载
+// runBacktest();
+</script>
+</body>
+</html>
