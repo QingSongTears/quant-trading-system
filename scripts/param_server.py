@@ -1213,6 +1213,94 @@ def _compute_industry_ics(scores, combo_name):
     return results
 
 
+
+
+# ── 8维预测API ──
+PRED_MODEL_PATH = PROJECT_ROOT / "data" / "bull_8d_monthly_result.json"
+
+def _load_pred_model():
+    """加载预测模型权重"""
+    if not PRED_MODEL_PATH.exists():
+        return None
+    with open(PRED_MODEL_PATH) as f:
+        return json.load(f)
+
+@app.route("/api/predict/<code>")
+def api_predict(code):
+    """预测单只股票下月上涨概率"""
+    code = str(code).zfill(6)
+    model = _load_pred_model()
+    if model is None:
+        return jsonify({"error": "预测模型未找到"}), 404
+    
+    # 加载最新分数
+    scores_path = PROJECT_ROOT / "data" / "all_7d_scores.json"
+    if not scores_path.exists():
+        return jsonify({"error": "分数数据未找到"}), 404
+    
+    with open(scores_path) as f:
+        scores = json.load(f)
+    
+    # 找该股票最新一条
+    stock_scores = [s for s in scores if s['code'] == code]
+    if not stock_scores:
+        return jsonify({"error": f"未找到股票 {code} 的分数"}), 404
+    
+    latest = max(stock_scores, key=lambda x: x['as_of_date'])
+    
+    # 计算预测概率
+    dim_cols = list(model['logistic_coef'].keys())
+    coef = np.array([model['logistic_coef'][c] for c in dim_cols])
+    intercept = model['intercept']
+    
+    x = np.array([[latest.get(c, 0) for c in dim_cols]])
+    logit = x @ coef + intercept
+    proba = float(1 / (1 + np.exp(-logit)))
+    
+    signal = "买入" if proba >= 0.55 else ("回避" if proba < 0.4 else "中性")
+    
+    return jsonify({
+        "code": code,
+        "as_of_date": latest['as_of_date'],
+        "pred_proba_up": round(proba, 4),
+        "signal": signal,
+        "dim_scores": {c.replace('_weighted',''): latest.get(c, 0) for c in dim_cols},
+        "auc": model['auc']
+    })
+
+@app.route("/api/predict/batch")
+def api_predict_batch():
+    """批量预测（返回全部股票预测结果）"""
+    model = _load_pred_model()
+    if model is None:
+        return jsonify({"error": "预测模型未找到"}), 404
+    
+    scores_path = PROJECT_ROOT / "data" / "all_7d_scores.json"
+    if not scores_path.exists():
+        return jsonify({"error": "分数数据未找到"}), 404
+    
+    with open(scores_path) as f:
+        scores = json.load(f)
+    
+    dim_cols = list(model['logistic_coef'].keys())
+    coef = np.array([model['logistic_coef'][c] for c in dim_cols])
+    intercept = model['intercept']
+    
+    results = []
+    for s in scores:
+        x = np.array([[s.get(c, 0) for c in dim_cols]])
+        logit = x @ coef + intercept
+        proba = float(1 / (1 + np.exp(-logit)))
+        signal = "买入" if proba >= 0.55 else ("回避" if proba < 0.4 else "中性")
+        results.append({
+            "code": s['code'],
+            "as_of_date": s['as_of_date'],
+            "pred_proba_up": round(proba, 4),
+            "signal": signal
+        })
+    
+    return jsonify({"count": len(results), "results": results})
+
 if __name__ == "__main__":
     load_data()
     app.run(host="0.0.0.0", port=8081, debug=False, threaded=True)
