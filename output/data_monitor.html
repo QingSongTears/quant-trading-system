@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>数据监控 · 8维量化选股</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:1.1rem;font-weight:600}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem}
+header a:hover{color:var(--accent)}
+header .nav{margin-left:auto;display:flex;gap:12px}
+.container{max-width:1400px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px}
+.card-title{font-size:0.72rem;text-transform:uppercase;color:var(--dim);letter-spacing:0.8px;margin-bottom:10px;font-weight:600}
+.grid-6{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.stat-card{text-align:center;padding:14px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid var(--border)}
+.stat-val{font-size:1.3rem;font-weight:700}
+.stat-label{font-size:0.68rem;color:var(--dim);margin-top:3px;text-transform:uppercase}
+table{width:100%;border-collapse:collapse;font-size:0.8rem}
+th{text-align:left;padding:8px 10px;color:var(--dim);font-weight:600;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card)}
+td{padding:7px 10px;border-bottom:1px solid rgba(42,45,58,0.3)}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.green{color:var(--green)}.red{color:var(--red)}.yellow{color:var(--yellow)}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.7rem;font-weight:600}
+.badge-ok{background:rgba(239,83,80,0.2;color:var(--green)}
+.badge-warn{background:rgba(255,167,38,0.2);color:var(--yellow)}
+.badge-err{background:rgba(76,175,80,0.2;color:var(--red)}
+.chart-wrap{height:300px}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.refresh-btn{padding:6px 16px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);cursor:pointer;font-size:0.8rem}
+.refresh-btn:hover{border-color:var(--accent)}
+.last-update{font-size:0.78rem;color:var(--dim);margin-left:auto}
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 数据监控</h1>
+  <div class="nav">
+    <a href="/diagnose">诊断</a><a href="/sector">板块</a><a href="/backtest-lab">回测</a><a href="/">全部</a>
+  </div>
+</header>
+<div class="container">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+    <h2 style="font-size:1rem;font-weight:600;">数据库状态</h2>
+    <button class="refresh-btn" onclick="loadAll()">🔄 刷新</button>
+    <span class="last-update" id="updateTime"></span>
+  </div>
+
+  <div class="grid-6" id="summaryCards"></div>
+
+  <div class="card">
+    <div class="card-title">🗄️ 表详情</div>
+    <div class="table-wrap" style="max-height:500px;overflow-y:auto"><table>
+      <thead><tr><th>表名</th><th>行数</th><th>状态</th><th>最新日期</th><th>最早日期</th><th>说明</th></tr></thead>
+      <tbody id="tableBody"></tbody>
+    </table></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+    <div class="card">
+      <div class="card-title">📈 各表数据量</div>
+      <div class="chart-wrap"><canvas id="countChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">✅ 数据健康度</div>
+      <div id="healthTips" style="font-size:0.85rem;line-height:1.8;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let chart = null;
+
+document.addEventListener('DOMContentLoaded', loadAll);
+
+async function loadAll() {
+  document.getElementById('updateTime').textContent = '更新: ' + new Date().toLocaleTimeString();
+  try {
+    const r = await fetch('/api/status');
+    const status = await r.json();
+    renderSummary(status);
+  } catch(e) { console.error(e); }
+
+  try {
+    const r = await fetch('/api/data/db-status');
+    const d = await r.json();
+    renderTables(d);
+    renderChart(d);
+    renderHealth(d);
+  } catch(e) { console.error(e); }
+}
+
+function renderSummary(status) {
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="stat-card"><div class="stat-val" style="color:var(--accent)">${status.loaded||0}</div><div class="stat-label">评分记录</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:var(--yellow)">${status.dims?status.dims.length:0}</div><div class="stat-label">评分维度</div></div>
+    <div class="stat-card"><div class="stat-val">${status.task?.progress||0}%</div><div class="stat-label">任务进度</div></div>
+    <div class="stat-card"><div class="stat-val" style="font-size:0.9rem">${status.task?.status||'idle'}</div><div class="stat-label">任务状态</div></div>
+  `;
+}
+
+async function renderTables(d) {
+  const tables = d.tables || [];
+  const body = document.getElementById('tableBody');
+  if (!tables.length) {
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--dim);padding:20px;">暂无数据</td></tr>';
+    return;
+  }
+  body.innerHTML = tables.map(t => {
+    const status = t.row_count > 0 ? 'ok' : (t.name.includes('sqlite') ? 'warn' : 'err');
+    return `<tr>
+      <td style="font-family:monospace;color:var(--accent)">${t.name}</td>
+      <td style="font-weight:600">${t.row_count.toLocaleString()}</td>
+      <td><span class="badge badge-${status}">${status==='ok'?'正常':status==='warn'?'无数据':'异常'}</span></td>
+      <td style="color:var(--dim);font-size:0.75rem">${t.latest_date||'-'}</td>
+      <td style="color:var(--dim);font-size:0.75rem">${t.earliest_date||'-'}</td>
+      <td style="color:var(--dim);font-size:0.75rem">${t.description||''}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderChart(d) {
+  if (chart) { chart.destroy(); chart = null; }
+  const tables = (d.tables || []).filter(t => t.row_count > 0);
+  const labels = tables.map(t => t.name.length > 18 ? t.name.slice(0,16)+'..' : t.name);
+  const values = tables.map(t => t.row_count);
+  const colors = tables.map(() => {
+    const colors = ['#4fc3f7','#ef5350','#66bb6a','#ffa726','#ab47bc','#26c6da','#7c4dff','#ec407a'];
+    return colors[Math.floor(Math.random()*colors.length)];
+  });
+
+  const ctx = document.getElementById('countChart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 4 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.raw.toLocaleString() + ' 行' } } },
+      scales: {
+        x: { ticks: { color:'#666', font:{size:9}, callback: v => v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e4 ? (v/1e4).toFixed(0)+'万' : v }, grid: { color:'rgba(255,255,255,0.03)' } },
+        y: { ticks: { color:'#aaa', font:{size:8} }, grid: { display:false } }
+      }
+    }
+  });
+}
+
+function renderHealth(d) {
+  const tips = document.getElementById('healthTips');
+  const tables = d.tables || [];
+  const warnings = [];
+
+  // Check for empty tables
+  const empty = tables.filter(t => t.row_count === 0);
+  if (empty.length) warnings.push(`⚠️ <span class="yellow">${empty.length}个表为空</span>: ${empty.map(t=>t.name).join(', ')}`);
+
+  // Check date freshness
+  const today = new Date();
+  tables.forEach(t => {
+    if (t.latest_date && t.name !== 'sqlite_sequence' && !t.name.startsWith('sqlite')) {
+      const diff = (today - new Date(t.latest_date)) / (1000*60*60*24);
+      if (diff > 30 && t.row_count > 0)
+        warnings.push(`⏰ <span class="yellow">${t.name}</span> 最新数据 ${t.latest_date}，已过${diff.toFixed(0)}天`);
+    }
+  });
+
+  // Positive signals
+  const ok = tables.filter(t => t.row_count > 0 && !t.name.startsWith('sqlite'));
+  warnings.unshift(`✅ <span class="green">${ok.length}个表有数据</span>，共 ${tables.reduce((s,t)=>s+t.row_count,0).toLocaleString()} 条记录`);
+
+  if (warnings.length === 0) warnings.push('✅ 所有系统正常');
+  tips.innerHTML = warnings.join('<br>');
+}
+</script>
+</body>
+</html>

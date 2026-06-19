@@ -22,7 +22,7 @@ table{width:100%;border-collapse:collapse;font-size:0.82rem}
 td,th{padding:10px 12px;border-bottom:1px solid var(--border);text-align:center}
 th{color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase}
 .best-row{background:#0d2818!important}
-.pos{color:var(--green)}.neg{color:var(--red)}
+.pos{color:var(--red)}.neg{color:var(--green)}
 .config-name{text-align:left;font-weight:500}
 .metric-card{text-align:center;padding:16px}
 .metric-value{font-size:1.8rem;font-weight:700}
@@ -171,7 +171,7 @@ new Chart(document.getElementById('retChart'), {
   type:'bar',
   data:{labels:COMBO.map(c=>`th=${c.th}/sl=${c.sl}/tp=${c.tp}`),
     datasets:[{label:'平均收益%',data:COMBO.map(c=>c.ret),
-      backgroundColor:COMBO.map(c=>c.ret>=0?'rgba(76,175,80,0.7)':'rgba(239,83,80,0.7)'),
+      backgroundColor:COMBO.map(c=>c.ret>=0?'rgba(239,83,80,0.7':'rgba(76,175,80,0.7'),
       borderColor:COMBO.map(c=>c.ret>=0?'#4caf50':'#ef5350'),borderWidth:1}]},
   options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
     scales:{y:{grid:{color:'#2a2d3a'},ticks:{color:'#888',callback:v=>v+'%'}},
@@ -183,7 +183,7 @@ new Chart(document.getElementById('winChart'), {
   type:'bar',
   data:{labels:COMBO.map(c=>`th=${c.th}/sl=${c.sl}/tp=${c.tp}`),
     datasets:[{label:'命中率%',data:COMBO.map(c=>c.win),
-      backgroundColor:COMBO.map(c=>c.win>50?'rgba(76,175,80,0.7)':'rgba(255,167,38,0.7)'),
+      backgroundColor:COMBO.map(c=>c.win>50?'rgba(239,83,80,0.7':'rgba(255,167,38,0.7)'),
       borderColor:COMBO.map(c=>c.win>50?'#4caf50':'#ffa726'),borderWidth:1}]},
   options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
     scales:{y:{grid:{color:'#2a2d3a'},ticks:{color:'#888',callback:v=>v+'%'},max:80},

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>量化交易系统 · 导航</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:20px 24px;text-align:center}
+header h1{font-size:1.3rem;font-weight:700}
+header p{color:var(--dim);font-size:0.82rem;margin-top:4px}
+.container{max-width:1000px;margin:0 auto;padding:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;text-decoration:none;color:var(--text);transition:all .15s;display:flex;flex-direction:column}
+.card:hover{transform:translateY(-3px);border-color:var(--accent);box-shadow:0 8px 24px rgba(79,195,247,0.1)}
+.card .icon{font-size:1.8rem;margin-bottom:6px}
+.card .name{font-size:0.95rem;font-weight:600}
+.card .desc{font-size:0.75rem;color:var(--dim);margin-top:4px;line-height:1.4}
+.card .tag{font-size:0.65rem;color:var(--accent);margin-top:8px;font-family:monospace}
+.section{margin-bottom:20px}
+.section h2{font-size:0.85rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ 8维量化交易系统</h1>
+  <p>多维评分 · 策略回测 · 个股诊断 · 行业分析</p>
+</header>
+<div class="container">
+
+<div class="section">
+  <h2>📊 分析诊断</h2>
+  <div class="grid">
+    <a class="card" href="/diagnose"><div class="icon">🔬</div><div class="name">个股诊断</div><div class="desc">8维评分·K线·技术指标·策略信号·智能结论</div><div class="tag">/diagnose</div></a>
+    <a class="card" href="/sector"><div class="icon">🏭</div><div class="name">行业板块</div><div class="desc">行业评分排名·成分股·板块轮动·热力图</div><div class="tag">/sector</div></a>
+    <a class="card" href="/screener"><div class="icon">🔍</div><div class="name">选股工作台</div><div class="desc">多条件筛选·评分过滤·行业选择·排序</div><div class="tag">/screener</div></a>
+    <a class="card" href="/portfolio"><div class="icon">📦</div><div class="name">持仓分析</div><div class="desc">组合评分·行业分布·持仓诊断·建议</div><div class="tag">/portfolio</div></a>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🧪 策略与回测</h2>
+  <div class="grid">
+    <a class="card" href="/backtest-lab"><div class="icon">🧪</div><div class="name">回测实验室</div><div class="desc">参数调整·实时回测·日志存档·多组对比</div><div class="tag">/backtest-lab</div></a>
+    <a class="card" href="/backtest-view"><div class="icon">📈</div><div class="name">策略回测</div><div class="desc">7大策略·指标卡片·净值曲线·交易明细</div><div class="tag">/backtest-view</div></a>
+    <a class="card" href="/predict"><div class="icon">🔮</div><div class="name">预测看板</div><div class="desc">上涨概率·8维评分·个股搜索·信号判断</div><div class="tag">/predict</div></a>
+    <a class="card" href="/ic"><div class="icon">📊</div><div class="name">IC分析</div><div class="desc">维度IC·权重·概率分箱·因子有效性</div><div class="tag">/ic</div></a>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📋 研究报告</h2>
+  <div class="grid">
+    <a class="card" href="/v6-compare"><div class="icon">⚖️</div><div class="name">V6参数对比</div><div class="desc">5档参数配置·收益·夏普·最佳推荐</div><div class="tag">/v6-compare</div></a>
+    <a class="card" href="/bull-report"><div class="icon">🐂</div><div class="name">牛市选股报告</div><div class="desc">194只·3807笔交易·6参数组合·TOP10</div><div class="tag">/bull-report</div></a>
+    <a class="card" href="/fund-flow-report"><div class="icon">💰</div><div class="name">资金流融合</div><div class="desc">Sharpe+67%·资金流加权·夏普对比</div><div class="tag">/fund-flow-report</div></a>
+    <a class="card" href="/dim-compare"><div class="icon">📐</div><div class="name">维度IC对比</div><div class="desc">牛市vs全市场·IC方向差异·关键发现</div><div class="tag">/dim-compare</div></a>
+  </div>
+</div>
+
+<div class="section">
+  <h2>⚙️ 系统</h2>
+  <div class="grid">
+    <a class="card" href="/data-monitor"><div class="icon">📊</div><div class="name">数据监控</div><div class="desc">数据库状态·表详情·数据健康度·日期新鲜度</div><div class="tag">/data-monitor</div></a>
+    <a class="card" href="/"><div class="icon">⚙️</div><div class="name">参数调优</div><div class="desc">8维权重调优·IC实时计算·回测引擎控制</div><div class="tag">/ (原首页)</div></a>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

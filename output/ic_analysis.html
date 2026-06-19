@@ -7,7 +7,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 * {margin:0;padding:0;box-sizing:border-box;}
-:root {--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726;}
+:root {--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--up:#ef5350;--down:#4caf50;--yellow:#ffa726;}
 body {font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
 header {background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;}
 header h1 {font-size:1.1rem;font-weight:600;}
@@ -24,16 +24,16 @@ table {width:100%;border-collapse:collapse;font-size:0.82rem;}
 td,th {padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;}
 th {color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase;}
 td:last-child {text-align:right;font-family:monospace;}
-.pos {color:var(--green);}
-.neg {color:var(--red);}
+.pos {color:var(--up);}
+.neg {color:var(--down);}
 .bar-val {font-size:0.75rem;font-family:monospace;}
 .footer {text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border);margin-top:20px;}
 .metric-card {text-align:center;padding:16px;}
 .metric-value {font-size:1.8rem;font-weight:700;}
 .metric-label {font-size:0.75rem;color:var(--dim);margin-top:4px;}
 .insight-box {background:#1a1d2e;border-left:3px solid var(--accent);padding:14px 18px;border-radius:4px;font-size:0.85rem;line-height:1.7;margin-top:10px;}
-.insight-box .pos {color:var(--green);}
-.insight-box .neg {color:var(--red);}
+.insight-box .pos {color:var(--up);}
+.insight-box .neg {color:var(--down);}
 </style>
 </head>
 <body>
@@ -138,8 +138,8 @@ function renderICChart() {
   const items = DATA.ic_table.filter(r => r.ic !== null && !isNaN(r.ic)).sort((a,b) => Math.abs(b.ic) - Math.abs(a.ic));
   const labels = items.map(r => DIM_CNF[r.dim] || r.dim);
   const values = items.map(r => r.ic);
-  const colors = values.map(v => v >= 0 ? 'rgba(76,175,80,0.8)' : 'rgba(239,83,80,0.8)');
-  const borderColors = values.map(v => v >= 0 ? '#4caf50' : '#ef5350');
+  const colors = values.map(v => v >= 0 ? 'rgba(239,83,80,0.8)' : 'rgba(76,175,80,0.8)');
+  const borderColors = values.map(v => v >= 0 ? '#ef5350' : '#4caf50');
   new Chart(document.getElementById('icChart'), {
     type: 'bar',
     data: { labels, datasets: [{ label:'IC', data:values, backgroundColor:colors, borderColor:borderColors, borderWidth:1 }] },
@@ -156,7 +156,7 @@ function renderCoefChart() {
   const items = Object.entries(DATA.logistic_coef_cn).sort((a,b) => Math.abs(b[1]) - Math.abs(a[1]));
   const labels = items.map(i => i[0]);
   const values = items.map(i => i[1]);
-  const colors = values.map(v => v >= 0 ? 'rgba(76,175,80,0.8)' : 'rgba(239,83,80,0.8)');
+  const colors = values.map(v => v >= 0 ? 'rgba(239,83,80,0.8)' : 'rgba(76,175,80,0.8)');
   new Chart(document.getElementById('coefChart'), {
     type: 'bar',
     data: { labels, datasets: [{ label:'系数', data:values, backgroundColor:colors, borderColor:colors.map(c=>c.replace('0.8','1')), borderWidth:1 }] },
@@ -185,7 +185,7 @@ function renderBinUpChart() {
 // Bin return chart
 function renderBinRetChart() {
   const bins = DATA.bin_stats;
-  const colors = bins.map(b => b.avg_ret >= 0 ? 'rgba(76,175,80,0.7)' : 'rgba(239,83,80,0.7)');
+  const colors = bins.map(b => b.avg_ret >= 0 ? 'rgba(239,83,80,0.7)' : 'rgba(76,175,80,0.7)');
   new Chart(document.getElementById('binRetChart'), {
     type: 'bar',
     data: { labels: bins.map(b=>b.bin), datasets: [{ label:'平均收益', data:bins.map(b=>b.avg_ret), backgroundColor:colors, borderColor:colors.map(c=>c.replace('0.7','1')), borderWidth:1 }] },
@@ -207,13 +207,13 @@ for (let item of DATA.ic_table) {
   let icClass = ic === null || isNaN(ic) ? '' : (ic > 0 ? 'pos' : (ic < 0 ? 'neg' : ''));
   let coef = DATA.logistic_coef_cn[label] || 0;
   let dir = coef > 0 ? '正向 ↗' : (coef < 0 ? '反向 ↘' : '--');
-  let dirColor = coef > 0 ? 'var(--green)' : (coef < 0 ? 'var(--red)' : 'var(--dim)');
+  let dirColor = coef > 0 ? 'var(--up)' : (coef < 0 ? 'var(--down)' : 'var(--dim)');
   let dotColor = DIM_COLORS[label] || '#888';
-  icHtml += `<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:$\{dotColor};margin-right:6px"></span>$\{label}</td>
-    <td class="$\{icClass}">$\{icStr}</td>
-    <td class="$\{coef>0?'pos':'neg'}">$\{coef>0?'+':''}$\{coef.toFixed(4)}</td>
-    <td>$\{item.n||'-'}</td>
-    <td style="color:$\{dirColor}">$\{dir}</td></tr>`;
+  icHtml += `<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};margin-right:6px"></span>${label}</td>
+    <td class="${icClass}">${icStr}</td>
+    <td class="${coef>0?'pos':'neg'}">${coef>0?'+':''}${coef.toFixed(4)}</td>
+    <td>${item.n||'-'}</td>
+    <td style="color:${dirColor}">${dir}</td></tr>`;
 }
 document.getElementById('icTable').innerHTML = icHtml;
 
@@ -221,13 +221,13 @@ document.getElementById('icTable').innerHTML = icHtml;
 let binHtml = '';
 for (let b of DATA.bin_stats) {
   let pct = ((b.count/total)*100).toFixed(1);
-  let retColor = b.avg_ret >= 0 ? 'var(--green)' : 'var(--red)';
+  let retColor = b.avg_ret >= 0 ? 'var(--up)' : 'var(--down)';
   binHtml += `<tr>
-    <td><strong>$\{b.bin}</strong></td>
-    <td>$\{b.count.toLocaleString()}</td>
-    <td>$\{pct}%</td>
-    <td style="color:$\{b.pct_up>0.5?'var(--green)':'var(--red)'}">$\{(b.pct_up*100).toFixed(1)}%</td>
-    <td style="color:$\{retColor}">$\{b.avg_ret > 0 ? '+' : ''}$\{b.avg_ret.toFixed(2)}%</td>
+    <td><strong>${b.bin}</strong></td>
+    <td>${b.count.toLocaleString()}</td>
+    <td>${pct}%</td>
+    <td style="color:${b.pct_up>0.5?'var(--up)':'var(--down)'}">${(b.pct_up*100).toFixed(1)}%</td>
+    <td style="color:${retColor}">${b.avg_ret > 0 ? '+' : ''}${b.avg_ret.toFixed(2)}%</td>
   </tr>`;
 }
 document.getElementById('binTable').innerHTML = binHtml;
@@ -241,8 +241,8 @@ let bestCoef = Object.entries(DATA.logistic_coef_cn).sort((a,b) => Math.abs(b[1]
 document.getElementById('insightBox').innerHTML = `
   <p><strong>核心发现：</strong></p>
   <p>📌 最强IC维度：<span class="neg">筹码面（IC=${(bestIC?.ic||0).toFixed(4)}）</span> —— 筹码集中度高的股票，下月反而跑输，是显著的反向指标。</p>
-  <p>📌 正向IC：${posIC.map(i => `<span class="pos">$\{DIM_CNF[i.dim]||i.dim}($\{i.ic.toFixed(4)})</span>`).join('、')}</p>
-  <p>📌 反向IC：${negIC.map(i => `<span class="neg">$\{DIM_CNF[i.dim]||i.dim}($\{i.ic.toFixed(4)})</span>`).join('、')}</p>
+  <p>📌 正向IC：${posIC.map(i => `<span class="pos">${DIM_CNF[i.dim]||i.dim}(${i.ic.toFixed(4)})</span>`).join('、')}</p>
+  <p>📌 反向IC：${negIC.map(i => `<span class="neg">${DIM_CNF[i.dim]||i.dim}(${i.ic.toFixed(4)})</span>`).join('、')}</p>
   <br>
   <p><strong>概率分层解读：</strong></p>
   <p>📊 低概率区（&lt;0.4）：${DATA.bin_stats[0].count.toLocaleString()}样本，实际上涨率仅 ${(DATA.bin_stats[0].pct_up*100).toFixed(1)}%，平均收益 ${DATA.bin_stats[0].avg_ret.toFixed(2)}% —— 模型能有效识别下跌风险。</p>
