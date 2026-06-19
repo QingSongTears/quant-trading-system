@@ -6,14 +6,13 @@ v6信号产生候选池 → 多维评分精选 → 综合排名
 当前可用维度:
   - technical: ✅ (技术面, quant.db)
   - fundamental: ❌ (需补roe/eps列)
-  - fund_flow: ✅ (v2.1版本, 需fund_flow表)
+  - fund_flow: ✅ (v2.1版本, fund_flow表)
+  - chip: ✅ (筹码面, chip_distribution表)
 
-v2.1 改进 (2026-06-19):
-  - scoring_dims 默认开启 fund_flow
-  - 表缺失时优雅降级到仅 technical
+v2.2 改进 (2026-06-19):
+  - scoring_dims 默认开启 fund_flow + chip
+  - 表缺失时优雅降级到可用维度
   - 融合权重可调, 适配维度增减
-
-先使用技术面做概念验证, 后续扩展更多维度。
 """
 from typing import List, Optional
 from datetime import date
@@ -45,8 +44,8 @@ class V6PipelineHybridStrategy(V6ReversalSelectionStrategy):
     V6_WEIGHT: float = 0.6
     PIPELINE_WEIGHT: float = 0.4
 
-    # 启用的评分维度: v2.1 开启 fund_flow (表缺失时优雅降级)
-    scoring_dims: List[str] = ["technical", "fund_flow"]
+    # 启用的评分维度: 资金面+筹码面 (表缺失时优雅降级)
+    scoring_dims: List[str] = ["technical", "fund_flow", "chip"]
 
     # 表存在性缓存: 避免每次 select 都查 SQLite
     _available_tables_cache: dict = {}
