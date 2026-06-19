@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>预测看板 · 8维量化选股</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a;
+  --text:#e0e0e0; --dim:#888; --accent:#4fc3f7;
+  --green:#4caf50; --red:#ef5350; --yellow:#ffa726; --orange:#ff7043;
+}
+body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+header { background:var(--card); border-bottom:1px solid var(--border); padding:14px 24px; display:flex; align-items:center; gap:16px; }
+header h1 { font-size:1.1rem; font-weight:600; }
+header a { color:var(--dim); text-decoration:none; font-size:0.8rem; margin-left:auto; }
+header a:hover { color:var(--accent); }
+.container { max-width:1200px; margin:0 auto; padding:20px; }
+
+/* 搜索框 */
+.search-section { margin-bottom:20px; }
+.search-box { display:flex; gap:10px; align-items:center; }
+.search-box input {
+  flex:1; padding:12px 16px; border-radius:8px; border:1px solid var(--border);
+  background:var(--card); color:var(--text); font-size:1rem; outline:none;
+}
+.search-box input:focus { border-color:var(--accent); }
+.search-box button {
+  padding:12px 24px; border:none; border-radius:8px; background:var(--accent);
+  color:#000; font-weight:600; cursor:pointer; font-size:0.9rem;
+}
+.search-box button:hover { opacity:0.85; }
+.suggestions {
+  position:absolute; z-index:100; width:100%; max-height:240px; overflow-y:auto;
+  background:var(--card); border:1px solid var(--border); border-radius:8px; display:none;
+}
+.suggestions div { padding:10px 16px; cursor:pointer; border-bottom:1px solid var(--border); font-size:0.85rem; }
+.suggestions div:hover { background:#2a2d3a; }
+
+/* 主布局 */
+.dashboard { display:grid; grid-template-columns:320px 1fr; gap:16px; }
+@media(max-width:900px){ .dashboard { grid-template-columns:1fr; } }
+
+/* 卡片 */
+.card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:20px; }
+.card-title { font-size:0.75rem; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:14px; }
+
+/* 概率仪表盘 */
+.gauge-wrap { text-align:center; padding:10px 0; }
+.gauge-circle {
+  width:160px; height:160px; border-radius:50%; margin:0 auto 12px;
+  position:relative; display:flex; align-items:center; justify-content:center;
+  background:conic-gradient(var(--green) 0deg, var(--yellow) 0deg, var(--red) 0deg);
+}
+.gauge-inner {
+  width:130px; height:130px; border-radius:50%; background:var(--card);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+}
+.gauge-pct { font-size:2.2rem; font-weight:700; }
+.gauge-pct.up { color:var(--green); }
+.gauge-pct.mid { color:var(--yellow); }
+.gauge-pct.down { color:var(--red); }
+.gauge-label { font-size:0.75rem; color:var(--dim); margin-bottom:2px; }
+.signal-badge { display:inline-block; padding:4px 16px; border-radius:20px; font-weight:600; font-size:0.9rem; }
+.signal-badge.buy { background:#1b3a1b; color:var(--green); }
+.signal-badge.hold { background:#3a3a1b; color:var(--yellow); }
+.signal-badge.avoid { background:#3a1b1b; color:var(--red); }
+.meta { font-size:0.75rem; color:var(--dim); margin-top:8px; }
+
+/* 雷达图 */
+.chart-wrap { position:relative; height:300px; }
+
+/* 维度贡献条形图 */
+.bar-item { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.bar-label { width:80px; font-size:0.8rem; text-align:right; flex-shrink:0; }
+.bar-track { flex:1; height:18px; background:#1e2130; border-radius:9px; overflow:hidden; position:relative; }
+.bar-fill { height:100%; border-radius:9px; transition:width 0.6s ease; }
+.bar-val { width:40px; font-size:0.75rem; text-align:right; font-family:monospace; flex-shrink:0; }
+
+/* 维度表格 */
+table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+td, th { padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
+th { color:var(--dim); font-weight:500; font-size:0.7rem; text-transform:uppercase; }
+td:last-child { text-align:right; font-family:monospace; }
+.pos { color:var(--green); }
+.neg { color:var(--red); }
+.zero { color:var(--dim); }
+
+/* 空状态和加载 */
+.empty-state { text-align:center; padding:60px 20px; color:var(--dim); }
+.empty-state i { font-size:3rem; display:block; margin-bottom:12px; }
+.loading { text-align:center; padding:40px; color:var(--dim); }
+
+/* 底部信息 */
+.footer { text-align:center; padding:20px; color:var(--dim); font-size:0.75rem; border-top:1px solid var(--border); margin-top:20px; }
+
+/* 维度颜色 */
+.color-tech { background:#4fc3f7; }
+.color-fundam { background:#66bb6a; }
+.color-fund { background:#ffa726; }
+.color-inst { background:#ab47bc; }
+.color-lhb { background:#ef5350; }
+.color-sent { background:#ec407a; }
+.color-news { background:#26c6da; }
+.color-chip { background:#8d6e63; }
+
+/* 扇形指示圆 */
+.dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔮 8维预测看板</h1>
+  <span style="font-size:0.75rem;color:var(--dim)">8维评分 → 下月上涨概率</span>
+  <a href="/">← 返回调优面板</a>
+</header>
+
+<div class="container">
+  <!-- 搜索 -->
+  <div class="search-section">
+    <div class="search-box" style="position:relative">
+      <input type="text" id="stockInput" placeholder="输入股票代码或名称，如 000001、平安银行..." autocomplete="off">
+      <div class="suggestions" id="suggestions"></div>
+      <button onclick="searchStock()">🔍 查询</button>
+    </div>
+  </div>
+
+  <!-- 空状态 -->
+  <div id="emptyState" class="empty-state">
+    <i>🔍</i>
+    <p>输入股票代码，查看下月上涨概率</p>
+    <p style="font-size:0.8rem;margin-top:8px">例如: 000001 平安银行 / 600519 贵州茅台</p>
+  </div>
+
+  <!-- 加载 -->
+  <div id="loadingState" class="loading" style="display:none">
+    <p>正在预测...</p>
+  </div>
+
+  <!-- 主面板 -->
+  <div id="resultArea" class="dashboard" style="display:none">
+    <!-- 左侧：概率 + 分数 -->
+    <div>
+      <!-- 概率仪表盘 -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title">📊 下月上涨概率</div>
+        <div class="gauge-wrap">
+          <div class="gauge-circle" id="gaugeCircle">
+            <div class="gauge-inner">
+              <div class="gauge-label">上涨概率</div>
+              <div class="gauge-pct" id="gaugePct">50%</div>
+              <div class="signal-badge" id="signalBadge">中性</div>
+            </div>
+          </div>
+          <div class="meta">
+            基于 <span id="metaDate">-</span> 数据 · 模型AUC=<span id="metaAuc">0.55</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 8维分数表 -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title">📋 8维分数详情</div>
+        <table>
+          <thead><tr><th>维度</th><th style="text-align:right">分数</th></tr></thead>
+          <tbody id="scoreTable"></tbody>
+        </table>
+      </div>
+
+      <!-- 维度贡献条形图 -->
+      <div class="card">
+        <div class="card-title">📊 各维度贡献度</div>
+        <div id="barChart"></div>
+      </div>
+    </div>
+
+    <!-- 右侧：雷达图 -->
+    <div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title">🎯 8维能力雷达</div>
+        <div class="chart-wrap">
+          <canvas id="radarChart"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">💡 综合研判</div>
+        <div id="insightBox" style="font-size:0.85rem;line-height:1.7">
+          查询股票后显示分析结论
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    A股量化回测系统 · 8维预测模型 AUC=0.5515 · 仅供参考
+  </div>
+</div>
+
+<script>
+// ===== 维度配置 =====
+const DIMS = [
+  { key:'tech',           label:'技术面',     color:'#4fc3f7', short:'技术' },
+  { key:'fundam',         label:'基本面',     color:'#66bb6a', short:'基本面' },
+  { key:'fund',           label:'资金面',     color:'#ffa726', short:'资金' },
+  { key:'institutional',  label:'机构面',     color:'#ab47bc', short:'机构' },
+  { key:'lh_institutional', label:'龙虎榜机构', color:'#ef5350', short:'龙虎榜' },
+  { key:'sentiment',      label:'情绪面',     color:'#ec407a', short:'情绪' },
+  { key:'news_event',     label:'新闻事件',   color:'#26c6da', short:'新闻' },
+  { key:'chip',           label:'筹码面',     color:'#8d6e63', short:'筹码' },
+];
+
+// 权重系数（从模型加载）
+const COEF = {
+  tech: 0.0132, fundam: 0.0136, fund: -0.0703,
+  institutional: 0.006, lh_institutional: 0.0229,
+  sentiment: 0.0391, news_event: -0.0588, chip: -0.0229
+};
+
+let radarChart = null;
+
+// ===== 搜索 =====
+const stockInput = document.getElementById('stockInput');
+const suggestions = document.getElementById('suggestions');
+let searchTimer = null;
+
+stockInput.addEventListener('input', function() {
+  clearTimeout(searchTimer);
+  const q = this.value.trim();
+  if (q.length < 1) { suggestions.style.display = 'none'; return; }
+  searchTimer = setTimeout(() => fetchSuggestions(q), 200);
+});
+
+stockInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') searchStock();
+});
+
+async function fetchSuggestions(q) {
+  try {
+    let resp = await fetch('/api/predict/batch');
+    let data = await resp.json();
+    let results = data.results || [];
+    let matched = [];
+    for (let r of results) {
+      if (r.code.includes(q)) {
+        matched.push({ code: r.code, proba: r.pred_proba_up, signal: r.signal });
+        if (matched.length >= 20) break;
+      }
+    }
+    if (matched.length === 0) {
+      // 试试按名称搜 - 请求全stock列表
+      let stockResp = await fetch('/api/status');
+      let statusData = await stockResp.json();
+      suggestions.style.display = 'none';
+      return;
+    }
+    let html = matched.map(m => {
+      let sigClass = m.signal === '买入' ? 'buy' : (m.signal === '回避' ? 'avoid' : 'hold');
+      let pct = (m.proba * 100).toFixed(1);
+      return `<div onclick="selectStock('${m.code}')">
+        <strong>${m.code}</strong>
+        <span style="float:right">
+          <span class="signal-badge ${sigClass}" style="font-size:0.7rem;padding:2px 8px">${m.signal}</span>
+          <span style="margin-left:8px;color:var(--dim)">${pct}%</span>
+        </span>
+      </div>`;
+    }).join('');
+    suggestions.innerHTML = html;
+    suggestions.style.display = 'block';
+  } catch(e) { console.log(e); }
+}
+
+function selectStock(code) {
+  stockInput.value = code;
+  suggestions.style.display = 'none';
+  searchStock();
+}
+
+// ===== 主查询 =====
+async function searchStock() {
+  let code = stockInput.value.trim().replace(/[^0-9]/g, '').padStart(6, '0');
+  if (code.length !== 6) { alert('请输入6位股票代码'); return; }
+  suggestions.style.display = 'none';
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('loadingState').style.display = 'block';
+  document.getElementById('resultArea').style.display = 'none';
+
+  try {
+    let resp = await fetch('/api/predict/' + code);
+    if (!resp.ok) throw new Error('未找到股票');
+    let data = await resp.json();
+
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('resultArea').style.display = 'grid';
+
+    renderGauge(data);
+    renderScoreTable(data);
+    renderBarChart(data);
+    renderRadar(data);
+    renderInsight(data);
+
+  } catch(e) {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('emptyState').style.display = 'block';
+    document.getElementById('emptyState').querySelector('p').textContent = '❌ 未找到股票 ' + code;
+  }
+}
+
+// ===== 渲染概率仪表盘 =====
+function renderGauge(data) {
+  let pct = (data.pred_proba_up * 100);
+  let deg = pct * 1.8; // 0~100 → 0~180度
+  let color = pct >= 55 ? '#4caf50' : (pct >= 40 ? '#ffa726' : '#ef5350');
+  document.getElementById('gaugeCircle').style.background =
+    `conic-gradient(${color} 0deg ${deg}deg, #2a2d3a ${deg}deg 360deg)`;
+  let el = document.getElementById('gaugePct');
+  el.textContent = pct.toFixed(1) + '%';
+  el.className = 'gauge-pct ' + (pct >= 55 ? 'up' : (pct >= 40 ? 'mid' : 'down'));
+
+  let badge = document.getElementById('signalBadge');
+  badge.textContent = data.signal;
+  badge.className = 'signal-badge ' + (data.signal === '买入' ? 'buy' : (data.signal === '回避' ? 'avoid' : 'hold'));
+
+  document.getElementById('metaDate').textContent = data.as_of_date || '-';
+  document.getElementById('metaAuc').textContent = (data.auc || 0.5515).toFixed(4);
+}
+
+// ===== 渲染分数表 =====
+function renderScoreTable(data) {
+  let scores = data.dim_scores || {};
+  let html = DIMS.map(d => {
+    let val = scores[d.key] !== undefined ? scores[d.key] : '-';
+    return `<tr><td><span class="dot" style="background:${d.color}"></span>${d.label}</td><td style="text-align:right;font-family:monospace">${val}</td></tr>`;
+  }).join('');
+  document.getElementById('scoreTable').innerHTML = html;
+}
+
+// ===== 渲染贡献条形图 =====
+function renderBarChart(data) {
+  let scores = data.dim_scores || {};
+  let items = DIMS.map(d => ({
+    key: d.key, label: d.label,
+    score: scores[d.key] || 0,
+    coef: COEF[d.key] || 0,
+    color: d.color,
+    contribution: ((scores[d.key] || 0) * (COEF[d.key] || 0))
+  }));
+  // 按贡献绝对值排序
+  items.sort((a,b) => Math.abs(b.contribution) - Math.abs(a.contribution));
+
+  let maxAbs = Math.max(...items.map(i => Math.abs(i.contribution)), 0.01);
+  let html = items.map(i => {
+    let pct = (i.contribution / maxAbs) * 50; // 最大50%
+    let pctAbs = Math.abs(pct);
+    let isPos = i.contribution >= 0;
+    let barColor = isPos ? i.color : '#ef5350';
+    return `<div class="bar-item">
+      <span class="bar-label">${i.label}</span>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${pctAbs+20}%;background:${barColor}"></div>
+      </div>
+      <span class="bar-val ${isPos ? 'pos' : 'neg'}">${i.contribution > 0 ? '+' : ''}${i.contribution.toFixed(3)}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('barChart').innerHTML = html;
+}
+
+// ===== 渲染雷达图 =====
+function renderRadar(data) {
+  let scores = data.dim_scores || {};
+  let labels = DIMS.map(d => d.label);
+  let values = DIMS.map(d => scores[d.key] || 0);
+  let colors = DIMS.map(d => d.color);
+
+  if (radarChart) radarChart.destroy();
+
+  let ctx = document.getElementById('radarChart').getContext('2d');
+  radarChart = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: '8维评分',
+        data: values,
+        backgroundColor: 'rgba(79,195,247,0.15)',
+        borderColor: '#4fc3f7',
+        borderWidth: 2,
+        pointBackgroundColor: colors,
+        pointBorderColor: '#fff',
+        pointBorderWidth: 1,
+        pointRadius: 5,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        r: {
+          min: 0, max: 20,
+          ticks: { stepSize: 5, color: '#666', backdropColor: 'transparent' },
+          grid: { color: '#2a2d3a' },
+          angleLines: { color: '#2a2d3a' },
+          pointLabels: { color: '#ccc', font: { size: 11 } }
+        }
+      },
+      plugins: {
+        legend: { display: false }
+      }
+    }
+  });
+}
+
+// ===== 渲染综合研判 =====
+function renderInsight(data) {
+  let scores = data.dim_scores || {};
+  let pct = (data.pred_proba_up * 100);
+  let signal = data.signal;
+
+  // 找出最强的正向和反向维度
+  let contribs = DIMS.map(d => ({
+    label: d.label, key: d.key,
+    contrib: (scores[d.key] || 0) * (COEF[d.key] || 0),
+    score: scores[d.key] || 0,
+    coef: COEF[d.key] || 0
+  }));
+  contribs.sort((a,b) => b.contrib - a.contrib);
+
+  let posDims = contribs.filter(c => c.contrib > 0).slice(0, 2);
+  let negDims = contribs.filter(c => c.contrib < 0).slice(-2);
+
+  let lines = [];
+  lines.push(`<strong>${data.code}</strong> 基于 ${data.as_of_date} 的8维评分，`);
+  if (pct >= 55) {
+    lines.push(`下月上涨概率 <strong style="color:var(--green)">${pct.toFixed(1)}%</strong>，信号为 <strong style="color:var(--green)">${signal}</strong>，建议关注。`);
+  } else if (pct >= 40) {
+    lines.push(`下月上涨概率 <strong style="color:var(--yellow)">${pct.toFixed(1)}%</strong>，信号为 <strong style="color:var(--yellow)">${signal}</strong>，方向不明确。`);
+  } else {
+    lines.push(`下月上涨概率 <strong style="color:var(--red)">${pct.toFixed(1)}%</strong>，信号为 <strong style="color:var(--red)">${signal}</strong>，建议回避。`);
+  }
+
+  if (posDims.length > 0) {
+    lines.push(`<br><span style="color:var(--green)">▲ 正向贡献:</span> ${posDims.map(d => `${d.label}(${d.score.toFixed(1)}分, +${d.contrib.toFixed(3)})`).join('、')}`);
+  }
+  if (negDims.length > 0) {
+    lines.push(`<br><span style="color:var(--red)">▼ 反向贡献:</span> ${negDims.map(d => `${d.label}(${d.score.toFixed(1)}分, ${d.contrib.toFixed(3)})`).join('、')}`);
+  }
+  lines.push(`<br><br><span style="color:var(--dim)">模型AUC=${(data.auc||0.5515).toFixed(4)}，概率>0.55为买入区，<0.4为回避区</span>`);
+
+  document.getElementById('insightBox').innerHTML = lines.join('');
+}
+
+// ===== 回车搜索 =====
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.search-box')) suggestions.style.display = 'none';
+});
+</script>
+</body>
+</html>

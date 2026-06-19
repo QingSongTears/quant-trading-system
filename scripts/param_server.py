@@ -271,6 +271,11 @@ def index():
     return send_from_directory(str(PROJECT_ROOT / "output"), "tuning_panel.html")
 
 
+@app.route("/predict")
+def predict_dashboard():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "predict_dashboard.html")
+
+
 @app.route("/api/status")
 def api_status():
     return jsonify({"loaded": len(records), "dims": dim_cols, "task": task.snapshot()})
