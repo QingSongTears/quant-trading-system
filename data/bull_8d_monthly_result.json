@@ -1,0 +1,102 @@
+{
+  "ic_table": [
+    {
+      "dim": "chip_weighted",
+      "ic": -0.0874,
+      "n": 122903
+    },
+    {
+      "dim": "fundam_weighted",
+      "ic": 0.0263,
+      "n": 122903
+    },
+    {
+      "dim": "tech_weighted",
+      "ic": 0.0237,
+      "n": 122903
+    },
+    {
+      "dim": "fund_weighted",
+      "ic": -0.0228,
+      "n": 122903
+    },
+    {
+      "dim": "news_event_weighted",
+      "ic": -0.0098,
+      "n": 122903
+    },
+    {
+      "dim": "lh_institutional_weighted",
+      "ic": 0.0097,
+      "n": 122903
+    },
+    {
+      "dim": "sentiment_weighted",
+      "ic": 0.0073,
+      "n": 122903
+    },
+    {
+      "dim": "institutional_weighted",
+      "ic": NaN,
+      "n": 122903
+    }
+  ],
+  "dim_cn_map": {
+    "tech_weighted": "技术面",
+    "fundam_weighted": "基本面",
+    "fund_weighted": "资金面",
+    "institutional_weighted": "机构面",
+    "lh_institutional_weighted": "龙虎榜机构",
+    "sentiment_weighted": "情绪面",
+    "news_event_weighted": "新闻事件",
+    "chip_weighted": "筹码面"
+  },
+  "logistic_coef": {
+    "tech_weighted": 0.013166009487489869,
+    "fundam_weighted": 0.013642902642700376,
+    "fund_weighted": -0.07029136192167772,
+    "institutional_weighted": 0.006013837926624867,
+    "lh_institutional_weighted": 0.022853374760726915,
+    "sentiment_weighted": 0.03913706095648211,
+    "news_event_weighted": -0.05876798499254415,
+    "chip_weighted": -0.022889090637015337
+  },
+  "logistic_coef_cn": {
+    "技术面": 0.013166009487489869,
+    "基本面": 0.013642902642700376,
+    "资金面": -0.07029136192167772,
+    "机构面": 0.006013837926624867,
+    "龙虎榜机构": 0.022853374760726915,
+    "情绪面": 0.03913706095648211,
+    "新闻事件": -0.05876798499254415,
+    "筹码面": -0.022889090637015337
+  },
+  "intercept": 0.0010738931285733922,
+  "auc": 0.5515,
+  "bin_stats": [
+    {
+      "bin": "<0.4",
+      "count": 3544,
+      "pct_up": 0.27313769751693,
+      "avg_ret": -1.0980418846461872
+    },
+    {
+      "bin": "0.4-0.5",
+      "count": 41998,
+      "pct_up": 0.48028477546549836,
+      "avg_ret": 1.4205938778783864
+    },
+    {
+      "bin": "0.5-0.6",
+      "count": 74314,
+      "pct_up": 0.5399117259197459,
+      "avg_ret": 3.474954711801669
+    },
+    {
+      "bin": "0.6-0.7",
+      "count": 3047,
+      "pct_up": 0.546110928782409,
+      "avg_ret": 3.75420063099779
+    }
+  ]
+}
