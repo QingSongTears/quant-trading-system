@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>牛股回测报告 · 参数优化</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px}
+header h1{font-size:1.1rem;font-weight:600}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem;margin-left:auto}
+header a:hover{color:var(--accent)}
+.container{max-width:1100px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+.card-title{font-size:0.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+.chart-wrap{position:relative;height:300px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.row{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse;font-size:0.82rem}
+td,th{padding:10px 12px;border-bottom:1px solid var(--border);text-align:center}
+th{color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase}
+.best-row{background:#0d2818!important}
+.pos{color:var(--green)}.neg{color:var(--red)}
+.config-name{text-align:left;font-weight:500}
+.metric-card{text-align:center;padding:16px}
+.metric-value{font-size:1.8rem;font-weight:700}
+.metric-label{font-size:0.75rem;color:var(--dim);margin-top:4px}
+.footer{text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border);margin-top:20px}
+</style>
+</head>
+<body>
+<header><h1>🐂 牛股回测报告</h1><span style="font-size:0.75rem;color:var(--dim)">194只牛股 · 6组参数 · bull_wave策略</span><a href="/">← 返回调优面板</a></header>
+<div class="container">
+
+<div class="row">
+<div class="card metric-card"><div class="metric-value" style="color:var(--green)">194</div><div class="metric-label">回测牛股数</div></div>
+<div class="card metric-card"><div class="metric-value" style="color:var(--accent)">1,164</div><div class="metric-label">回测样本数 (194×6)</div></div>
+<div class="card metric-card"><div class="metric-value" style="color:var(--green)">3,807</div><div class="metric-label">总交易笔数 (th=6)</div></div>
+<div class="card metric-card"><div class="metric-value" style="color:var(--yellow)">100%</div><div class="metric-label">回测成功率</div></div>
+</div>
+
+<div class="card">
+<div class="card-title">🏆 参数组合对比 (<span style="color:var(--green)">绿色=最优</span>)</div>
+<table><thead><tr><th>threshold</th><th>止损</th><th>止盈</th><th>平均收益</th><th>命中率</th><th>总交易</th><th>夏普</th><th>回撤</th><th>覆盖股票</th></tr></thead><tbody>
+<tr class="">
+<td><strong>th=5</strong></td><td>-8%</td><td>0%</td>
+<td class="pos">+244.2%</td>
+<td>41.7%</td>
+<td>569</td>
+<td class="pos">+1.25</td>
+<td class="neg">-31.8%</td><td>194</td></tr>
+<tr class="">
+<td><strong>th=5</strong></td><td>-8%</td><td>30%</td>
+<td class="pos">+103.0%</td>
+<td>42.7%</td>
+<td>3852</td>
+<td class="pos">+1.26</td>
+<td class="neg">-19.7%</td><td>194</td></tr>
+<tr class="">
+<td><strong>th=6</strong></td><td>-15%</td><td>0%</td>
+<td class="pos">+223.7%</td>
+<td>67.4%</td>
+<td>339</td>
+<td class="pos">+1.22</td>
+<td class="neg">-30.6%</td><td>194</td></tr>
+<tr class="best-row">
+<td><strong>th=6</strong></td><td>-8%</td><td>0%</td>
+<td class="pos">+244.6%</td>
+<td>44.5%</td>
+<td>529</td>
+<td class="pos">+1.24</td>
+<td class="neg">-31.5%</td><td>194</td></tr>
+<tr class="">
+<td><strong>th=6</strong></td><td>-8%</td><td>30%</td>
+<td class="pos">+78.0%</td>
+<td>43.1%</td>
+<td>2939</td>
+<td class="pos">+1.11</td>
+<td class="neg">-18.5%</td><td>194</td></tr>
+<tr class="">
+<td><strong>th=7</strong></td><td>-8%</td><td>0%</td>
+<td class="pos">+144.0%</td>
+<td>42.0%</td>
+<td>321</td>
+<td class="pos">+0.82</td>
+<td class="neg">-22.7%</td><td>194</td></tr>
+</tbody></table></div>
+
+<div class="row">
+<div class="card"><div class="card-title">📈 平均收益对比</div><div class="chart-wrap"><canvas id="retChart"></canvas></div></div>
+<div class="card"><div class="card-title">📈 命中率对比</div><div class="chart-wrap"><canvas id="winChart"></canvas></div></div>
+</div>
+
+<div class="card">
+<div class="card-title">🏅 收益TOP10 牛股 (th=6)</div>
+<table><thead><tr><th>股票代码</th><th>收益</th><th>命中率</th><th>交易笔数</th><th>夏普</th></tr></thead><tbody>
+<tr><td>301377</td>
+<td class="pos">+1732.4%</td>
+<td>100%</td>
+<td>1</td>
+<td class="pos">+2.51</td></tr>
+<tr><td>301377</td>
+<td class="pos">+1732.4%</td>
+<td>100%</td>
+<td>1</td>
+<td class="pos">+2.51</td></tr>
+<tr><td>603256</td>
+<td class="pos">+1591.2%</td>
+<td>100%</td>
+<td>1</td>
+<td class="pos">+2.64</td></tr>
+<tr><td>603256</td>
+<td class="pos">+1591.2%</td>
+<td>100%</td>
+<td>1</td>
+<td class="pos">+2.64</td></tr>
+<tr><td>601869</td>
+<td class="pos">+1360.5%</td>
+<td>100%</td>
+<td>1</td>
+<td class="pos">+2.38</td></tr>
+<tr><td>688313</td>
+<td class="pos">+1190.8%</td>
+<td>50%</td>
+<td>2</td>
+<td class="pos">+1.96</td></tr>
+<tr><td>601869</td>
+<td class="pos">+1110.9%</td>
+<td>50%</td>
+<td>2</td>
+<td class="pos">+2.35</td></tr>
+<tr><td>002384</td>
+<td class="pos">+951.5%</td>
+<td>100%</td>
+<td>1</td>
+<td class="pos">+2.14</td></tr>
+<tr><td>002384</td>
+<td class="pos">+951.5%</td>
+<td>100%</td>
+<td>1</td>
+<td class="pos">+2.14</td></tr>
+<tr><td>301217</td>
+<td class="pos">+936.6%</td>
+<td>33%</td>
+<td>3</td>
+<td class="pos">+2.02</td></tr>
+</tbody></table></div>
+
+<div class="card"><div class="card-title">💡 优化结论</div>
+<div style="background:#1a1d2e;border-left:3px solid var(--green);padding:14px 18px;border-radius:4px;font-size:0.85rem;line-height:1.7">
+<p><strong>推荐参数：threshold=6, stop_loss=-8%, take_profit=0%</strong></p>
+<p>✅ 平均收益最高（+244.6%），远超另外两组带止盈的配置（+78% 和 +103%）</p>
+<p>✅ 无止盈策略碾压有止盈：涨幅巨大的牛股一旦被止盈就错过了主升浪</p>
+<p><br><strong>关键发现：</strong></p>
+<p>📌 threshold=5 vs threshold=6 差异不大（+244% vs +244%），但th=5信号更多（569 vs 529笔）</p>
+<p>📌 threshold=7 信号量骤降（321笔），说明阈值过高漏掉了大部分机会</p>
+<p>📌 带30%止盈的参数组合，总交易量暴增（3000+笔），但收益腰斩（+78%~103%）</p>
+<p>📌 止损-15% vs -8% 差异不大，但-15%命中率更高（67.4% vs 44.5%）</p>
+<p><br><span style="color:var(--dim)">回测区间：194只历史牛股 · 数据基于bull_wave策略</span></p>
+</div></div>
+
+<div class="footer">A股量化回测系统 · 牛股回测v3 · 1,164条样本 100%成功率</div>
+</div>
+<script>
+const COMBO = [{"th": 5, "sl": -8, "tp": 0, "ret": 244.2, "win": 41.7, "trades": 569, "sharpe": 1.25, "dd": -31.8, "stocks": 194}, {"th": 5, "sl": -8, "tp": 30, "ret": 103.0, "win": 42.7, "trades": 3852, "sharpe": 1.26, "dd": -19.7, "stocks": 194}, {"th": 6, "sl": -15, "tp": 0, "ret": 223.7, "win": 67.4, "trades": 339, "sharpe": 1.22, "dd": -30.6, "stocks": 194}, {"th": 6, "sl": -8, "tp": 0, "ret": 244.6, "win": 44.5, "trades": 529, "sharpe": 1.24, "dd": -31.5, "stocks": 194}, {"th": 6, "sl": -8, "tp": 30, "ret": 78.0, "win": 43.1, "trades": 2939, "sharpe": 1.11, "dd": -18.5, "stocks": 194}, {"th": 7, "sl": -8, "tp": 0, "ret": 144.0, "win": 42.0, "trades": 321, "sharpe": 0.82, "dd": -22.7, "stocks": 194}];
+
+// Chart 1: Return comparison
+new Chart(document.getElementById('retChart'), {
+  type:'bar',
+  data:{labels:COMBO.map(c=>`th=${c.th}/sl=${c.sl}/tp=${c.tp}`),
+    datasets:[{label:'平均收益%',data:COMBO.map(c=>c.ret),
+      backgroundColor:COMBO.map(c=>c.ret>=0?'rgba(76,175,80,0.7)':'rgba(239,83,80,0.7)'),
+      borderColor:COMBO.map(c=>c.ret>=0?'#4caf50':'#ef5350'),borderWidth:1}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{y:{grid:{color:'#2a2d3a'},ticks:{color:'#888',callback:v=>v+'%'}},
+      x:{grid:{display:false},ticks:{color:'#ccc',maxRotation:45}}}}
+});
+
+// Chart 2: Win rate
+new Chart(document.getElementById('winChart'), {
+  type:'bar',
+  data:{labels:COMBO.map(c=>`th=${c.th}/sl=${c.sl}/tp=${c.tp}`),
+    datasets:[{label:'命中率%',data:COMBO.map(c=>c.win),
+      backgroundColor:COMBO.map(c=>c.win>50?'rgba(76,175,80,0.7)':'rgba(255,167,38,0.7)'),
+      borderColor:COMBO.map(c=>c.win>50?'#4caf50':'#ffa726'),borderWidth:1}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{y:{grid:{color:'#2a2d3a'},ticks:{color:'#888',callback:v=>v+'%'},max:80},
+      x:{grid:{display:false},ticks:{color:'#ccc',maxRotation:45}}}}
+});
+</script></body></html>

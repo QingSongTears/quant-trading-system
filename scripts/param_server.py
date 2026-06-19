@@ -286,6 +286,11 @@ def v6_compare():
     return send_from_directory(str(PROJECT_ROOT / "output"), "v6_compare.html")
 
 
+@app.route("/bull-report")
+def bull_report():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "bull_backtest_report.html")
+
+
 @app.route("/api/status")
 def api_status():
     return jsonify({"loaded": len(records), "dims": dim_cols, "task": task.snapshot()})
