@@ -62,6 +62,55 @@
 
         /* 表格行 hover 增强 */
         .table-hover tbody tr:hover { background-color: #f8fafc; }
+
+        /* 回到顶部按钮 */
+        #back-to-top {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 1030;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.25s, transform 0.25s;
+            pointer-events: none;
+        }
+        #back-to-top.visible {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        /* 页面过渡动画 */
+        main[role="main"] {
+            animation: fadeIn 0.25s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 快捷键帮助模态框 */
+        #shortcut-help kbd {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 0.85em;
+            font-family: monospace;
+        }
+
+        /* 打印样式 */
+        @media print {
+            nav, footer, #back-to-top, .ai-disclaimer, .btn { display: none !important; }
+            main { padding: 0 !important; }
+            .card { box-shadow: none !important; border: 1px solid #ccc !important; }
+        }
     </style>
 </head>
 <body>
@@ -113,6 +162,41 @@
         </div>
     </nav>
 
+    <!-- aria-live region：屏幕阅读器播报区 -->
+    <div id="live-region" aria-live="polite" aria-atomic="true" class="visually-hidden"></div>
+
+    <!-- 回到顶部按钮 -->
+    <button id="back-to-top" class="btn btn-primary shadow" title="回到顶部 (Scroll to top)"
+            aria-label="回到顶部">
+        <i class="bi bi-arrow-up"></i>
+    </button>
+
+    <!-- 快捷键帮助模态框 -->
+    <div class="modal fade" id="shortcut-help-modal" tabindex="-1" aria-labelledby="shortcut-help-title">
+      <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h6 class="modal-title" id="shortcut-help-title"><i class="bi bi-keyboard"></i> 键盘快捷键</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+          </div>
+          <div class="modal-body small">
+            <table class="table table-sm mb-0">
+              <tbody>
+                <tr><td><kbd>g</kbd> <kbd>d</kbd></td><td>仪表盘</td></tr>
+                <tr><td><kbd>g</kbd> <kbd>s</kbd></td><td>策略管理</td></tr>
+                <tr><td><kbd>g</kbd> <kbd>b</kbd></td><td>回测执行</td></tr>
+                <tr><td><kbd>g</kbd> <kbd>c</kbd></td><td>多模型对比</td></tr>
+                <tr><td><kbd>g</kbd> <kbd>w</kbd></td><td>工作台</td></tr>
+                <tr><td><kbd>g</kbd> <kbd>a</kbd></td><td>数据管理</td></tr>
+                <tr><td><kbd>?</kbd></td><td>显示本帮助</td></tr>
+                <tr><td><kbd>Esc</kbd></td><td>关闭弹窗</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 主内容 -->
     <main class="container-fluid px-4 py-4">
         {% block content %}{% endblock %}
@@ -128,6 +212,103 @@
     </footer>
 
     <script src="{{ cdn.bootstrap }}/js/bootstrap.bundle.min.js"></script>
+    <!-- 全局工具 JS -->
+    <script>
+    /* =============================================
+       ECharts Resize 统一管理（WeakMap + 事件合并）
+       ============================================= */
+    (function() {
+        const charts = new WeakMap();   // DOM → echarts instance
+        let resizeTimer = null;
+        window._registerChart = function(dom, chart) {
+            charts.set(dom, chart);
+        };
+        window._disposeChart = function(dom) {
+            const c = charts.get(dom);
+            if (c && typeof c.dispose === 'function') { try { c.dispose(); } catch(e){} }
+            charts.delete(dom);
+        };
+        window.addEventListener('resize', function() {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                charts.forEach((chart, dom) => {
+                    if (dom.offsetParent !== null) {  // 仅 resize 可见图表
+                        try { chart.resize(); } catch(e){}
+                    }
+                });
+            }, 100);
+        });
+    })();
+
+    /* =============================================
+       回到顶部按钮
+       ============================================= */
+    (function() {
+        const btn = document.getElementById('back-to-top');
+        if (btn) {
+            window.addEventListener('scroll', function() {
+                btn.classList.toggle('visible', window.scrollY > 300);
+            }, { passive: true });
+            btn.addEventListener('click', () => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+        }
+    })();
+
+    /* =============================================
+       键盘快捷键系统
+       ============================================= */
+    (function() {
+        const shortcuts = {
+            'g d':   '/',       // 仪表盘
+            'g s':   '/strategies', // 策略
+            'g b':   '/backtest',   // 回测
+            'g c':   '/compare',    // 对比
+            'g w':   '/workbench',  // 工作台
+            'g a':   '/data',       // 数据
+            '?':     null,           // 打开帮助模态框（特殊）
+            'escape': null,          // 关闭模态框/下拉
+        };
+
+        let keyBuf = '';
+        let bufTimer = null;
+
+        document.addEventListener('keydown', function(e) {
+            // 忽略输入框中的按键
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+            if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                const modal = document.getElementById('shortcut-help-modal');
+                if (modal) new bootstrap.Modal(modal).toggle();
+                return;
+            }
+            if (e.key === 'Escape') {
+                const openModal = document.querySelector('.modal.show');
+                if (openModal) {
+                    bootstrap.Modal.getInstance(openModal)?.hide();
+                }
+                return;
+            }
+            // g + <key> 双键快捷键
+            if (keyBuf === 'g' && e.key.length === 1) {
+                const combo = 'g ' + e.key;
+                if (shortcuts[combo]) {
+                    e.preventDefault();
+                    window.location.href = shortcuts[combo];
+                    keyBuf = '';
+                    return;
+                }
+            }
+            if (e.key === 'g') {
+                e.preventDefault();
+                keyBuf = 'g';
+                clearTimeout(bufTimer);
+                bufTimer = setTimeout(() => { keyBuf = ''; }, 1200);
+            }
+        });
+    })();
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

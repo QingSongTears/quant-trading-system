@@ -596,7 +596,7 @@ function renderEquityChart(report) {
     const dom = $('equity-chart');
     if (state.equityChart) {
         ResizeManager.detach(state.equityChart);
-        state.equityChart.dispose();
+        if (window._disposeChart) window._disposeChart(dom);
         state.equityChart = null;
     }
     if (!dom.clientWidth) { setTimeout(() => renderEquityChart(report), 100); return; }
@@ -857,13 +857,12 @@ function renderCompare(models) {
     // Bar chart showing all models
     const dom = $('compare-chart');
     if (state.compareChart) {
-        ResizeManager.detach(state.compareChart);
-        state.compareChart.dispose();
+        if (window._disposeChart) window._disposeChart($('compare-chart'));
         state.compareChart = null;
     }
     if (!dom.clientWidth) { setTimeout(() => renderCompare(models), 200); return; }
     const chart = echarts.init(dom);
-    state.compareChart = chart;
+    if (window._registerChart) window._registerChart(dom, chart);
 
     const names = withData.map(m => m.strategy_name);
     const returns = withData.map(m => m.total_return||0);
