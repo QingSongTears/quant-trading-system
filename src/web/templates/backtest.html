@@ -358,7 +358,9 @@ document.getElementById('backtest-form').addEventListener('submit', async functi
         setTimeout(() => {
             const chartDom = document.getElementById('quick-equity-chart');
             if (chartDom && chartDom.clientWidth > 0) {
+                if (window._quickEquityChart) { try { window._quickEquityChart.dispose(); } catch(e) {} }
                 const chart = echarts.init(chartDom);
+                window._quickEquityChart = chart;
                 chart.setOption({
                     title: { text: '净值曲线概览', textStyle: { fontSize: 12 }, left: 'center' },
                     tooltip: { trigger: 'axis' },

@@ -226,28 +226,29 @@
 {% endblock %}
 {% block scripts %}
 <script>
+// 后端注入最近回测数据（避免从 DOM 爬取导致脆弱）
+const RECENT_JS = {{ recent_backtests_js | tojson }};
+if (!Array.isArray(RECENT_JS)) RECENT_JS = [];
+
 document.addEventListener('DOMContentLoaded', function() {
     // 回测绩效散点图 (收益率 vs 夏普比率)
+    if (!RECENT_JS.length) return;
     const chartDom = document.getElementById('performance-overview-chart');
     if (!chartDom) return;
-    
+
+    const scatterData = RECENT_JS
+        .filter(r => r.total_return != null && r.sharpe_ratio != null)
+        .map(r => ({
+            value: [Number(r.total_return), Number(r.sharpe_ratio)],
+            name: (r.strategy_name || '') + ' · ' + (r.stock_code || ''),
+        }));
+
+    if (scatterData.length === 0) {
+        chartDom.innerHTML = '<div class="text-center text-muted py-5">暂无有效回测数据可展示</div>';
+        return;
+    }
+
     const chart = echarts.init(chartDom);
-    
-    // 提取回测数据渲染散点图
-    const rows = document.querySelectorAll('table.table tbody tr');
-    const scatterData = [];
-    rows.forEach(row => {
-        const cells = row.querySelectorAll('td');
-        const returnCell = cells[2]?.textContent?.trim();
-        const sharpeCell = cells[3]?.textContent?.trim();
-        const strategyCell = cells[0]?.textContent?.trim();
-        if (returnCell && sharpeCell && returnCell !== '-') {
-            scatterData.push({
-                value: [parseFloat(returnCell), parseFloat(sharpeCell)],
-                name: strategyCell,
-            });
-        }
-    });
     
     if (scatterData.length > 0) {
         chart.setOption({
