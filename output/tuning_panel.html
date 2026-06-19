@@ -24,8 +24,8 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
 .dim-slider::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%; background:var(--accent); cursor:pointer; border:2px solid #fff; }
 .dim-value { width:36px; text-align:center; font-size:0.82rem; font-weight:600; }
 .dim-ic { width:50px; text-align:right; font-size:0.7rem; font-family:monospace; }
-.dim-ic.pos { color:var(--green); }
-.dim-ic.neg { color:var(--red); }
+.dim-ic.pos { color:var(--red); }
+.dim-ic.neg { color:var(--green); }
 .dim-ic.zero { color:var(--dim); }
 .btn-row { display:flex; gap:6px; margin:12px 0; flex-wrap:wrap; }
 .btn { padding:7px 14px; border:none; border-radius:6px; cursor:pointer; font-size:0.8rem; font-weight:500; transition:opacity .2s; }
@@ -53,8 +53,8 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
 .bt-chart-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
 @media (max-width:900px) { .bt-chart-row { grid-template-columns:1fr; } }
 .signal-row { display:flex; gap:8px; align-items:center; padding:4px 8px; margin:2px 0; border-radius:4px; font-size:0.72rem; }
-.signal-row.buy { background:#0d2818; color:var(--green); }
-.signal-row.sell { background:#281818; color:var(--red); }
+.signal-row.buy { background:#281818; color:var(--red); }
+.signal-row.sell { background:#0d2818; color:var(--green); }
 .threshold-slider { width:100%; margin:8px 0; }
 .control-bar { display:flex; gap:6px; align-items:center; }
 .progress-bar { flex:1; height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
@@ -66,17 +66,17 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
 .metric { background:#111318; border:1px solid var(--border); border-radius:6px; padding:10px; text-align:center; }
 .metric .val { font-size:1.3rem; font-weight:700; }
 .metric .lbl { font-size:0.65rem; color:var(--dim); margin-top:2px; }
-.metric.best { border-color:var(--green); background:#0d2818; }
+.metric.best { border-color:var(--red); background:#281818; }
 .combo-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
 .combo-table th { text-align:left; padding:5px 8px; border-bottom:2px solid var(--border); color:var(--dim); font-size:0.68rem; }
 .combo-table td { padding:5px 8px; border-bottom:1px solid var(--border); }
 .combo-table tr:hover { background:#1e2130; }
-.rank-1 { color:var(--green); font-weight:700; }
-.rank-2 { color:var(--green); }
+.rank-1 { color:var(--red); font-weight:700; }
+.rank-2 { color:var(--red); }
 .rank-3 { color:var(--accent); }
 .ic-bar { display:inline-block; height:10px; border-radius:2px; margin-right:4px; }
-.ic-bar.pos { background:var(--green); }
-.ic-bar.neg { background:var(--red); }
+.ic-bar.pos { background:var(--red); }
+.ic-bar.neg { background:var(--green); }
 .spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top:2px solid var(--accent); border-radius:50%; animation:spin .8s linear infinite; vertical-align:middle; margin-right:6px; }
 @keyframes spin { to{transform:rotate(360deg);} }
 .preset-item { display:flex; justify-content:space-between; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.78rem; transition:background .2s; }
@@ -84,8 +84,8 @@ main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-templat
 .preset-item .ic { font-family:monospace; font-size:0.72rem; }
 .chip-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
 .chip-row .dim-ic { width:auto; font-size:0.7rem; padding:2px 6px; border-radius:4px; }
-.chip-row .dim-ic.pos { background:#0d2818; }
-.chip-row .dim-ic.neg { background:#281818; }
+.chip-row .dim-ic.pos { background:#281818; }
+.chip-row .dim-ic.neg { background:#0d2818; }
 
 /* ── Tooltip ── */
 [data-tip] { position:relative; cursor:help; border-bottom:1px dotted var(--dim); }
@@ -103,9 +103,9 @@ th[data-tip]:hover::after { font-weight:400; }
 .legend { display:flex; gap:16px; flex-wrap:wrap; font-size:0.72rem; color:var(--dim); padding:8px 12px; background:#111318; border-radius:6px; margin-bottom:12px; }
 .legend-item { display:flex; align-items:center; gap:4px; }
 .legend-dot { width:8px; height:8px; border-radius:50%; }
-.legend-dot.good { background:var(--green); }
+.legend-dot.good { background:var(--red); }
 .legend-dot.ok { background:var(--yellow); }
-.legend-dot.bad { background:var(--red); }
+.legend-dot.bad { background:var(--green); }
 </style>
 </head>
 <body>
@@ -560,7 +560,7 @@ function renderResults(data) {
     top += `<div class="metric best"><div class="val" data-tip="当前权重下60日IC最高的维度组合">${data.bestCombo}</div><div class="lbl">最优组合</div></div>`;
     let best = data.combos[0];
     if (best.ic60 != null) {
-      top += `<div class="metric"><div class="val" style="color:${best.ic60>0?'var(--green)':'var(--red)'}" data-tip="Spearman秩相关系数, 衡量评分排序与收益排序的一致性">${best.ic60.toFixed(4)}</div><div class="lbl">IC(60d)</div></div>`;
+      top += `<div class="metric"><div class="val" style="color:${best.ic60>0?'var(--red)':'var(--green)'}" data-tip="Spearman秩相关系数, 衡量评分排序与收益排序的一致性">${best.ic60.toFixed(4)}</div><div class="lbl">IC(60d)</div></div>`;
     }
     if (data.spread != null) {
       top += `<div class="metric"><div class="val" data-tip="最高分组(Q5)与最低分组(Q1)的60日平均收益差, 正值=高分跑赢低分">${data.spread>0?'+':''}${data.spread}%</div><div class="lbl">Q5-Q1利差</div></div>`;
@@ -579,7 +579,7 @@ function renderResults(data) {
       thtml += `<tr>
         <td class="${rc}">${i+1}</td>
         <td>${c.name}</td>
-        <td style="font-weight:600;color:${ic60>=0?'var(--green)':'var(--red)'}">${ic60>=0?'+':''}${ic60.toFixed(4)}</td>
+        <td style="font-weight:600;color:${ic60>=0?'var(--red)':'var(--green)'}">${ic60>=0?'+':''}${ic60.toFixed(4)}</td>
         <td style="font-size:0.7rem;color:var(--dim)">${c.ic40!=null?(c.ic40>=0?'+':'')+c.ic40.toFixed(4):'—'}</td>
         <td style="font-size:0.7rem;color:var(--dim)">${c.ic20!=null?(c.ic20>=0?'+':'')+c.ic20.toFixed(4):'—'}</td>
         <td><span class="ic-bar ${barCls}" style="width:${barW}px"></span></td>
@@ -623,7 +623,7 @@ function renderResults(data) {
     ihtml += '<div style="flex:1;min-width:280px"><div style="font-size:0.65rem;color:var(--dim);margin-bottom:4px">📈 IC最高行业 (评分最有效)</div>';
     shown.forEach(ind => {
       if (ind.ic == null) return;
-      let color = ind.ic >= 0.05 ? 'var(--green)' : (ind.ic > 0 ? 'var(--yellow)' : 'var(--red)');
+      let color = ind.ic >= 0.05 ? 'var(--red)' : (ind.ic > 0 ? 'var(--yellow)' : 'var(--red)');
       let barW = Math.abs(ind.ic) * 150;
       ihtml += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:0.7rem">
         <span style="width:70px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ind.industry}">${ind.industry}</span>
@@ -638,7 +638,7 @@ function renderResults(data) {
     let reversed = [...data.industryICs].reverse().slice(0, 15);
     reversed.forEach(ind => {
       if (ind.ic == null) return;
-      let color = ind.ic >= 0.05 ? 'var(--green)' : (ind.ic > 0 ? 'var(--yellow)' : 'var(--red)');
+      let color = ind.ic >= 0.05 ? 'var(--red)' : (ind.ic > 0 ? 'var(--yellow)' : 'var(--red)');
       let barW = Math.abs(ind.ic) * 150;
       ihtml += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:0.7rem">
         <span style="width:70px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ind.industry}">${ind.industry}</span>
@@ -676,7 +676,7 @@ async function runScan(mode) {
     // Top 10 结果
     let html = '<div style="margin-top:6px;font-size:0.65rem;color:var(--dim)">🏆 Top 10 组合</div>';
     d.topResults.slice(0,10).forEach((r,i) => {
-      let color = r.ic>=0?'var(--green)':'var(--red)';
+      let color = r.ic>=0?'var(--red)':'var(--green)';
       html += `<div class="preset-item" onclick="applyScanWeights('${JSON.stringify(r.weights).replace(/"/g,'&quot;')}')" style="cursor:pointer">
         <span>#${i+1} ${Object.entries(r.weights).map(([k,v])=>v.toFixed(1)).join('/')}</span>
         <span class="ic" style="color:${color}">IC ${r.ic>=0?'+':''}${r.ic.toFixed(4)}</span>
@@ -1107,12 +1107,12 @@ function renderBtResults(data) {
 
   // 汇总指标
   let cls = s.excessReturn > 0 ? 'best' : '';
-  let retCls = s.totalReturn>=0?'var(--green)':'var(--red)';
+  let retCls = s.totalReturn>=0?'var(--red)':'var(--green)';
   let ddCls = s.maxDrawdown>-15?'var(--dim)':(s.maxDrawdown>-30?'var(--yellow)':'var(--red)');
   document.getElementById('btMetrics').innerHTML = `
     <div class="metric ${cls}"><div class="val" style="color:${retCls}">${s.totalReturn>0?'+':''}${s.totalReturn}%</div><div class="lbl" data-tip="策略最终总收益(初始资金${s.initialCapital?.toLocaleString()||'100,000'}元)">策略总收益</div></div>
     <div class="metric"><div class="val">${s.bhReturn>0?'+':''}${s.bhReturn}%</div><div class="lbl" data-tip="同期买入并持有的总收益">买入持有</div></div>
-    <div class="metric"><div class="val" style="color:${s.excessReturn>0?'var(--green)':'var(--red)'}">${s.excessReturn>0?'+':''}${s.excessReturn}%</div><div class="lbl" data-tip="策略收益-买入持有收益, 正值=跑赢大盘">超额收益</div></div>
+    <div class="metric"><div class="val" style="color:${s.excessReturn>0?'var(--red)':'var(--green)'}">${s.excessReturn>0?'+':''}${s.excessReturn}%</div><div class="lbl" data-tip="策略收益-买入持有收益, 正值=跑赢大盘">超额收益</div></div>
     <div class="metric"><div class="val" style="color:${ddCls}">${s.maxDrawdown}%</div><div class="lbl" data-tip="回测期间最大净值回撤">最大回撤</div></div>
     <div class="metric"><div class="val">${s.sharpe}</div><div class="lbl" data-tip="年化夏普比率, >1合格 >2优秀">夏普比率</div></div>
     <div class="metric"><div class="val">${s.totalTrades}</div><div class="lbl">交易次数</div></div>
@@ -1128,7 +1128,7 @@ function renderBtResults(data) {
   if (data.trades && data.trades.length) {
     data.trades.forEach(t => {
       let sign = t.returnPct >= 0 ? '+' : '';
-      let color = t.returnPct >= 0 ? 'var(--green)' : 'var(--red)';
+      let color = t.returnPct >= 0 ? 'var(--red)' : 'var(--green)';
       thtml += `<tr>
         <td>${t.id}</td>
         <td style="font-size:0.72rem">${t.entryDate}</td><td>${t.entryPrice}</td>
@@ -1136,7 +1136,7 @@ function renderBtResults(data) {
         <td style="font-weight:600;color:${color}">${sign}${t.returnPct}%</td>
         <td>${t.holdDays}</td>
         <td style="font-size:0.7rem">${t.reason}</td>
-        <td style="font-size:0.7rem;color:var(--green)">${t.maxFavorable>0?'+':''}${t.maxFavorable}%</td>
+        <td style="font-size:0.7rem;color:var(--red)">${t.maxFavorable>0?'+':''}${t.maxFavorable}%</td>
         <td style="font-size:0.7rem;color:var(--red)">${t.maxAdverse}%</td>
         <td style="font-size:0.65rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.entrySignal}">${t.entrySignal}</td>
       </tr>`;
