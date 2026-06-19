@@ -26,11 +26,11 @@ class V5HybridStrategy(BaseStrategy):
 
     name = "v5_hybrid"
 
-    # === 超卖检测 (v3放宽版) ===
-    MAX_RSI_14 = 38          # 放宽到38
-    MAX_RSI_6 = 26           # 放宽到26
-    MAX_BB_POSITION = 0.15   # 放宽到0.15
-    MAX_DRAWDOWN_60D = -12   # 放宽到-12%
+    # === 超卖检测 (v3放宽版，#54 参数扫描优化) ===
+    MAX_RSI_14 = 38          # ✅ 最优: 38 (夏普 0.81, 年化+6.5%)
+    MAX_RSI_6 = 26           # ✅ 最优: 26 (固定不变)
+    MAX_BB_POSITION = 0.10   # ✅ 最优: 0.10 (0.15→0.10, 更严格)
+    MAX_DRAWDOWN_60D = -8    # ✅ 最优: -8 (-12%→-8%, 略微放宽)
 
     # === 反转确认 (v3) ===
     MIN_PRICE_CHG = 0.8      # 至少涨0.8%

@@ -21,19 +21,39 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import OUTPUT_COMBINED_DIR
-from core.data_loader import load_kline, load_quotes, load_finance
+from core.data_loader import load_quotes, load_finance
 from backtest.engine import BacktestEngine
 from strategies.v5_hybrid import V5HybridStrategy
 
 
 OUTPUT_COMBINED_DIR.mkdir(parents=True, exist_ok=True)
 
-# 全局预加载（避免每次回测重复加载）
+# 全局预加载（从缓存 parquet 读取，避免重复计算指标）
+_CACHE_PATH = Path(__file__).resolve().parent / "data" / "processed" / "kline_2025plus.parquet"
+
 print("[MAIN] 预加载数据（仅一次）...")
-_KLINE   = load_kline()
 _QUOTES   = load_quotes()
 _FINANCE  = load_finance()
-print(f"[MAIN] 数据就绪: K线={len(_KLINE):,}行, 行情={len(_QUOTES)}只, 财务={len(_FINANCE)}只\n")
+
+if _CACHE_PATH.exists():
+    print(f"[MAIN] 读取指标缓存: {_CACHE_PATH} ({_CACHE_PATH.stat().st_size/1e6:.0f}MB)...")
+    t0 = time.time()
+    _KLINE = pd.read_parquet(_CACHE_PATH)
+    print(f"[MAIN] ✅ 缓存加载完成 ({time.time()-t0:.1f}s), "
+          f"{len(_KLINE):,} 行, {_KLINE['code'].nunique()} 只")
+else:
+    print("[MAIN] 缓存不存在，从原始数据加载并计算指标...")
+    from core.data_loader import load_kline
+    from core.indicators import precompute_indicators
+    _KLINE = load_kline()
+    print("[MAIN] 计算指标（可能需 3-5 分钟）...")
+    t0 = time.time()
+    _KLINE = precompute_indicators(_KLINE)
+    print(f"[MAIN] ✅ 指标计算完成 ({time.time()-t0:.1f}s)")
+
+# 确保指标列存在（engine 会检测 rsi_14_d 列跳过重复计算）
+assert "rsi_14_d" in _KLINE.columns, "指标列 rsi_14_d 不存在，缓存可能损坏"
+print(f"[MAIN] 行情: {len(_QUOTES)}只, 财务: {len(_FINANCE)}只\n")
 
 
 def run_backtest(params: Dict[str, Any]) -> Dict[str, Any]:
