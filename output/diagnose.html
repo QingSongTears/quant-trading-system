@@ -500,7 +500,7 @@ function renderKlineChart(dates, closes, opens, highs, lows, volumes, mas) {
 
   const showVolume = activeMas['volume'];
   if (showVolume && volumes) {
-    const volColors = volumes.map((v, i) => closes[i] >= (opens[i]||closes[i]) ? 'rgba(239,83,80,0.4)' : 'rgba(76,175,80,0.4)');
+    const volColors = volumes.map((v, i) => closes[i] >= (opens[i]||closes[i]) ? 'rgba(76,175,80,0.4' : 'rgba(239,83,80,0.4');
     datasets.push({
       label: '成交量',
       data: volumes,
