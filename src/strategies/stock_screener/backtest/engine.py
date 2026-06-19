@@ -199,12 +199,17 @@ class BacktestEngine:
                   f"{kline['date'].max().strftime('%Y-%m-%d')}, "
                   f"{kline['code'].nunique()} 只, {len(kline):,} 行")
 
-        # 2. 预计算指标
-        if verbose:
-            print("[ENGINE] 预计算统一指标...")
-        kline = precompute_indicators(kline)
-        if verbose:
-            print(f"[ENGINE] ✅ 指标就绪")
+        # 2. 预计算指标（如果数据还没有指标列）
+        has_indicators = "rsi_14_d" in kline.columns
+        if not has_indicators:
+            if verbose:
+                print("[ENGINE] 预计算统一指标...")
+            kline = precompute_indicators(kline)
+            if verbose:
+                print(f"[ENGINE] ✅ 指标就绪")
+        else:
+            if verbose:
+                print(f"[ENGINE] ✅ 指标已预计算（跳过）")
 
         # 3. 构建上下文
         context = self._build_context(quotes, finance)
