@@ -177,10 +177,11 @@ async def backtest_detail(request: Request, result_id: int):
     ctx = _get_global_context()
     ctx.update({
         "result": result,
-        "equity_curve": json.dumps(equity_curve),
-        "drawdown_curve": json.dumps(drawdowns),
+        # 传给前端模板后由 |tojson 转 JS 数组 — 不要预先 json.dumps，否则会双重编码成字符串
+        "equity_curve": equity_curve,
+        "drawdown_curve": drawdowns,
         "trades": trades,
-        "monthly_returns": json.dumps(monthly),
+        "monthly_returns": monthly,
         "costs": costs,
         "model_type": "portfolio" if result.stock_code == "PORTFOLIO" 
                       else "voting" if result.stock_code == "VOTING" 
