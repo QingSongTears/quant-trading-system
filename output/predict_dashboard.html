@@ -323,29 +323,19 @@ stockInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') sear
 
 async function fetchSuggestions(q) {
   try {
-    let resp = await fetch('/api/predict/batch');
+    let resp = await fetch('/api/stock/search?q=' + encodeURIComponent(q));
+    if (!resp.ok) return;
     let data = await resp.json();
     let results = data.results || [];
-    let matched = [];
-    for (let r of results) {
-      if (r.code.includes(q)) {
-        matched.push({ code: r.code, proba: r.pred_proba_up, signal: r.signal });
-        if (matched.length >= 20) break;
-      }
-    }
-    if (matched.length === 0) {
+    if (results.length === 0) {
       suggestions.style.display = 'none';
       return;
     }
-    let html = matched.map(m => {
-      let sigClass = m.signal === '买入' ? 'buy' : (m.signal === '回避' ? 'avoid' : 'hold');
-      let pct = (m.proba * 100).toFixed(1);
-      return `<div onclick="selectStock('${m.code}')">
-        <strong>${m.code}</strong>
-        <span style="float:right">
-          <span class="signal-badge ${sigClass}" style="font-size:0.7rem;padding:2px 8px">${m.signal}</span>
-          <span style="margin-left:8px;color:var(--dim)">${pct}%</span>
-        </span>
+    let html = results.slice(0, 15).map(s => {
+      let matchTag = s.match === 'code' ? '代码' : (s.match === 'name_fuzzy' ? '名称' : '拼音');
+      return `<div onclick="selectStock('${s.code}')" style="display:flex;justify-content:space-between;align-items:center">
+        <span><strong style="color:var(--accent)">${s.code}</strong> <span style="color:var(--dim);font-size:0.8rem">${s.name}</span></span>
+        <span style="font-size:0.65rem;color:var(--dim);background:rgba(255,255,255,0.05);padding:1px 6px;border-radius:4px">${matchTag}</span>
       </div>`;
     }).join('');
     suggestions.innerHTML = html;
@@ -370,10 +360,28 @@ function switchTab(el, tabId) {
   document.getElementById(tabId).classList.add('active');
 }
 
-// ===== 主查询 =====
+// ===== 主查询（支持模糊搜索） =====
 async function searchStock() {
-  let code = stockInput.value.trim().replace(/[^0-9]/g, '').padStart(6, '0');
-  if (code.length !== 6) { alert('请输入6位股票代码'); return; }
+  let input = stockInput.value.trim();
+  let code = input.replace(/[^0-9]/g, '').padStart(6, '0');
+  
+  // 如果不是6位纯数字，通过搜索API解析
+  if (code.length !== 6) {
+    try {
+      let sr = await fetch('/api/stock/search?q=' + encodeURIComponent(input));
+      if (!sr.ok) throw new Error('搜索失败');
+      let sd = await sr.json();
+      if (!sd.results || sd.results.length === 0) {
+        alert('未找到股票: ' + input);
+        return;
+      }
+      code = sd.results[0].code;
+      stockInput.value = code + ' ' + sd.results[0].name;
+    } catch(e) {
+      alert('搜索失败: ' + e.message);
+      return;
+    }
+  }
   suggestions.style.display = 'none';
   document.getElementById('emptyState').style.display = 'none';
   document.getElementById('loadingState').style.display = 'block';
@@ -386,8 +394,11 @@ async function searchStock() {
 
   try {
     let resp = await fetch(url);
-    if (!resp.ok) throw new Error('未找到股票');
-    let data = await resp.json();
+    if (!resp.ok) throw new Error('请求失败 (HTTP ' + resp.status + ')');
+    let text = await resp.text();
+    let data;
+    try { data = JSON.parse(text); } catch(e) { throw new Error('服务器返回无效数据'); }
+    if (data.error) throw new Error(data.error);
 
     document.getElementById('loadingState').style.display = 'none';
     document.getElementById('resultArea').style.display = 'grid';

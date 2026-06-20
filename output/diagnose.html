@@ -271,12 +271,29 @@ function selectStock(code, name) {
 
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-// ===== 诊断入口 =====
+// ===== 诊断入口（支持模糊搜索） =====
 async function diagnose() {
   const input = document.getElementById('searchInput').value.trim();
-  let code = input.match(/^(\d{6})/);
-  if (!code) { alert('请输入6位股票代码或名称'); return; }
-  code = code[1];
+  let match = input.match(/^(\d{6})/);
+  let code = match ? match[1] : '';
+  
+  // 非6位数字 → 走模糊搜索
+  if (!code) {
+    try {
+      const sr = await fetch('/api/stock/search?q=' + encodeURIComponent(input));
+      if (!sr.ok) throw new Error('搜索失败');
+      const sd = await sr.json();
+      if (!sd.results || sd.results.length === 0) {
+        alert('未找到股票: ' + input);
+        return;
+      }
+      code = sd.results[0].code;
+      document.getElementById('searchInput').value = code + ' ' + sd.results[0].name;
+    } catch(e) {
+      alert('搜索失败: ' + e.message);
+      return;
+    }
+  }
   currentCode = code;
   document.getElementById('emptyState').style.display = 'none';
   document.getElementById('diagContent').style.display = 'block';
@@ -295,7 +312,10 @@ async function diagnose() {
 async function loadStockInfo(code) {
   try {
     const r = await fetch('/api/stock/' + code);
-    const d = await r.json();
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const txt = await r.text();
+    let d;
+    try { d = JSON.parse(txt); } catch(e) { throw new Error('服务器返回无效数据'); }
     if (d.error) throw new Error(d.error);
 
     // K线拿最新收盘价
@@ -328,7 +348,10 @@ async function loadStockInfo(code) {
 async function loadPrediction(code) {
   try {
     const r = await fetch('/api/predict/' + code);
-    const d = await r.json();
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const txt = await r.text();
+    let d;
+    try { d = JSON.parse(txt); } catch(e) { throw new Error('无效JSON响应'); }
     if (d.error) throw new Error(d.error);
 
     const proba = d.pred_proba_up * 100;
