@@ -92,8 +92,9 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 </header>
 <div class="container">
 
-  <div class="search-box">
-    <input type="text" id="stockInput" placeholder="输入股票代码，如 002079、000001..." autocomplete="off">
+  <div class="search-box" style="position:relative">
+    <input type="text" id="stockInput" placeholder="搜股票：代码/中文名称/拼音 如 002079、平安银行、zgmt..." autocomplete="off">
+    <div class="suggestions" id="suggestions" style="position:absolute;top:100%;left:0;right:80px;z-index:100;background:var(--card);border:1px solid var(--border);border-radius:0 0 8px 8px;max-height:300px;overflow-y:auto;display:none;"></div>
     <button onclick="searchSignal()">🔍 查询信号</button>
   </div>
 
@@ -211,26 +212,92 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 const DIM_KEYS = ['tech_weighted','fundam_weighted','fund_weighted','institutional_weighted',
                   'lh_institutional_weighted','sentiment_weighted','news_event_weighted','chip_weighted'];
 
+let searchTimer = null;
+
+// ===== 模糊搜索建议 =====
+document.getElementById('stockInput').addEventListener('input', function() {
+  clearTimeout(searchTimer);
+  const q = this.value.trim();
+  if (q.length < 1) { document.getElementById('suggestions').style.display = 'none'; return; }
+  searchTimer = setTimeout(() => fetchSuggestions(q), 200);
+});
+
+document.getElementById('stockInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') searchSignal();
+});
+
+async function fetchSuggestions(q) {
+  const sug = document.getElementById('suggestions');
+  try {
+    const r = await fetch('/api/stock/search?q=' + encodeURIComponent(q));
+    const d = await r.json();
+    const items = d.results || [];
+    if (!items.length) {
+      sug.innerHTML = '<div style="padding:10px;color:var(--dim);font-size:0.8rem;text-align:center">无匹配</div>';
+      sug.style.display = 'block';
+      return;
+    }
+    sug.innerHTML = items.slice(0, 10).map(s => {
+      const matchTag = s.match === 'code' ? '代码' : (s.match === 'name_fuzzy' ? '名称' : '拼音');
+      return `<div onclick="selectStock('${s.code}', '${s.name.replace(/'/g, "\\'")}')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);font-size:0.85rem;display:flex;justify-content:space-between;align-items:center">
+        <span><span style="color:var(--accent);font-family:monospace;font-weight:600">${s.code}</span> <span style="margin-left:6px">${s.name}</span></span>
+        <span style="font-size:0.65rem;color:var(--dim);background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:4px">${matchTag}</span>
+      </div>`;
+    }).join('');
+    sug.style.display = 'block';
+  } catch(e) {
+    console.log(e);
+  }
+}
+
+function selectStock(code, name) {
+  document.getElementById('stockInput').value = code + ' ' + name;
+  document.getElementById('suggestions').style.display = 'none';
+  searchSignal();
+}
+
+// 点击其他地方关闭建议
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.search-box')) {
+    document.getElementById('suggestions').style.display = 'none';
+  }
+});
+
 async function searchSignal() {
-  let code = document.getElementById('stockInput').value.trim().replace(/[^0-9]/g, '').padStart(6, '0');
-  if (code.length !== 6) { alert('请输入6位股票代码'); return; }
+  let input = document.getElementById('stockInput').value.trim();
+  let code = input.replace(/[^0-9]/g, '').padStart(6, '0');
+  if (code.length !== 6) {
+    // 尝试搜索输入
+    try {
+      const r = await fetch('/api/stock/search?q=' + encodeURIComponent(input));
+      const d = await r.json();
+      const items = d.results || [];
+      if (items.length > 0) {
+        code = items[0].code;
+        document.getElementById('stockInput').value = code + ' ' + items[0].name;
+      } else {
+        alert('未找到股票: ' + input);
+        return;
+      }
+    } catch(e) {
+      alert('搜索失败: ' + e.message);
+      return;
+    }
+  }
   
+  document.getElementById('suggestions').style.display = 'none';
   document.getElementById('emptyState').style.display = 'none';
   document.getElementById('loadingState').style.display = 'block';
   document.getElementById('resultArea').style.display = 'none';
 
   try {
-    // 综合信号
     let r = await fetch('/api/strategy/signal/' + code);
     let d = await r.json();
-    
-    // 旧模型对比
     let rOld = await fetch('/api/predict/' + code);
     let dOld = await rOld.json();
 
     document.getElementById('loadingState').style.display = 'none';
     document.getElementById('resultArea').style.display = 'block';
-    
     renderSignal(code, d, dOld);
   } catch(e) {
     document.getElementById('loadingState').style.display = 'none';
