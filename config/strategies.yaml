@@ -150,3 +150,18 @@ strategies:
     description: "市场温度计动态调节：进攻(盾30:矛70)/中性(50:50)/防御(70:30)。盾=低波动，矛=小市值+反转。熊市抗跌。"
     source: "市场温度计 + Fama & French (1993) + Jegadeesh (1990) + Baker et al. (2011)"
     strategy_type: "portfolio"
+
+  - name: "v5_hybrid 超卖反转+趋势确认"
+    class_path: "src.strategies.stock_screener.strategies.v5_hybrid.V5HybridStrategy"
+    params:
+      MAX_RSI_14: 38
+      MAX_RSI_6: 26
+      MAX_BB_POSITION: 0.10
+      MAX_DRAWDOWN_60D: -8
+      TREND_CHECKS_MIN: 2
+      STOP_LOSS: -0.07
+      TAKE_PROFIT: 0.15
+      TRAILING_STOP: 0.12
+      TRAILING_DD: -0.03
+    description: "v5_hybrid 超卖反转+趋势确认双重验证。最优参数来自 #54 (RSI14=38, BB=0.10, DD=-8, TREND=2) 和 #67 (仓位8%) 参数扫描。"
+    source: "自定义策略，基于 Wilder(1978) RSI + Bollinger(2001) + 趋势拟合"
