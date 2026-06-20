@@ -1,238 +1,201 @@
 """
-批量回测脚本 — Issue #36 (T15)
-
-多股票 × 多策略批量回测，并行执行，结果排序导出。
-
-用法:
-    python scripts/batch_backtest.py \\
-        --strategies ma_cross macd_signal rsi_reversal \\
-        --codes 000001 000002 000003 \\
-        --start 2020-01-01 --end 2025-06-01 \\
-        --workers 6 --top 20 --sort sharpe_ratio \\
-        --export output/batch_results.csv
+批量回测样本脚本
+从评分数据中选取有代表性的股票（高分/中分/低分），
+逐个跑七维评分穿越策略，结果保存到 DB
 """
-import sys, json, argparse, csv
+import sys, json, time, os, sqlite3
 from pathlib import Path
-from datetime import date
-from typing import List, Optional
 
-import pandas as pd
+PROJECT_ROOT = Path(__file__).parent.parent  # 项目根目录
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# ── 1. 加载评分数据 ──
+scores_path = PROJECT_ROOT / "data" / "all_7d_scores.json"
+print(f"📂 加载评分数据: {scores_path}")
+with open(scores_path) as f:
+    all_scores = json.load(f)
+print(f"   共 {len(all_scores)} 条记录")
 
-from src.backtest.engine import BacktestEngine
-from src.models.repository import DataRepository
-from src.config import load_strategies
+# ── 2. 取最新评分，按唯一股票聚合 ──
+stock_scores = {}
+for s in all_scores:
+    code = s['code']
+    if code not in stock_scores or s.get('as_of_date', '') > stock_scores[code].get('as_of_date', ''):
+        stock_scores[code] = s
 
+print(f"   唯一股票: {len(stock_scores)} 只")
 
-def load_strategy_classes(strategy_names: List[str]) -> List[type]:
-    """从策略配置加载策略类"""
-    config = load_strategies()
-    classes = []
-    for name in strategy_names:
-        found = False
-        for s in config.get("strategies", []):
-            if s["name"] == name and s.get("strategy_type", "signal") == "signal":
-                import importlib
-                module_path, class_name = s["class_path"].rsplit(".", 1)
-                module = importlib.import_module(module_path)
-                cls = getattr(module, class_name)
-                classes.append(cls)
-                found = True
-                break
-        if not found:
-            print(f"⚠️  未找到策略: {name}")
-    return classes
+dim_cols = ['tech_weighted','fundam_weighted','fund_weighted','institutional_weighted',
+            'lh_institutional_weighted','sentiment_weighted','news_event_weighted','chip_weighted']
 
+# 计算每只股票的最新平均评分
+stock_list = []
+for code, s in stock_scores.items():
+    vals = [s.get(d, 0) or 0 for d in dim_cols]
+    avg = sum(vals) / len(vals) if vals else 0
+    stock_list.append({"code": code, "avg_score": avg, "score": s})
 
-def list_available_strategies():
-    """列出所有可用策略"""
-    config = load_strategies()
-    print("\n可用策略列表:")
-    print(f"  {'名称':<20} {'类型':<10} {'描述'}")
-    print(f"  {'-'*60}")
-    for s in config.get("strategies", []):
-        if s.get("strategy_type", "signal") == "signal":
-            print(f"  {s['name']:<20} {'signal':<10} {s.get('description', '')[:40]}")
-        elif s.get("strategy_type") == "portfolio":
-            print(f"  {s['name']:<20} {'portfolio':<10} {s.get('description', '')[:40]}")
-    print(f"  {'-'*60}")
+# ── 3. 按评分排序，挑取样板 ──
+stock_list.sort(key=lambda x: x['avg_score'], reverse=True)
 
+# 选 50 只：高分15 + 中分20 + 低分15
+high = stock_list[:30]       # 评分最高30
+mid_start = len(stock_list) // 2 - 15
+mid = stock_list[mid_start:mid_start+30]  # 中间30
+low = stock_list[-30:]       # 评分最低30
 
-def get_stock_pool(
-    repo: DataRepository,
-    industry: Optional[str] = None,
-    exclude_st: bool = True,
-    min_mcap: Optional[float] = None,
-    max_mcap: Optional[float] = None,
-    max_stocks: Optional[int] = None,
-) -> List[str]:
-    """
-    获取股票池，支持多种筛选条件
+samples = high + mid + low
+# 去重（理论上不会有重复）
+seen = set()
+unique_samples = []
+for s in samples:
+    if s['code'] not in seen:
+        seen.add(s['code'])
+        unique_samples.append(s)
 
-    Args:
-        industry: 行业名称 (如 "银行", "计算机"), None=不限
-        exclude_st: 是否剔除 ST
-        min_mcap: 最小市值(亿)
-        max_mcap: 最大市值(亿)
-        max_stocks: 最多取多少只
+print(f"\n📋 选取 {len(unique_samples)} 只股票")
+print(f"   高分: {len(high)} → {[s['code'] for s in high[:5]]}...")
+print(f"   中分: {len(mid)} → {[s['code'] for s in mid[:5]]}...")
+print(f"   低分: {len(low)} → {[s['code'] for s in low[:5]]}...")
 
-    Returns:
-        股票代码列表
-    """
-    df = repo.get_stock_list()
-    if exclude_st:
-        df = df[~df["name"].str.contains("ST|退市", na=False)]
-    if industry:
-        df = df[df.get("industry", "").str.contains(industry, na=False)]
-    if min_mcap:
-        df = df[df.get("mcap_yi", 999999) >= min_mcap]
-    if max_mcap:
-        df = df[df.get("mcap_yi", 0) <= max_mcap]
-    codes = df["code"].tolist()
-    if max_stocks:
-        codes = codes[:max_stocks]
-    return codes
+# ── 4. 检查 DB 中每只股票是否有足够 K 线数据 ──
+db = PROJECT_ROOT / "database" / "quant.db"
+conn = sqlite3.connect(str(db))
+conn.row_factory = sqlite3.Row
 
+eligible = []
+for s in unique_samples:
+    code = s['code']
+    row = conn.execute(
+        "SELECT COUNT(*) as cnt FROM daily_price WHERE code=?",
+        (code,)
+    ).fetchone()
+    cnt = row['cnt'] if row else 0
+    if cnt >= 120:
+        eligible.append(code)
 
-def export_summary_csv(reports, output_path: str):
-    """导出批量结果摘要为 CSV"""
-    rows = []
-    for r in reports:
-        rows.append({
-            "策略": r.strategy_name,
-            "股票代码": r.stock_code,
-            "股票名称": r.stock_name,
-            "总收益率%": r.total_return,
-            "年化收益率%": r.annual_return,
-            "夏普比率": r.sharpe_ratio,
-            "最大回撤%": r.max_drawdown,
-            "胜率%": r.win_rate,
-            "盈亏比": r.profit_factor,
-            "交易次数": r.total_trades,
-            "年化波动率%": r.annual_volatility,
-            "卡玛比率": r.calmar_ratio,
-            "基准收益%": r.benchmark_return,
-            "超额收益%": r.excess_return,
-        })
-    df = pd.DataFrame(rows)
-    df.to_csv(output_path, index=False, encoding="utf-8-sig")
-    print(f"✅ 摘要已导出: {output_path} ({len(rows)} 条)")
+conn.close()
+print(f"\n📊 有足够K线数据(≥120天): {len(eligible)}/{len(unique_samples)} 只")
 
+# 不够的就替换成评分接近的替代
+if len(eligible) < 30:
+    print("   数据不足30只，从更多股票中补充...")
+    # 扩大池子：从全列表中按评分分段补充
+    for s in stock_list:
+        code = s['code']
+        if code in eligible or code in seen:
+            continue
+        seen.add(code)
+        conn = sqlite3.connect(str(db))
+        row = conn.execute("SELECT COUNT(*) as cnt FROM daily_price WHERE code=?", (code,)).fetchone()
+        cnt = row['cnt'] if row else 0
+        conn.close()
+        if cnt >= 120:
+            eligible.append(code)
+        if len(eligible) >= 60:
+            break
 
-def print_ranking(ranked, sort_by: str, top_n: int = 20):
-    """打印排名结果"""
-    print(f"\n{'='*80}")
-    print(f"批量回测排名 (按 {sort_by} 排序, Top {top_n})")
-    print(f"{'='*80}")
-    print(f" {'排名':<5} {'策略':<16} {'股票':<8} {'名称':<10} "
-          f"{'总收益%':<8} {'年化%':<8} {'夏普':<7} {'回撤%':<7} {'胜率%':<6} {'交易':<5}")
-    print(f" {'-'*80}")
-    for row in ranked[:top_n]:
-        print(f" {row['rank']:<4}  {row['strategy']:<14} {row['stock']:<6} {row['stock_name']:<10} "
-              f"{row['total_return']:<8.2f} {row['annual_return']:<8.2f} "
-              f"{row['sharpe_ratio']:<7.2f} {row['max_drawdown']:<7.2f} "
-              f"{row['win_rate']:<6.1f} {row['total_trades']:<5}")
+print(f"   最终可用: {len(eligible)} 只")
 
+# ── 5. 逐个跑回测 ──
+STRATEGY_ID = "score_cross"  # 七维评分穿越
+PARAMS = {
+    "start": "2024-01-01",
+    "end": "2026-06-01",
+    "initial_capital": 100000,
+    "stop_loss": -8,
+    "take_profit": 15,
+    "threshold": 8,
+}
 
-def print_summary(reports):
-    """打印批量回测汇总统计"""
-    if not reports:
-        print("⚠️  无回测结果")
-        return
-    total_returns = [r.total_return for r in reports]
-    sharpes = [r.sharpe_ratio for r in reports]
-    drawdowns = [r.max_drawdown for r in reports]
-    print(f"\n📊 汇总统计 ({len(reports)} 个回测)")
-    print(f"   总收益率: 平均={pd.Series(total_returns).mean():.2f}% "
-          f"最高={max(total_returns):.2f}% 最低={min(total_returns):.2f}%")
-    print(f"   夏普比率: 平均={pd.Series(sharpes).mean():.2f} "
-          f"最高={max(sharpes):.2f} 最低={min(sharpes):.2f}")
-    print(f"   最大回撤: 平均={pd.Series(drawdowns).mean():.2f}% "
-          f"最低={min(drawdowns):.2f}%")
+BASE_URL = "http://localhost:8081"
 
+import urllib.request
+import urllib.parse
 
-def main():
-    parser = argparse.ArgumentParser(description="批量回测 — 多策略 × 多股票")
-    parser.add_argument("--strategies", nargs="+", help="策略名称列表 (如 ma_cross)")
-    parser.add_argument("--codes", nargs="+", help="股票代码列表")
-    parser.add_argument("--start", default="2020-01-01", help="开始日期 YYYY-MM-DD")
-    parser.add_argument("--end", default="2025-06-01", help="结束日期 YYYY-MM-DD")
-    parser.add_argument("--capital", type=float, default=100000, help="初始资金")
-    parser.add_argument("--workers", type=int, default=4, help="并行线程数")
-    parser.add_argument("--sort", default="sharpe_ratio",
-                        choices=["sharpe_ratio", "total_return", "annual_return",
-                                 "max_drawdown", "calmar_ratio", "profit_factor"],
-                        help="排序指标")
-    parser.add_argument("--top", type=int, default=20, help="显示 Top N")
-    parser.add_argument("--export", help="导出 CSV 路径 (如 output/batch_results.csv)")
-    parser.add_argument("--industry", help="行业筛选 (如 银行)")
-    parser.add_argument("--min-mcap", type=float, help="最小市值(亿)")
-    parser.add_argument("--max-mcap", type=float, help="最大市值(亿)")
-    parser.add_argument("--list-strategies", action="store_true", help="列出所有可用的策略")
+results = []
+errors = []
 
-    args = parser.parse_args()
+for i, code in enumerate(eligible):
+    url = f"{BASE_URL}/api/stock/{code}/backtest?strategy={STRATEGY_ID}"
+    url += f"&start={PARAMS['start']}&end={PARAMS['end']}&capital={PARAMS['initial_capital']}"
+    
+    print(f"\n[{i+1}/{len(eligible)}] {code} ... ", end="", flush=True)
+    
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode())
+        
+        if data.get("error"):
+            print(f"❌ {data['error']}")
+            errors.append((code, data['error']))
+        else:
+            summary = data.get("summary", {})
+            ret = summary.get("totalReturn", "?")
+            sharpe = summary.get("sharpe", "?")
+            trades = summary.get("totalTrades", "?")
+            print(f"✅ 收益={ret}% 夏普={sharpe} 交易={trades}笔")
+            results.append({
+                "code": code,
+                "total_return": ret,
+                "sharpe": sharpe,
+                "trades": trades,
+                "win_rate": summary.get("winRate"),
+                "max_drawdown": summary.get("maxDrawdown"),
+                "bh_return": summary.get("bhReturn"),
+                "excess_return": summary.get("excessReturn"),
+            })
+    except Exception as e:
+        print(f"❌ {e}")
+        errors.append((code, str(e)))
+    
+    # 间隔一下，避免请求太快
+    time.sleep(0.5)
 
-    if args.list_strategies:
-        list_available_strategies()
-        return
+# ── 6. 汇总 ──
+print(f"\n{'='*60}")
+print(f"📊 批量回测汇总")
+print(f"{'='*60}")
+print(f"   成功: {len(results)} / {len(eligible)}")
+print(f"   失败: {len(errors)}")
 
-    if not args.strategies or not args.codes:
-        parser.print_help()
-        print("\n❌ 请指定 --strategies 和 --codes，或用 --list-strategies 查看可用策略")
-        sys.exit(1)
+if results:
+    print(f"\n📈 收益排行 TOP 10:")
+    results.sort(key=lambda x: x['total_return'] if x['total_return'] is not None else -999, reverse=True)
+    for r in results[:10]:
+        ret = r['total_return']
+        ret_str = f"+{ret:.2f}%" if ret and ret >= 0 else f"{ret:.2f}%" if ret else "N/A"
+        print(f"   {r['code']}: 收益={ret_str} 夏普={r['sharpe']} 胜率={r['win_rate']}% 交易={r['trades']}笔")
+    
+    # 统计
+    returns = [r['total_return'] for r in results if r['total_return'] is not None]
+    if returns:
+        avg_ret = sum(returns) / len(returns)
+        win = sum(1 for r in returns if r > 0)
+        print(f"\n📊 统计:")
+        print(f"   平均收益: {avg_ret:+.2f}%")
+        print(f"   盈利比例: {win}/{len(returns)} ({win/len(returns)*100:.1f}%)")
+        print(f"   最大收益: {max(returns):+.2f}%")
+        print(f"   最小收益: {min(returns):+.2f}%")
 
-    # 加载策略
-    strategy_classes = load_strategy_classes(args.strategies)
-    if not strategy_classes:
-        print("❌ 未找到任何有效策略")
-        sys.exit(1)
+if errors:
+    print(f"\n⚠️ 错误列表:")
+    for code, err in errors[:10]:
+        print(f"   {code}: {err}")
 
-    # 股票池
-    codes = args.codes
-    if args.industry or args.min_mcap or args.max_mcap:
-        repo = DataRepository()
-        codes = get_stock_pool(
-            repo, industry=args.industry,
-            min_mcap=args.min_mcap, max_mcap=args.max_mcap,
-        )
-        print(f"🔍 股票池筛选: {len(codes)} 只")
+# ── 7. 导出结果到文本 ──
+out_path = PROJECT_ROOT / "output" / "batch_backtest_results.txt"
+with open(out_path, "w") as f:
+    f.write("批量回测结果\n")
+    f.write(f"运行时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+    f.write(f"策略: 七维评分穿越 (score_cross)\n")
+    f.write(f"区间: {PARAMS['start']} ~ {PARAMS['end']}\n\n")
+    f.write(f"{'代码':>8} {'收益':>8} {'夏普':>6} {'胜率':>6} {'回撤':>8} {'交易':>4} {'基准':>8} {'超额':>8}\n")
+    f.write("-" * 70 + "\n")
+    results.sort(key=lambda x: x['total_return'] if x['total_return'] is not None else -999, reverse=True)
+    for r in results:
+        f.write(f"{r['code']:>8} {r['total_return']:>+7.2f}% {r['sharpe']:>+5.2f} {r['win_rate'] or 0:>5.1f}% {r['max_drawdown'] or 0:>+7.2f}% {r['trades'] or 0:>4} {r['bh_return'] or 0:>+7.2f}% {r['excess_return'] or 0:>+7.2f}%\n")
+    f.write(f"\n成功: {len(results)} / 总尝试: {len(eligible)}")
 
-    # 运行回测
-    engine = BacktestEngine()
-    start_date = date.fromisoformat(args.start)
-    end_date = date.fromisoformat(args.end)
-
-    print(f"\n🚀 批量回测开始: {len(strategy_classes)} 策略 × {len(codes)} 股票 "
-          f"(workers={args.workers}, sort_by={args.sort})")
-    print(f"   区间: {start_date} ~ {end_date} | 资金: {args.capital:,.0f}")
-
-    reports = engine.run_batch(
-        strategy_classes=strategy_classes,
-        stock_codes=codes,
-        start_date=start_date,
-        end_date=end_date,
-        initial_capital=args.capital,
-        max_workers=args.workers,
-        progress_callback=lambda d, t: print(f"   进度: {d}/{t}", end="\r"),
-    )
-    print()
-
-    if not reports:
-        print("❌ 所有回测均失败")
-        sys.exit(1)
-
-    # 排序排名
-    ranked = engine.rank_batch_results(reports, sort_by=args.sort)
-    print_ranking(ranked, args.sort, args.top)
-    print_summary(reports)
-
-    # 导出
-    if args.export:
-        export_summary_csv(reports, args.export)
-
-    print(f"\n✅ 批量回测完成: {len(reports)}/{len(strategy_classes)*len(codes)} 成功")
-
-
-if __name__ == "__main__":
-    main()
+print(f"\n📝 结果已保存到: output/batch_backtest_results.txt")
