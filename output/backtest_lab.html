@@ -414,10 +414,22 @@ function setupFormWatchers() {
   ['stockInput','startDate','endDate','capital'].forEach(id => {
     document.getElementById(id).addEventListener('change', updateReady);
   });
-  document.getElementById('stockInput').addEventListener('blur', () => {
+  document.getElementById('stockInput').addEventListener('blur', async () => {
     const v = document.getElementById('stockInput').value.trim();
     const m = v.match(/^(\d{6})/);
-    if (m) selectStock(m[1], v.slice(7).trim() || m[1]);
+    if (m) { selectStock(m[1], v.slice(7).trim() || m[1]); return; }
+    // 非数字 → 模糊搜索解析
+    if (v.length > 0) {
+      try {
+        const sr = await fetch('/api/stock/search?q=' + encodeURIComponent(v));
+        if (sr.ok) {
+          const sd = await sr.json();
+          if (sd.results && sd.results.length > 0) {
+            selectStock(sd.results[0].code, sd.results[0].name);
+          }
+        }
+      } catch(e) {}
+    }
   });
 }
 
@@ -475,8 +487,10 @@ async function runBacktest() {
       (params.length ? '&' + params.join('&') : '');
 
     const r = await fetch(url);
-    const result = await r.json();
-
+    if (!r.ok) throw new Error('请求失败 HTTP ' + r.status);
+    const txt = await r.text();
+    let result;
+    try { result = JSON.parse(txt); } catch(e) { throw new Error('服务器返回无效数据'); }
     if (result.error) throw new Error(result.error);
 
     state.currentResult = result;
