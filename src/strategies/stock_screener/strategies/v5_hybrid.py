@@ -44,7 +44,7 @@ class V5HybridStrategy(BaseStrategy):
     MAX_RET_60D = -8         # 60日跌幅≤8%（跌幅已收窄）
     TREND_CHECKS_MIN = 2     # 需要满足的条件数（可配置为1放宽）
 
-    # === 风控 (v3) ===
+    # === 风控 (#67 缩小仓位: 10%->6%) ===
     STOP_LOSS = -0.07
     TAKE_PROFIT = 0.15
     TRAILING_STOP = 0.12
@@ -52,6 +52,7 @@ class V5HybridStrategy(BaseStrategy):
     TIME_STOP_DAYS = 22
     TIME_STOP_RETURN = 0.02
     MIN_MCAP = 100
+    POSITION_PCT = 0.08          # 由0.10降至0.08，平衡回撤与收益
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():

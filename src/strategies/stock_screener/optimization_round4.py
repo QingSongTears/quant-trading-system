@@ -63,7 +63,7 @@ def run_backtest(params: Dict[str, Any]) -> Dict[str, Any]:
         start_date="2025-01-01",
         end_date="2026-06-12",
         max_positions=10,
-        single_position_pct=0.10,
+        single_position_pct=0.08,  # (#67) 由0.10降至0.08，降低回撤
     )
 
     strategy = V5HybridStrategy(**params)
