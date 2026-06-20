@@ -397,9 +397,23 @@ def api_v5_run():
     end_date = str(data.get("end_date", "2026-06-12"))
 
     try:
-        sys.path.insert(0, str(PROJECT_ROOT / "src" / "strategies" / "stock_screener"))
+        import os
+        
+        # 切换工作目录 + sys.path，确保导入正确的 config
+        screener_dir = str(PROJECT_ROOT / "src" / "strategies" / "stock_screener")
+        sys.path.insert(0, screener_dir)
+        old_cwd = os.getcwd()
+        os.chdir(screener_dir)
+        
+        # 清除可能冲突的模块缓存
+        for k in list(sys.modules.keys()):
+            if any(k.startswith(p) for p in ('backtest.', 'strategies.v5_hybrid', 'config', 'core.')):
+                del sys.modules[k]
+        
         from backtest.engine import BacktestEngine as V5Engine
         from strategies.v5_hybrid import V5HybridStrategy
+        
+        os.chdir(old_cwd)
 
         strategy = V5HybridStrategy(**params)
         engine = V5Engine(
