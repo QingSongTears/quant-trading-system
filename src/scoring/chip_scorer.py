@@ -31,27 +31,29 @@ from sqlalchemy import create_engine
 from typing import Dict, Any, List, Optional
 
 from ..config import get_config, get_db_url
+from ..db.sql_utils import read_sql
+from .base import BaseScorer
 
 
-class ChipScorer:
+class ChipScorer(BaseScorer):
     """筹码面评分器 — 主力控盘模型"""
 
+    name = "chip"
+    label_zh = "筹码面"
+    weight = 0.10
+    max_raw = 15
+
     def __init__(self, engine=None):
-        if engine is None:
-            config = get_config()
-            db_url = get_db_url(config)
-            self.engine = create_engine(db_url, echo=False)
-        else:
-            self.engine = engine
+        super().__init__(engine=engine)
         self._load_data()
 
     def _load_data(self):
         """加载全量筹码数据并预计算分位数"""
-        self.df = pd.read_sql(
+        self.df = read_sql(
             "SELECT code, closePrice, chipProfitRate, chipAvgCost, "
             "chipConcentration90, chipConcentration70 "
             "FROM chip_distribution",
-            self.engine
+            self.engine,
         )
         self.df = self.df.set_index("code")
 

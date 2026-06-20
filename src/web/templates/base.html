@@ -215,27 +215,35 @@
     <!-- 全局工具 JS -->
     <script>
     /* =============================================
-       ECharts Resize 统一管理（WeakMap + 事件合并）
+       ECharts Resize 统一管理
+       注意：Chrome 136+ 移除了 WeakMap.prototype.forEach
+       所以用 Map（保留 DOM→chart 映射）+ Set（只跟踪活跃实例）
        ============================================= */
     (function() {
-        const charts = new WeakMap();   // DOM → echarts instance
+        const charts = new Map();     // DOM → echarts instance
+        const activeCharts = new Set(); // 仅跟踪仍在 DOM 中的实例（避免泄漏）
         let resizeTimer = null;
         window._registerChart = function(dom, chart) {
             charts.set(dom, chart);
+            activeCharts.add(chart);
         };
         window._disposeChart = function(dom) {
             const c = charts.get(dom);
-            if (c && typeof c.dispose === 'function') { try { c.dispose(); } catch(e){} }
+            if (c) {
+                activeCharts.delete(c);
+                if (typeof c.dispose === 'function') { try { c.dispose(); } catch(e){} }
+            }
             charts.delete(dom);
         };
         window.addEventListener('resize', function() {
             clearTimeout(resizeTimer);
             resizeTimer = setTimeout(() => {
-                charts.forEach((chart, dom) => {
-                    if (dom.offsetParent !== null) {  // 仅 resize 可见图表
+                // 用 entries() 替代 forEach 跨版本兼容
+                for (const [dom, chart] of charts.entries()) {
+                    if (dom.isConnected && dom.offsetParent !== null) {
                         try { chart.resize(); } catch(e){}
                     }
-                });
+                }
             }, 100);
         });
     })();

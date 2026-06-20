@@ -137,10 +137,10 @@
 </div>
 
 {% if recent_backtests %}
-<!-- 回测绩效散点图 -->
+<!-- 回测绩效总览 -->
 <div class="card p-4 mb-4">
-    <h5 class="section-title"><i class="bi bi-scatter-chart"></i> 回测绩效总览</h5>
-    <div id="performance-overview-chart" class="chart-container"></div>
+    <h5 class="section-title"><i class="bi bi-scatter-chart"></i> 回测绩效总览 <small class="text-muted">· 收益 vs 风险调整后收益</small></h5>
+    <div id="performance-overview-chart" class="chart-container" style="height: 420px;"></div>
 </div>
 {% endif %}
 
@@ -231,70 +231,124 @@ const RECENT_JS = {{ recent_backtests_js | tojson }};
 if (!Array.isArray(RECENT_JS)) RECENT_JS = [];
 
 document.addEventListener('DOMContentLoaded', function() {
-    // 回测绩效散点图 (收益率 vs 夏普比率)
+    // 回测绩效散点图 (收益率 vs 夏普比率 + 四象限 + 标尺)
     if (!RECENT_JS.length) return;
     const chartDom = document.getElementById('performance-overview-chart');
     if (!chartDom) return;
 
     const scatterData = RECENT_JS
         .filter(r => r.total_return != null && r.sharpe_ratio != null)
-        .map(r => ({
-            value: [Number(r.total_return), Number(r.sharpe_ratio)],
-            name: (r.strategy_name || '') + ' · ' + (r.stock_code || ''),
-        }));
+        .map(r => {
+            const ret = Number(r.total_return);
+            const sharpe = Number(r.sharpe_ratio);
+            return {
+                value: [ret, sharpe, r.max_drawdown || 0, r.created_at || ''],
+                name: (r.strategy_name || '未知道') + ' · ' + (r.stock_code || ''),
+                meta: r,
+            };
+        });
 
     if (scatterData.length === 0) {
         chartDom.innerHTML = '<div class="text-center text-muted py-5">暂无有效回测数据可展示</div>';
         return;
     }
 
+    if (window._disposeChart) window._disposeChart(chartDom);
     const chart = echarts.init(chartDom);
     if (window._registerChart) window._registerChart(chartDom, chart);
-    
-    if (scatterData.length > 0) {
-        chart.setOption({
-            tooltip: {
-                trigger: 'item',
-                formatter: function(p) {
-                    return `${p.name}<br/>收益率: ${p.value[0].toFixed(2)}%<br/>夏普: ${p.value[1].toFixed(2)}`;
-                }
+
+    chart.setOption({
+        tooltip: {
+            trigger: 'item',
+            backgroundColor: 'rgba(255,255,255,0.97)',
+            borderColor: '#cbd5e1',
+            borderWidth: 1,
+            textStyle: { color: '#0f172a' },
+            formatter: function(p) {
+                const m = p.data.meta || {};
+                const ret = p.value[0].toFixed(2);
+                const sharpe = p.value[1].toFixed(2);
+                const dd = (p.value[2] || 0).toFixed(2);
+                const date = (p.value[3] || '').slice(0,16).replace('T', ' ');
+                return `<b>${p.data.name}</b><br/>
+                    收益率: <b style="color:${p.value[0]>=0?'#22c55e':'#ef4444'}">${ret}%</b><br/>
+                    夏普: ${sharpe}<br/>
+                    最大回撤: <span style="color:#ef4444">${dd}%</span><br/>
+                    <span style="color:#94a3b8;font-size:10px">${date}</span>
+                    <br/><a href="/backtest/${m.id || ''}" style="color:#6366f1">查看详情 →</a>`;
+            }
+        },
+        grid: { left: 60, right: 30, top: 25, bottom: 45 },
+        xAxis: {
+            name: '收益率 (%)',
+            nameLocation: 'center',
+            nameGap: 28,
+            nameTextStyle: { color: '#475569', fontSize: 11 },
+            type: 'value',
+            // 强制 X 轴包含 0，留 10% 余量在两端
+            min: function(v) { return Math.min(v.min, 0) * 1.1; },
+            max: function(v) { return Math.max(v.max, 0) * 1.1; },
+            splitNumber: 6,
+            axisLine: { lineStyle: { color: '#cbd5e1' } },
+            splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } },
+            axisLabel: { color: '#64748b', formatter: v => v.toFixed(0) + '%' }
+        },
+        yAxis: {
+            name: '夏普比率',
+            nameLocation: 'center',
+            nameGap: 38,
+            nameTextStyle: { color: '#475569', fontSize: 11 },
+            type: 'value',
+            min: function(v) { return Math.min(v.min, 0) * 1.15; },
+            max: function(v) { return Math.max(v.max, 1) * 1.15; },
+            splitNumber: 5,
+            axisLine: { lineStyle: { color: '#cbd5e1' } },
+            splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } },
+            axisLabel: { color: '#64748b' }
+        },
+        series: [{
+            type: 'scatter',
+            data: scatterData,
+            symbolSize: function(data) {
+                // 点的大小 = 绝对收益 + 基础尺寸
+                return Math.min(Math.abs(data[0]) * 0.4 + 16, 42);
             },
-            grid: { left: 60, right: 30, top: 20, bottom: 40 },
-            xAxis: {
-                name: '收益率 (%)',
-                nameLocation: 'center',
-                nameGap: 25,
-                axisLine: { lineStyle: { color: '#999' } },
-                splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' } }
+            itemStyle: {
+                color: function(params) {
+                    const ret = params.value[0];
+                    const sharpe = params.value[1];
+                    if (Math.abs(ret) < 0.5) return '#94a3b8';
+                    if (ret > 0) {
+                        return sharpe > 1.5 ? '#059669' : sharpe > 0.5 ? '#22c55e' : '#86efac';
+                    } else {
+                        return sharpe < -0.5 ? '#b91c1c' : '#ef4444';
+                    }
+                },
+                opacity: 0.78,
+                borderColor: '#fff',
+                borderWidth: 1.5,
             },
-            yAxis: {
-                name: '夏普比率',
-                nameLocation: 'center',
-                nameGap: 35,
-                axisLine: { lineStyle: { color: '#999' } },
-                splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' } }
+            emphasis: {
+                scale: 1.4,
+                itemStyle: { opacity: 1, borderColor: '#0f172a', borderWidth: 2 }
             },
-            series: [{
-                type: 'scatter',
-                data: scatterData,
-                symbolSize: function(data) {
-                    return Math.min(Math.abs(data[0]) * 0.8 + 8, 40);
+            // 0% 收益基准线 + 夏普=1 线
+            markLine: {
+                silent: true,
+                symbol: 'none',
+                label: {
+                    fontSize: 10, color: '#64748b',
+                    backgroundColor: 'rgba(255,255,255,0.85)',
+                    padding: [2, 4]
                 },
-                itemStyle: {
-                    color: function(params) {
-                        return params.value[0] > 0 ? '#22c55e' : '#ef4444';
-                    },
-                    opacity: 0.7,
-                },
-                emphasis: {
-                    scale: 1.5,
-                    itemStyle: { opacity: 1 }
-                },
-            }]
-        });
-    } else {
-        chartDom.innerHTML = '<div class="text-center text-muted py-5">暂无回测数据可展示</div>';
-    }
+                lineStyle: { color: '#cbd5e1', type: 'dashed' },
+                data: [
+                    { xAxis: 0, name: '  0% 收益基准  ' },
+                    { yAxis: 1, name: '夏普 = 1 (风控优秀线)  ' }
+                ]
+            }
+        }]
+    });
 });
 </script>
 {% endblock %}

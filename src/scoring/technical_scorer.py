@@ -34,18 +34,17 @@ import pandas as pd
 from sqlalchemy import create_engine
 
 from ..config import get_config, get_db_url
+from ..db.sql_utils import read_sql
+from .base import BaseScorer
 
 
-class TechnicalScorer:
+class TechnicalScorer(BaseScorer):
     """技术面评分器 v3 — 极端反转模型"""
 
-    def __init__(self, engine=None):
-        if engine is None:
-            config = get_config()
-            db_url = get_db_url(config)
-            self.engine = create_engine(db_url, echo=False)
-        else:
-            self.engine = engine
+    name = "technical"
+    label_zh = "技术面"
+    weight = 0.20
+    max_raw = 21
 
     # ============================================================
     #  数据加载
@@ -53,15 +52,19 @@ class TechnicalScorer:
     def _load_price_data(
         self, code: str, as_of_date_str: str, lookback_days: int = 150
     ) -> pd.DataFrame:
-        query = f"""
+        sql = """
             SELECT trade_date, open, high, low, close, volume, amount, pct_change
             FROM daily_price
-            WHERE code = '{code}'
-              AND trade_date <= '{as_of_date_str}'
+            WHERE code = :code
+              AND trade_date <= :as_of
             ORDER BY trade_date DESC
-            LIMIT {lookback_days}
+            LIMIT :lookback
         """
-        df = pd.read_sql(query, self.engine)
+        df = read_sql(sql, self.engine, {
+            "code": code,
+            "as_of": as_of_date_str,
+            "lookback": int(lookback_days),
+        })
         if df.empty:
             return df
         df = df.sort_values("trade_date").reset_index(drop=True)
@@ -73,15 +76,17 @@ class TechnicalScorer:
     ) -> Dict[str, pd.DataFrame]:
         if not codes:
             return {}
-        codes_str = "', '".join(codes)
-        query = f"""
+        sql = """
             SELECT code, trade_date, open, high, low, close, volume, amount, pct_change
             FROM daily_price
-            WHERE code IN ('{codes_str}')
-              AND trade_date <= '{as_of_date_str}'
+            WHERE code IN :codes
+              AND trade_date <= :as_of
             ORDER BY code, trade_date DESC
         """
-        df = pd.read_sql(query, self.engine)
+        df = read_sql(sql, self.engine, {
+            "codes": list(codes),
+            "as_of": as_of_date_str,
+        })
         if df.empty:
             return {}
 
@@ -614,12 +619,15 @@ class TechnicalScorer:
         max_stocks_per_day: int = 200,
     ) -> pd.DataFrame:
         """逐日/逐周采样"""
-        dates_query = f"""
+        dates_query = """
             SELECT DISTINCT trade_date FROM daily_price
-            WHERE trade_date >= '{start_date}' AND trade_date <= '{end_date}'
+            WHERE trade_date >= :start_date AND trade_date <= :end_date
             ORDER BY trade_date
         """
-        all_dates = pd.read_sql(dates_query, self.engine)["trade_date"].tolist()
+        all_dates = read_sql(dates_query, self.engine, {
+            "start_date": start_date,
+            "end_date": end_date,
+        })["trade_date"].tolist()
 
         if sample_freq == "weekly":
             all_dates = pd.DatetimeIndex([pd.Timestamp(d) for d in all_dates])
@@ -636,10 +644,22 @@ class TechnicalScorer:
         total_scored = 0
 
         for i, sample_date in enumerate(sample_dates):
-            codes_sql = f"SELECT DISTINCT code FROM daily_price WHERE trade_date = '{sample_date}'"
             if stock_codes:
-                codes_sql += f" AND code IN ('{stock_codes}')"
-            available = pd.read_sql(codes_sql, self.engine)["code"].tolist()
+                codes_sql = """
+                    SELECT DISTINCT code FROM daily_price
+                    WHERE trade_date = :trade_date AND code IN :codes
+                """
+                available = read_sql(codes_sql, self.engine, {
+                    "trade_date": sample_date,
+                    "codes": list(stock_codes),
+                })["code"].tolist()
+            else:
+                codes_sql = """
+                    SELECT DISTINCT code FROM daily_price WHERE trade_date = :trade_date
+                """
+                available = read_sql(codes_sql, self.engine, {
+                    "trade_date": sample_date,
+                })["code"].tolist()
 
             if len(available) > max_stocks_per_day:
                 np.random.seed(i)

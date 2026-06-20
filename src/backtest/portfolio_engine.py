@@ -14,12 +14,13 @@
 """
 import logging
 from datetime import date, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import numpy as np
 import pandas as pd
 
 from ..config import get_config
+from ..db.sql_utils import read_sql
 from ..models.repository import DataRepository
 from .base_selection_strategy import BaseSelectionStrategy
 from .engine import BacktestReport
@@ -115,17 +116,17 @@ class PortfolioBacktestEngine:
 
     def _load_all_data(self, start: date, end: date) -> pd.DataFrame:
         """加载全市场 daily_price 数据"""
-        query = f"""
+        sql = """
             SELECT dp.code, sb.name, sb.list_date, NULL AS mcap_yi, dp.trade_date,
                    dp.open, dp.high, dp.low, dp.close,
                    dp.volume, dp.amount, dp.pct_change, dp.turnover
             FROM daily_price dp
             JOIN stock_basic sb ON dp.code = sb.code
-            WHERE dp.trade_date >= '{start}'
-              AND dp.trade_date <= '{end}'
+            WHERE dp.trade_date >= :start
+              AND dp.trade_date <= :end
             ORDER BY dp.code, dp.trade_date
         """
-        df = pd.read_sql(query, self.repo.engine)
+        df = read_sql(sql, self.repo.engine, {"start": start, "end": end})
         if df.empty:
             return df
         df["trade_date"] = pd.to_datetime(df["trade_date"])
@@ -230,81 +231,124 @@ class PortfolioBacktestEngine:
                            end_date: date,
                            ) -> tuple:
         """
-        模拟组合净值曲线
+        模拟组合净值曲线 (向量化版本)
 
-        Returns:
-            (equity_series, rebalance_details)
-            equity_series: pd.Series indexed by date, values = portfolio equity
-            rebalance_details: list of dicts with rebalance info
+        T+1 语义:
+          - holdings_history[i] = 在 Day i 持有的股票列表 (用于赚取 Day i 的收益)
+          - 这些股票是在 Day i-1 调仓时选出来的 (T+1)
+          - 调仓成本在调仓日当天、收益结算之后扣除 (与原实现一致)
+
+        优化要点:
+          1) 调仓决策循环: 仅遍历调仓日 (~24 次) 而非全市场日 (~1000 次)
+          2) 日收益矩阵: 用 pivot 一次性生成 [date x code] 的收益率矩阵
+          3) 日均收益: 一次 .loc 抽取 + numpy.mean，避免 Python 内层 for 循环
         """
-        # 全部交易日
-        all_dates = sorted(all_data["trade_date"].unique())
+        # 全部交易日 (回测区间内)
+        all_dates = sorted([
+            d for d in all_data["trade_date"].unique()
+            if start_date <= d.date() <= end_date
+        ])
+        if not all_dates:
+            return pd.Series(dtype=float), []
 
-        # 收益率 pivot: index=trade_date, columns=code, values=pct_change
-        returns_pivot = all_data.pivot_table(
-            index="trade_date", columns="code", values="pct_change", fill_value=0
-        )
-        # 将0替换为NaN再forward fill (停牌日收益率为0是合理的，但需要区分)
-        # 简化处理: 缺失=0
-
-        equity = initial_capital
-        holdings: List[str] = []  # 当前持仓
-        portfolio_equity = {}
-        rebalance_details = []
+        # === Pass 1: 决定每日持仓 (T+1 语义) ===
+        # holdings_today = 在"当前"调仓日应当为下一个交易日选定的股票
+        # holdings_history[i] = 在 Day i 实际持有的股票 (= Day i-1 调出的结果)
+        holdings_today: List[str] = []
+        holdings_history: List[List[str]] = []  # 与 all_dates 等长
+        rebalance_details: List[Dict] = []
+        rebalance_set = set(rebalance_dates)
 
         for dt in all_dates:
-            if dt.date() < start_date or dt.date() > end_date:
-                continue
+            # 当前 Day 的持仓 = 上一调仓日选定的 holdings_today
+            holdings_history.append(holdings_today[:])
 
-            # ---- 先结算当日收益：基于现有持仓（调仓日前一天选的股） ----
-            # T+1 逻辑：今天赚的是昨天选的股票的收益
-            if holdings:
-                day_returns = []
-                pct_row = returns_pivot.loc[returns_pivot.index == dt]
-                if not pct_row.empty:
-                    for code in holdings:
-                        if code in pct_row.columns:
-                            ret = pct_row[code].values[0]
-                            if pd.notna(ret):
-                                day_returns.append(ret / 100)
-                            else:
-                                day_returns.append(0)
-                        else:
-                            day_returns.append(0)
-                else:
-                    day_returns = [0] * len(holdings)
-
-                avg_return = np.mean(day_returns) if day_returns else 0
-                equity *= (1 + avg_return)
-
-            portfolio_equity[dt] = equity
-
-            # ---- 调仓：计算明日开始的持仓 ----
-            if dt in rebalance_dates:
+            if dt in rebalance_set:
                 universe = self._build_universe(all_data, dt, strategy.lookback_days, strategy)
                 if not universe.empty:
                     filtered = strategy.filter_universe(universe)
-                    selected = strategy.select(dt, filtered)
+                    new_selected = strategy.select(dt, filtered)
+                else:
+                    new_selected = holdings_today  # 数据缺失: 沿用
 
-                    if set(selected) != set(holdings):
-                        sell_cost = self._calc_transaction_cost(equity, is_sell=True) if holdings else 0
-                        buy_cost = self._calc_transaction_cost(equity, is_sell=False)
-                        equity -= (sell_cost + buy_cost)
+                if set(new_selected) != set(holdings_today):
+                    rebalance_details.append({
+                        "date": str(dt.date()),
+                        "action": "rebalance",
+                        "previous_holdings": holdings_today[:],
+                        "new_holdings": new_selected[:],
+                        "n_new": len(new_selected),
+                    })
+                    holdings_today = new_selected  # 下一个交易日生效
 
-                        rebalance_details.append({
-                            "date": str(dt.date()),
-                            "action": "rebalance",
-                            "previous_holdings": holdings[:],
-                            "new_holdings": selected[:],
-                            "n_new": len(selected),
-                            "equity_before_rebalance": equity + sell_cost + buy_cost,
-                            "transaction_cost": sell_cost + buy_cost,
-                        })
+        # === Pass 2: 构建日收益矩阵 (一次性, 无循环) ===
+        # 单位: 小数 (即 0.01 表示 +1%)
+        # pivot_table(fill_value=0) 已经把缺失 cell 填 0, 之后除以 100 转成小数
+        returns_pivot = (
+            all_data
+            .pivot_table(index="trade_date", columns="code",
+                         values="pct_change", fill_value=0)
+            / 100.0
+        )
+        all_codes = set(returns_pivot.columns)
 
-                        holdings = selected
+        # === Pass 3: 向量化计算每日组合收益 ===
+        n_days = len(all_dates)
+        portfolio_returns = np.zeros(n_days)
+        for i, dt in enumerate(all_dates):
+            holdings = holdings_history[i]
+            if not holdings:
+                continue
+            valid = [c for c in holdings if c in all_codes]
+            if not valid or dt not in returns_pivot.index:
+                continue
+            portfolio_returns[i] = float(np.mean(returns_pivot.loc[dt, valid].values))
 
-        equity_series = pd.Series(portfolio_equity)
-        equity_series.index = pd.to_datetime(equity_series.index)
+        # === Pass 4: 组合净值曲线 + 调仓成本 ===
+        # 语义 (与原版一致):
+        #   Day 0: portfolio_equity[0] = initial_capital (调仓前)
+        #          然后应用 Day 0 调仓成本 (如果有)
+        #   Day i (i>=1):
+        #     1) portfolio_equity[i] = equity * (1 + ret_i)
+        #     2) 若 Day i 是调仓日: equity -= 调仓成本
+        equity = initial_capital
+        equity_curve = [equity]   # Day 0 (回测首日, 调仓前)
+
+        # 提前索引: 哪些天是真正的调仓日 (holdings 变化)
+        rebalance_change_indices: Set[int] = set()
+        for i in range(n_days - 1):
+            if set(holdings_history[i]) != set(holdings_history[i + 1]):
+                rebalance_change_indices.add(i)
+
+        def _apply_cost_at(idx: int, base_equity: float):
+            """在 idx 日末尾应用调仓成本, 返回扣减后的 equity 和补全 rebalance_details"""
+            prev_holdings = holdings_history[idx]
+            sell_cost = self._calc_transaction_cost(base_equity, is_sell=True) if prev_holdings else 0
+            buy_cost = self._calc_transaction_cost(base_equity, is_sell=False)
+            new_equity = base_equity - sell_cost - buy_cost
+            # 补全 rebalance_details 中匹配 date 的最后一条
+            if rebalance_details:
+                last = rebalance_details[-1]
+                if last.get("date") == str(all_dates[idx].date()):
+                    last["equity_before_rebalance"] = base_equity
+                    last["transaction_cost"] = sell_cost + buy_cost
+            return new_equity
+
+        # 1) 处理 Day 0 的调仓成本 (基线是 initial_capital)
+        if 0 in rebalance_change_indices:
+            equity = _apply_cost_at(0, equity)
+
+        # 2) 遍历 Day 1..N-1
+        for i in range(1, n_days):
+            # 应用 Day i 收益
+            equity *= (1 + portfolio_returns[i])
+            # 记录当日净值 (调仓前)
+            equity_curve.append(equity)
+            # 应用 Day i 调仓成本 (如有)
+            if i in rebalance_change_indices:
+                equity = _apply_cost_at(i, equity)
+
+        equity_series = pd.Series(equity_curve, index=pd.to_datetime(all_dates))
         return equity_series, rebalance_details
 
     def _calc_transaction_cost(self, equity: float, is_sell: bool = False) -> float:

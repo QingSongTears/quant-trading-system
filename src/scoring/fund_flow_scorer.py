@@ -39,24 +39,26 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 
 from ..config import get_config, get_db_url
+from ..db.sql_utils import read_sql
+from .base import BaseScorer
 
 
-class FundFlowScorer:
+class FundFlowScorer(BaseScorer):
     """资金面评分器 v2 — 持续吸筹模型"""
 
+    name = "fund_flow"
+    label_zh = "资金面"
+    weight = 0.20
+    max_raw = 18
+
     def __init__(self, engine=None):
-        if engine is None:
-            config = get_config()
-            db_url = get_db_url(config)
-            self.engine = create_engine(db_url, echo=False)
-        else:
-            self.engine = engine
+        super().__init__(engine=engine)
         self._data_available = self._check_data()
 
     def _check_data(self) -> bool:
         """检查 fund_flow_data 表是否有数据"""
         try:
-            cnt = pd.read_sql(
+            cnt = read_sql(
                 "SELECT COUNT(*) as n FROM fund_flow_data", self.engine
             ).iloc[0, 0]
             if cnt == 0:
@@ -69,16 +71,20 @@ class FundFlowScorer:
     def _load_flow_data(
         self, code: str, as_of_date_str: str, lookback: int = 30
     ) -> pd.DataFrame:
-        query = f"""
+        sql = """
             SELECT trade_date, main_net, super_large_net, large_net,
                    medium_net, small_net
             FROM fund_flow_data
-            WHERE code = '{code}'
-              AND trade_date <= '{as_of_date_str}'
+            WHERE code = :code
+              AND trade_date <= :as_of
             ORDER BY trade_date DESC
-            LIMIT {lookback}
+            LIMIT :lookback
         """
-        df = pd.read_sql(query, self.engine)
+        df = read_sql(sql, self.engine, {
+            "code": code,
+            "as_of": as_of_date_str,
+            "lookback": int(lookback),
+        })
         if df.empty:
             return df
         df = df.sort_values("trade_date").reset_index(drop=True)
@@ -95,16 +101,18 @@ class FundFlowScorer:
     ) -> Dict[str, pd.DataFrame]:
         if not codes:
             return {}
-        codes_str = "', '".join(codes)
-        query = f"""
+        sql = """
             SELECT code, trade_date, main_net, super_large_net, large_net,
                    medium_net, small_net
             FROM fund_flow_data
-            WHERE code IN ('{codes_str}')
-              AND trade_date <= '{as_of_date_str}'
+            WHERE code IN :codes
+              AND trade_date <= :as_of
             ORDER BY code, trade_date DESC
         """
-        df = pd.read_sql(query, self.engine)
+        df = read_sql(sql, self.engine, {
+            "codes": list(codes),
+            "as_of": as_of_date_str,
+        })
         if df.empty:
             return {}
 

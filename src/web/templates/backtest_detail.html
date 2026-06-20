@@ -81,7 +81,7 @@
     </div>
 </div>
 
-<!-- 第二行指标 -->
+<!-- 第二行指标：业绩归因 -->
 <div class="row g-3 mb-4">
     <div class="col-md-3">
         <div class="card p-2 text-center">
@@ -91,7 +91,7 @@
     </div>
     <div class="col-md-3">
         <div class="card p-2 text-center">
-            <small class="text-muted">盈亏比</small>
+            <small class="text-muted">盈亏比 (PF)</small>
             <strong>{{ "%.2f"|format(result.profit_factor) if result.profit_factor else '-' }}</strong>
         </div>
     </div>
@@ -108,6 +108,50 @@
         </div>
     </div>
 </div>
+
+<!-- 第三行：交易统计（基于逐笔交易计算） -->
+{% if trade_stats.total > 0 %}
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-2">
+        <div class="card p-2 text-center">
+            <small class="text-muted">盈利笔数</small>
+            <strong class="profit">{{ trade_stats.wins }} 笔</strong>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card p-2 text-center">
+            <small class="text-muted">亏损笔数</small>
+            <strong class="loss">{{ trade_stats.losses }} 笔</strong>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card p-2 text-center">
+            <small class="text-muted">最大单笔盈利</small>
+            <strong class="profit">{{ "{:,.0f}".format(trade_stats.max_profit) }} 元</strong>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card p-2 text-center">
+            <small class="text-muted">最大单笔亏损</small>
+            <strong class="loss">{{ "{:,.0f}".format(trade_stats.max_loss) }} 元</strong>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card p-2 text-center">
+            <small class="text-muted">平均持仓天数</small>
+            <strong>{{ trade_stats.avg_hold_days }} 天</strong>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card p-2 text-center">
+            <small class="text-muted">均笔盈亏</small>
+            <strong class="{% if trade_stats.avg_pnl > 0 %}profit{% else %}loss{% endif %}">
+                {{ "{:,.0f}".format(trade_stats.avg_pnl) }} 元
+            </strong>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- 基准对比 -->
 <div class="row g-3 mb-4">
@@ -302,8 +346,17 @@ const INITIAL_CAPITAL = {{ (result.initial_capital or 0) | tojson }};
 // 图表实例由 base.html 的 _registerChart / _disposeChart 统一管理
 // 无需声明局部变量，也无需手动监听 resize
 
+// 自适应 x 轴标签：根据数据点数量决定显示密度
+function smartDateInterval(dataLen) {
+    if (dataLen <= 30)  return 0;     // 每天都显示
+    if (dataLen <= 90)  return 6;     // 每周显示
+    if (dataLen <= 250) return 19;    // 每月显示
+    if (dataLen <= 500) return 39;    // 每两月
+    return Math.ceil(dataLen / 12);   // 大数据量：约 12 个标签
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-    // 净值曲线 + 基准叠加
+    // 净值曲线
     if (EQUITY_DATA && EQUITY_DATA.length > 0) {
         const dom = document.getElementById('equity-benchmark-chart');
         if (window._disposeChart) window._disposeChart(dom);
@@ -312,31 +365,62 @@ document.addEventListener('DOMContentLoaded', function() {
         const dates = EQUITY_DATA.map(d => d.date);
         const equity = EQUITY_DATA.map(d => d.equity);
 
-        // 仅当初始资金 > 0 时才画 markLine
+        // 初始资金水平线
         const markLineData = (INITIAL_CAPITAL && INITIAL_CAPITAL > 0)
-            ? [{ yAxis: INITIAL_CAPITAL, label: { formatter: '初始', position: 'start' } }]
+            ? [{
+                yAxis: INITIAL_CAPITAL,
+                label: {
+                    formatter: '初始 ¥' + (INITIAL_CAPITAL/10000).toFixed(0) + '万',
+                    position: 'insideEnd',
+                    color: '#999',
+                    fontSize: 11
+                }
+            }]
             : [];
+
+        const xInterval = smartDateInterval(dates.length);
 
         const option = {
             tooltip: {
                 trigger: 'axis',
-                axisPointer: { type: 'cross' }
+                axisPointer: { type: 'cross' },
+                formatter: function(params) {
+                    const date = params[0].axisValue;
+                    let html = `<b>${date}</b><br/>`;
+                    params.forEach(p => {
+                        const val = p.value;
+                        const v10k = (val/10000).toFixed(2);
+                        const color = p.color;
+                        html += `<span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:50%;margin-right:4px;"></span>`;
+                        html += `${p.seriesName}: <b>¥${v10k}万</b><br/>`;
+                    });
+                    return html;
+                }
             },
             legend: {
-                data: ['策略净值', '初始资金'],
+                data: ['策略净值'],
                 top: 0,
             },
-            grid: { left: 70, right: 20, top: 35, bottom: 35 },
+            grid: { left: 70, right: 25, top: 35, bottom: 50 },
             xAxis: {
                 type: 'category',
                 data: dates,
-                axisLabel: { rotate: 30, fontSize: 10, formatter: v => String(v).slice(0, 7) },
+                axisLabel: {
+                    fontSize: 10,
+                    interval: xInterval,
+                    formatter: function(v) {
+                        // 显示 YYYY-MM
+                        return String(v).slice(0, 7);
+                    }
+                },
+                axisLine: { lineStyle: { color: '#cbd5e1' } },
             },
             yAxis: {
                 type: 'value',
-                name: '权益 (元)',
-                axisLabel: { formatter: v => (v/10000).toFixed(0) + '万' },
-                splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+                name: '权益',
+                nameTextStyle: { fontSize: 10, color: '#64748b' },
+                axisLabel: { formatter: v => (v/10000).toFixed(1) + '万' },
+                splitLine: { lineStyle: { type: 'dashed', color: '#f1f5f9' } }
             },
             series: [{
                 name: '策略净值',
@@ -344,46 +428,84 @@ document.addEventListener('DOMContentLoaded', function() {
                 data: equity,
                 smooth: true,
                 showSymbol: false,
-                lineStyle: { color: '#6366f1', width: 2 },
+                sampling: 'lttb',  // 大数据量下采样
+                lineStyle: { color: '#6366f1', width: 2.5 },
+                itemStyle: { color: '#6366f1' },
                 areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1, [
-                    {offset: 0, color: 'rgba(99,102,241,0.2)'},
+                    {offset: 0, color: 'rgba(99,102,241,0.25)'},
                     {offset: 1, color: 'rgba(99,102,241,0.02)'}
                 ])},
                 markLine: {
                     silent: true,
+                    symbol: 'none',
                     data: markLineData,
-                    lineStyle: { color: '#999', type: 'dashed' }
+                    lineStyle: { color: '#94a3b8', type: 'dashed', width: 1 }
+                },
+                markPoint: {
+                    symbol: 'pin',
+                    symbolSize: 40,
+                    data: [
+                        {type: 'max', name: '峰值', itemStyle: {color: '#22c55e'}},
+                        {type: 'min', name: '谷底', itemStyle: {color: '#ef4444'}}
+                    ],
+                    label: { fontSize: 10 }
                 }
             }],
             dataZoom: [
                 { type: 'inside', start: 0, end: 100 },
-                { type: 'slider', start: 0, end: 100, height: 20, bottom: 5 }
+                { type: 'slider', start: 0, end: 100, height: 18, bottom: 8 }
             ]
         };
         chart.setOption(option);
     }
 
-    // 回撤曲线
+    // 回撤曲线 — y 轴 fixed 在 0~最深回撤之间，不用 inverse
     if (DRAWDOWN_DATA && DRAWDOWN_DATA.length > 0) {
         const dom = document.getElementById('drawdown-chart');
         if (window._disposeChart) window._disposeChart(dom);
         const ddChart = echarts.init(dom);
         if (window._registerChart) window._registerChart(dom, ddChart);
+        const ddValues = DRAWDOWN_DATA.map(d => d.drawdown);
+        const minDD = Math.min(...ddValues, 0);
+        const xInterval = smartDateInterval(DRAWDOWN_DATA.length);
         ddChart.setOption({
-            tooltip: { trigger: 'axis', formatter: p => `${p[0].axisValue}<br/>回撤: ${p[0].value}%` },
-            grid: { left: 50, right: 15, top: 15, bottom: 30 },
-            xAxis: { type: 'category', data: DRAWDOWN_DATA.map(d => d.date), axisLabel: { fontSize: 9, rotate: 30 } },
-            yAxis: { type: 'value', name: '回撤 %', inverse: true, axisLabel: { formatter: v => v + '%' } },
+            tooltip: {
+                trigger: 'axis',
+                formatter: p => `${p[0].axisValue}<br/>回撤: <b>${Number(p[0].value).toFixed(2)}%</b>`
+            },
+            grid: { left: 50, right: 15, top: 20, bottom: 45 },
+            xAxis: {
+                type: 'category',
+                data: DRAWDOWN_DATA.map(d => d.date),
+                axisLabel: { fontSize: 9, interval: xInterval, formatter: v => String(v).slice(0,7) }
+            },
+            yAxis: {
+                type: 'value',
+                name: '回撤 %',
+                nameTextStyle: { fontSize: 10, color: '#64748b' },
+                min: Math.floor(minDD * 1.1 * 10) / 10,  // 留 10% 余量
+                max: 0,
+                axisLabel: { formatter: v => v + '%' },
+                splitLine: { lineStyle: { type: 'dashed', color: '#f1f5f9' } }
+            },
             series: [{
-                name: '回撤', type: 'line', data: DRAWDOWN_DATA.map(d => d.drawdown),
-                smooth: true, showSymbol: false, lineStyle: { color: '#ef4444', width: 1 },
-                areaStyle: { color: 'rgba(239,68,68,0.15)' }
+                name: '回撤',
+                type: 'line',
+                data: ddValues,
+                smooth: true,
+                showSymbol: false,
+                sampling: 'lttb',
+                lineStyle: { color: '#ef4444', width: 1.5 },
+                areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1, [
+                    {offset: 0, color: 'rgba(239,68,68,0.30)'},
+                    {offset: 1, color: 'rgba(239,68,68,0.05)'}
+                ])}
             }],
-            dataZoom: [{ type: 'inside' }, { type: 'slider', height: 15, bottom: 5 }]
+            dataZoom: [{ type: 'inside' }, { type: 'slider', height: 14, bottom: 5 }]
         });
     }
 
-    // 月度收益热力图
+    // 月度收益柱状图（红绿分明 + 数值标签）
     const heatmapDom = document.getElementById('monthly-heatmap');
     const monthKeys = MONTHLY_DATA ? Object.keys(MONTHLY_DATA) : [];
     if (heatmapDom && monthKeys.length > 0) {
@@ -391,40 +513,52 @@ document.addEventListener('DOMContentLoaded', function() {
         const heatChart = echarts.init(heatmapDom);
         if (window._registerChart) window._registerChart(heatmapDom, heatChart);
         const months = monthKeys.sort();
-        const values = months.map(m => MONTHLY_DATA[m]);
-        const maxAbs = Math.max(
-            ...values.map(v => Math.abs(Number(v) || 0)),
-            1
-        );
+        const values = months.map(m => Number(MONTHLY_DATA[m]) || 0);
+        const maxAbs = Math.max(...values.map(Math.abs), 1);
 
         heatChart.setOption({
             tooltip: {
                 trigger: 'axis',
-                formatter: p => `${p[0].name}<br/>收益: ${Number(p[0].value).toFixed(2)}%`
+                formatter: function(p) {
+                    const v = Number(p[0].value);
+                    const sign = v > 0 ? '+' : '';
+                    return `<b>${p[0].axisValue}</b><br/>收益: <b style="color:${v>=0?'#22c55e':'#ef4444'}">${sign}${v.toFixed(2)}%</b>`;
+                }
             },
-            grid: { left: 55, right: 15, top: 10, bottom: 45 },
+            grid: { left: 50, right: 15, top: 10, bottom: 10 },
             xAxis: {
-                type: 'category', data: months,
-                axisLabel: { rotate: 45, fontSize: 9, formatter: v => String(v).slice(2) }
+                type: 'category',
+                data: months,
+                axisLabel: { rotate: 45, fontSize: 9, formatter: v => String(v).slice(2) },
+                axisLine: { show: false },
+                axisTick: { show: false }
             },
-            yAxis: { type: 'value', name: '%', axisLabel: { formatter: v => v + '%' } },
-            visualMap: {
-                min: -maxAbs, max: maxAbs,
-                calculable: true,
-                orient: 'horizontal',
-                left: 'center', bottom: 0,
-                inRange: { color: ['#ef4444', '#f8fafc', '#22c55e'] },
-                textStyle: { fontSize: 9 }
+            yAxis: {
+                type: 'value',
+                axisLabel: { fontSize: 9, formatter: v => v + '%' },
+                splitLine: { lineStyle: { type: 'dashed', color: '#f1f5f9' } }
             },
             series: [{
                 type: 'bar',
+                barMaxWidth: 28,
                 data: values.map(v => ({
-                    value: Number(v) || 0,
-                    itemStyle: { color: v >= 0 ?
-                        `rgba(34,197,94,${Math.min(0.8, Math.abs(v)/maxAbs*0.8+0.2)})` :
-                        `rgba(239,68,68,${Math.min(0.8, Math.abs(v)/maxAbs*0.8+0.2)})`
+                    value: v,
+                    itemStyle: {
+                        color: v >= 0 ? '#22c55e' : '#ef4444',
+                        opacity: 0.4 + 0.6 * Math.min(Math.abs(v)/maxAbs, 1),
+                        borderRadius: v >= 0 ? [3,3,0,0] : [0,0,3,3]
                     }
                 })),
+                label: {
+                    show: true,
+                    position: v => v >= 0 ? 'top' : 'bottom',
+                    fontSize: 9,
+                    formatter: p => {
+                        const v = Number(p.value);
+                        return (v > 0 ? '+' : '') + v.toFixed(1) + '%';
+                    },
+                    color: v => v >= 0 ? '#16a34a' : '#dc2626'
+                }
             }]
         });
     } else if (heatmapDom) {

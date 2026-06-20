@@ -36,6 +36,7 @@ import pandas as pd
 
 from ..backtest.engine import BacktestReport
 from ..config import get_config
+from ..db.sql_utils import read_sql
 from ..models.repository import DataRepository
 
 logger = logging.getLogger(__name__)
@@ -146,19 +147,22 @@ class TechnicalVotingModel:
         # 需要稍微提前开始以计算指标 (加 120 个交易日)
         query_start = start - timedelta(days=365)
 
-        codes_str = ",".join(f"'{c}'" for c in stock_pool)
-        query = f"""
+        sql = """
             SELECT dp.code, sb.name, dp.trade_date,
                    dp.open, dp.high, dp.low, dp.close,
                    dp.volume, dp.amount, dp.pct_change
             FROM daily_price dp
             JOIN stock_basic sb ON dp.code = sb.code
-            WHERE dp.code IN ({codes_str})
-              AND dp.trade_date >= '{query_start}'
-              AND dp.trade_date <= '{end}'
+            WHERE dp.code IN :codes
+              AND dp.trade_date >= :query_start
+              AND dp.trade_date <= :end
             ORDER BY dp.code, dp.trade_date
         """
-        df = pd.read_sql(query, self.repo.engine)
+        df = read_sql(sql, self.repo.engine, {
+            "codes": list(stock_pool),
+            "query_start": query_start,
+            "end": end,
+        })
         if df.empty:
             return df
         df["trade_date"] = pd.to_datetime(df["trade_date"])

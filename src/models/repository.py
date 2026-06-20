@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, func, text
 from sqlalchemy.orm import Session, joinedload
 
 from ..config import get_config, get_db_url
+from ..db.sql_utils import read_sql
 from .database import Base, StockBasic, DailyPrice, BenchmarkData, StrategyConfig, BacktestResult, DataSourceMeta, TechnicalIndicator, FinanceSummary, StockProfile, FundFlowData
 
 
@@ -55,11 +56,13 @@ class DataRepository:
 
     def get_stock_list(self, market: Optional[str] = None) -> pd.DataFrame:
         """获取股票列表，可选按市场筛选"""
-        query = "SELECT code, name, market, list_date, industry FROM stock_basic"
+        sql = "SELECT code, name, market, list_date, industry FROM stock_basic"
+        params: dict = {}
         if market:
-            query += f" WHERE market = '{market}'"
-        query += " ORDER BY code"
-        return pd.read_sql(query, self.engine)
+            sql += " WHERE market = :market"
+            params["market"] = market
+        sql += " ORDER BY code"
+        return read_sql(sql, self.engine, params)
 
     def get_stock_count(self) -> int:
         """获取股票总数"""
@@ -70,15 +73,15 @@ class DataRepository:
 
     def get_daily_data(self, code: str, start: date, end: date) -> pd.DataFrame:
         """获取指定股票在日期范围内的日线数据，返回 DataFrame"""
-        query = f"""
+        sql = """
             SELECT trade_date, open, high, low, close, volume, amount, pct_change, turnover
             FROM daily_price
-            WHERE code = '{code}'
-              AND trade_date >= '{start}'
-              AND trade_date <= '{end}'
+            WHERE code = :code
+              AND trade_date >= :start
+              AND trade_date <= :end
             ORDER BY trade_date ASC
         """
-        df = pd.read_sql(query, self.engine)
+        df = read_sql(sql, self.engine, {"code": code, "start": start, "end": end})
         df['trade_date'] = pd.to_datetime(df['trade_date'])
         df.set_index('trade_date', inplace=True)
         return df
@@ -120,15 +123,15 @@ class DataRepository:
 
     def get_benchmark_data(self, index_code: str, start: date, end: date) -> pd.DataFrame:
         """获取基准指数数据"""
-        query = f"""
+        sql = """
             SELECT trade_date, close, pct_change
             FROM benchmark_data
-            WHERE index_code = '{index_code}'
-              AND trade_date >= '{start}'
-              AND trade_date <= '{end}'
+            WHERE index_code = :code
+              AND trade_date >= :start
+              AND trade_date <= :end
             ORDER BY trade_date ASC
         """
-        df = pd.read_sql(query, self.engine)
+        df = read_sql(sql, self.engine, {"code": index_code, "start": start, "end": end})
         df['trade_date'] = pd.to_datetime(df['trade_date'])
         df.set_index('trade_date', inplace=True)
         return df
@@ -212,17 +215,17 @@ class DataRepository:
             DataFrame with columns: code, name, trade_date, open, high, low,
             close, volume, amount, pct_change, turnover
         """
-        query = f"""
+        sql = """
             SELECT dp.code, sb.name, dp.trade_date,
                    dp.open, dp.high, dp.low, dp.close,
                    dp.volume, dp.amount, dp.pct_change, dp.turnover
             FROM daily_price dp
             JOIN stock_basic sb ON dp.code = sb.code
-            WHERE dp.trade_date >= '{start}'
-              AND dp.trade_date <= '{end}'
+            WHERE dp.trade_date >= :start
+              AND dp.trade_date <= :end
             ORDER BY dp.code, dp.trade_date
         """
-        df = pd.read_sql(query, self.engine)
+        df = read_sql(sql, self.engine, {"start": start, "end": end})
         if not df.empty:
             df["trade_date"] = pd.to_datetime(df["trade_date"])
         return df
@@ -241,17 +244,17 @@ class DataRepository:
             DataFrame with columns: trade_date, macd_dif, macd_dea, macd_hist,
             rsi14, kdj_k, kdj_d, kdj_j, boll_mid, boll_upper, boll_lower
         """
-        query = f"""
+        sql = """
             SELECT trade_date, macd_dif, macd_dea, macd_hist,
                    rsi14, kdj_k, kdj_d, kdj_j,
                    boll_mid, boll_upper, boll_lower
             FROM technical_indicators
-            WHERE code = '{code}'
-              AND trade_date >= '{start}'
-              AND trade_date <= '{end}'
+            WHERE code = :code
+              AND trade_date >= :start
+              AND trade_date <= :end
             ORDER BY trade_date ASC
         """
-        df = pd.read_sql(query, self.engine)
+        df = read_sql(sql, self.engine, {"code": code, "start": start, "end": end})
         if not df.empty:
             df["trade_date"] = pd.to_datetime(df["trade_date"])
             df.set_index("trade_date", inplace=True)
@@ -293,17 +296,16 @@ class DataRepository:
         """
         if not codes:
             return pd.DataFrame()
-        codes_str = ", ".join([f"'{c}'" for c in codes])
-        query = f"""
+        sql = """
             SELECT code, _date, ROETTM, EPSTTM, NAPS,
                    DebtAssetsRatio, OperatingRevenueGrowRate,
                    NPParentCompanyOwnersTTM, NPParentCompanyYOY,
                    NetOperateCashFlowTTM, TotalShareholderEquity,
                    NetProfitRatioTTM, TotalAssets
             FROM finance_summary
-            WHERE code IN ({codes_str})
+            WHERE code IN :codes
         """
-        return pd.read_sql(query, self.engine)
+        return read_sql(sql, self.engine, {"codes": list(codes)})
 
     def get_profitable_codes(self) -> List[str]:
         """获取所有 NPParentCompanyOwnersTTM > 0 的股票代码"""
@@ -327,14 +329,14 @@ class DataRepository:
 
     def get_industry_distribution(self) -> pd.DataFrame:
         """获取行业分布统计"""
-        query = """
+        sql = """
             SELECT sp.industry, COUNT(*) as stock_count
             FROM stock_profile sp
             WHERE sp.industry IS NOT NULL AND sp.industry != ''
             GROUP BY sp.industry
             ORDER BY stock_count DESC
         """
-        return pd.read_sql(query, self.engine)
+        return read_sql(sql, self.engine)
 
     def enrich_stock_basic_with_profile(self) -> int:
         """从 stock_profile 补充 stock_basic 中缺失的 industry 和 list_date
@@ -380,16 +382,20 @@ class DataRepository:
     def get_fund_flow_for_code(self, code: str, end_date: str, lookback: int = 30) -> "pd.DataFrame":
         """获取某只股票的资金流向数据"""
         import pandas as pd
-        query = f"""
+        sql = """
             SELECT trade_date, main_net, super_large_net, large_net,
                    medium_net, small_net
             FROM fund_flow_data
-            WHERE code = '{code}'
-              AND trade_date <= '{end_date}'
+            WHERE code = :code
+              AND trade_date <= :end_date
             ORDER BY trade_date DESC
-            LIMIT {lookback}
+            LIMIT :lookback
         """
-        df = pd.read_sql(query, self.engine)
+        df = read_sql(sql, self.engine, {
+            "code": code,
+            "end_date": end_date,
+            "lookback": int(lookback),
+        })
         if not df.empty:
             df = df.sort_values("trade_date").reset_index(drop=True)
         return df

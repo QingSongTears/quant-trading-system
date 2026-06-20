@@ -23,21 +23,20 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Tuple, Optional
 
 from ..config import get_config, get_db_url
+from ..db.sql_utils import read_sql
+from .base import BaseScorer
 
 # 研报数据缓存
 _research_cache: Optional[pd.DataFrame] = None
 
 
-class NewsEventScorer:
+class NewsEventScorer(BaseScorer):
     """消息面评分器"""
 
-    def __init__(self, engine=None):
-        if engine is None:
-            config = get_config()
-            db_url = get_db_url(config)
-            self.engine = create_engine(db_url, echo=False)
-        else:
-            self.engine = engine
+    name = "news_event"
+    label_zh = "消息面"
+    weight = 0.15
+    max_raw = 21
 
     # ============================================================
     #  数据加载
@@ -45,15 +44,15 @@ class NewsEventScorer:
 
     def _get_announcements(self, code: str, as_of_date: str, lookback: int = 30) -> pd.DataFrame:
         """获取近期公告"""
-        query = f"""
+        sql = """
             SELECT title, date FROM announcements
-            WHERE code = '{code}'
-              AND date <= '{as_of_date}'
+            WHERE code = :code
+              AND date <= :as_of
             ORDER BY date DESC
             LIMIT 50
         """
         try:
-            return pd.read_sql(query, self.engine)
+            return read_sql(sql, self.engine, {"code": code, "as_of": as_of_date})
         except:
             return pd.DataFrame(columns=["title", "date"])
 
@@ -320,15 +319,14 @@ class NewsEventScorer:
         """批量加载所有股票的公告数据"""
         if not codes:
             return {}
-        codes_str = "', '".join(codes)
-        query = f"""
+        sql = """
             SELECT code, title, date FROM announcements
-            WHERE code IN ('{codes_str}')
-              AND date <= '{as_of_date}'
+            WHERE code IN :codes
+              AND date <= :as_of
             ORDER BY code, date DESC
         """
         try:
-            df = pd.read_sql(query, self.engine)
+            df = read_sql(sql, self.engine, {"codes": list(codes), "as_of": as_of_date})
         except Exception:
             return {c: pd.DataFrame(columns=["title", "date"]) for c in codes}
 
