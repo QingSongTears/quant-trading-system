@@ -140,6 +140,22 @@ class PortfolioBacktestEngine:
             df["pct_change"] = df["pct_change"].fillna(0)
             df = df.drop(columns=["prev_close"])
 
+        # 修复: turnover 列可能为 NULL — 选股策略依赖它计算 mcap_yi
+        # 兜底策略:
+        #   - 全 NULL: 用 1.0 (1% 换手率常量) 作为代理
+        #     理由: mcap_yi = amount / turnover, 1.0 是 A 股换手率常见量级
+        #     后果: mcap_yi 退化为 amount/1e6, 仅保持相对顺序, 绝对值有偏
+        #   - 部分 NULL: 缺失视为 0 (即该日无成交 → mcap 退化为 0)
+        if df["turnover"].isna().all():
+            logger.warning(
+                "turnover 全为 NULL (来自 daily_price 表), 使用 1.0 作为代理值. "
+                "这会让 mcap_yi 退化为 amount/1e6 (亿元), 仅保留相对顺序. "
+                "如需精确数据, 请重新导入 turnover 字段."
+            )
+            df["turnover"] = 1.0
+        else:
+            df["turnover"] = df["turnover"].fillna(0)
+
         return df
 
     def _get_rebalance_dates(self, data: pd.DataFrame, rebalance_days: int) -> List[pd.Timestamp]:
@@ -163,9 +179,24 @@ class PortfolioBacktestEngine:
         # 按股票分组，取最近 lookback 行
         recent = cutoff_data.groupby("code").tail(lookback)
 
-        # 只保留有足够数据的股票 (至少 lookback/2 条)
+        # 只保留有足够数据的股票
+        # 原始要求: stock_counts >= lookback // 2
+        # 修复: 当数据区间不足 lookback 时, 放宽要求 (使用实际可用天数的一半)
+        #   例: lookback=252, 实际数据=22 → min_required=11 而非 126
+        #   这样 lookback_days=252 的策略也能在数据初期运行
         stock_counts = recent.groupby("code").size()
-        valid_codes = stock_counts[stock_counts >= lookback // 2].index
+        if len(stock_counts) == 0:
+            return pd.DataFrame()
+        max_records = int(stock_counts.max())
+        min_required = min(lookback // 2, max(max_records // 2, 1))
+        if max_records < lookback // 2:
+            logger.warning(
+                "_build_universe: 数据区间只有 %d 条, 不足 lookback/2=%d, "
+                "放宽到 %d (策略: %s)",
+                max_records, lookback // 2, min_required,
+                type(strategy).__name__ if strategy else "unknown",
+            )
+        valid_codes = stock_counts[stock_counts >= min_required].index
         recent = recent[recent["code"].isin(valid_codes)]
 
         if recent.empty:

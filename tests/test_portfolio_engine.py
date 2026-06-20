@@ -6,8 +6,8 @@ its equity curve against the refactored engine running on the same fixture.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
-from typing import Dict, List
+from datetime import date
+from typing import List
 
 import numpy as np
 import pandas as pd

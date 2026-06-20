@@ -36,6 +36,7 @@ from ..strategies.small_cap import SmallCapStrategy
 from ..strategies.reversal import ReversalStrategy
 from ..strategies.low_volatility import LowVolatilityStrategy
 from .market_thermometer import MarketThermometer, Regime
+from ._list_date import add_days_since_list
 
 
 class ShieldSpearStrategy(BaseSelectionStrategy):
@@ -86,13 +87,9 @@ class ShieldSpearStrategy(BaseSelectionStrategy):
             df = df[df["close"] >= self.min_price]
 
         if "list_date" in df.columns:
-            df["_list_date_dt"] = pd.to_datetime(df["list_date"])
-            today = date.today()
-            df["_days_since_list"] = df["_list_date_dt"].apply(
-                lambda d: (today - d.date()).days if hasattr(d, 'date') else 9999
-            )
+            df = add_days_since_list(df, "list_date")
             df = df[df["_days_since_list"] >= self.min_list_days]
-            df = df.drop(columns=["_list_date_dt", "_days_since_list"], errors="ignore")
+            df = df.drop(columns=["_days_since_list"], errors="ignore")
 
         return df
 

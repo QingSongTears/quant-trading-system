@@ -14,6 +14,8 @@
     <script src="{{ cdn.echarts }}/echarts.min.js" defer></script>
     <!-- HTMX -->
     <script src="{{ cdn.htmx }}/dist/htmx.min.js" defer></script>
+    {# 子页面可注入额外 head 资源 (CSS / 字体 / meta) #}
+    {% block extra_head %}{% endblock %}
     <style>
         :root {
             --profit-green: #22c55e;
@@ -131,11 +133,6 @@
                     <li class="nav-item">
                         <a class="nav-link {% if request.url.path == '/data' %}active{% endif %}" href="/data">
                             <i class="bi bi-database"></i> 数据管理
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.url.path == '/backtest' %}active{% endif %}" href="/backtest">
-                            <i class="bi bi-play-circle"></i> 回测执行
                         </a>
                     </li>
                     <li class="nav-item">
@@ -270,7 +267,7 @@
         const shortcuts = {
             'g d':   '/',       // 仪表盘
             'g s':   '/strategies', // 策略
-            'g b':   '/backtest',   // 回测
+            'g b':   '/workbench',  // 回测 (合并到工作台)
             'g c':   '/compare',    // 对比
             'g w':   '/workbench',  // 工作台
             'g a':   '/data',       // 数据

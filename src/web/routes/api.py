@@ -2,12 +2,16 @@
 API 路由 (JSON 响应)
 """
 import json
+import logging
 import threading
+import traceback
 from datetime import date, datetime
 from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from ...models.repository import DataRepository
 from ...data.downloader import DataDownloader
@@ -241,6 +245,20 @@ async def run_backtest(req: BacktestRequest):
 
         for s in strategies_config.get("strategies", []):
             if s["name"] == req.strategy_name:
+                # 投票/组合/stock_screener 类策略需要专用 endpoint
+                s_type = s.get("strategy_type")
+                if s_type in ("voting", "portfolio"):
+                    raise ValueError(
+                        f"策略 {req.strategy_name!r} 是 {s_type} 类型, "
+                        f"请使用 /api/backtest/{s_type}/run 端点"
+                    )
+                if s.get("engine") == "stock_screener" or s_type == "stock_screener":
+                    raise ValueError(
+                        f"策略 {req.strategy_name!r} 走 stock_screener 私有引擎, "
+                        f"与主 backtesting.py 引擎不兼容 (需要先将其迁移到 "
+                        f"src/backtest/base_strategy.py 的 BaseStrategy 接口). "
+                        f"详见 stock_screener 文档。"
+                    )
                 import importlib
                 module_path, class_name = s["class_path"].rsplit(".", 1)
                 module = importlib.import_module(module_path)
@@ -320,6 +338,7 @@ async def run_backtest(req: BacktestRequest):
         }
 
     except Exception as e:
+        logger.error("backtest/run 失败: %s\n%s", e, traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -418,6 +437,7 @@ async def run_portfolio_backtest(req: PortfolioBacktestRequest):
         }
 
     except Exception as e:
+        logger.error("backtest/portfolio/run 失败: %s\n%s", e, traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -505,6 +525,7 @@ async def run_voting_backtest(req: VotingBacktestRequest):
         }
 
     except Exception as e:
+        logger.error("backtest/voting/run 失败: %s\n%s", e, traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 
