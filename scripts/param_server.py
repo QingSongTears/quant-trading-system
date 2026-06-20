@@ -27,6 +27,7 @@ records = []
 dim_cols = []
 industry_map = {}  # code(6-digit) → industry_name
 industry_ic_cache = None  # 缓存行业IC结果
+SEARCH_INDEX = None  # 搜索索引缓存
 
 # ── 任务管理 ──
 class BacktestTask:
@@ -530,7 +531,7 @@ def api_v5_scan_results():
 SEARCH_INDEX = None  # 懒加载
 
 def _build_search_index():
-    """构建搜索索引: code/name/拼音首字母"""
+    """构建搜索索引: code/name/拼音首字母，支持中文模糊搜索"""
     global SEARCH_INDEX
     if SEARCH_INDEX is not None:
         return SEARCH_INDEX
@@ -539,18 +540,27 @@ def _build_search_index():
         from pypinyin import lazy_pinyin, Style
         db = sqlite3.connect(str(PROJECT_ROOT / "database" / "quant.db"))
         cur = db.cursor()
-        cur.execute("SELECT code, name FROM stock_basic WHERE name IS NOT NULL")
+        cur.execute("SELECT code, name FROM stock_profile WHERE name IS NOT NULL")
         rows = cur.fetchall()
         db.close()
         index = []
-        for code, name in rows:
-            code = code.strip()
+        seen_codes = set()
+        for code_raw, name in rows:
+            code = code_raw.replace('sz','').replace('sh','').strip().zfill(6)
+            if code in seen_codes:
+                continue
+            seen_codes.add(code)
             name = name.strip() if name else ""
-            initials = "".join(lazy_pinyin(name, style=Style.FIRST_LETTER)) if name else ""
-            full_py = "".join(lazy_pinyin(name)) if name else ""
-            index.append({"code": code, "name": name, "initials": initials, "full_py": full_py})
+            # 清理名称中的空格和特殊字符
+            name_clean = name.replace(' ', '').replace('Ａ', 'A').replace('Ｂ', 'B')
+            initials = "".join(lazy_pinyin(name_clean, style=Style.FIRST_LETTER)) if name_clean else ""
+            full_py = "".join(lazy_pinyin(name_clean)) if name_clean else ""
+            index.append({"code": code, "name": name_clean, "initials": initials, "full_py": full_py})
         SEARCH_INDEX = index
-        print(f"  [搜索索引] {len(index)} 只股票已加载")
+        print(f"  [搜索索引] {len(index)} 只股票已加载 (含中英文模糊搜索)")
+    except ImportError:
+        print("  [搜索索引] pypinyin未安装，跳过拼音搜索")
+        SEARCH_INDEX = []
     except Exception as e:
         print(f"  [搜索索引] 失败: {e}")
         SEARCH_INDEX = []
@@ -559,31 +569,59 @@ def _build_search_index():
 
 @app.route("/api/stock/search")
 def api_stock_search():
-    """搜索股票: 支持代码/名称/拼音首字母模糊搜索"""
+    """通用搜索: 股票代码/中文名称/拼音首字母/全拼 模糊搜索"""
     q = request.args.get("q", "").strip().lower()
     if not q or len(q) < 1:
         return jsonify({"results": []})
     
     index = _build_search_index()
     results = []
+    seen_codes = set()
+    
     for item in index:
-        # 代码匹配
-        if q in item["code"]:
-            results.append({"code": item["code"], "name": item["name"], "match": "code"})
-        # 名称匹配
-        elif q in item["name"].lower():
-            results.append({"code": item["code"], "name": item["name"], "match": "name"})
-        # 拼音首字母匹配
-        elif q in item["initials"]:
-            results.append({"code": item["code"], "name": item["name"], "match": "pinyin"})
-        # 全拼匹配
-        elif q in item["full_py"]:
-            results.append({"code": item["code"], "name": item["name"], "match": "pinyin"})
-        
         if len(results) >= 20:
             break
+        code = item["code"]
+        
+        # 1. 代码精确匹配优先
+        if q == code or (len(q) <= 6 and code.endswith(q.zfill(6))):
+            if code not in seen_codes:
+                seen_codes.add(code)
+                results.insert(0, {"code": code, "name": item["name"], "match": "code"})
+            continue
+        
+        # 2. 代码模糊匹配
+        if q in code:
+            if code not in seen_codes:
+                seen_codes.add(code)
+                results.append({"code": code, "name": item["name"], "match": "fuzzy_code"})
+            continue
+        
+        # 3. 中文名称模糊匹配（正向+子串）
+        name_lower = item["name"].lower().replace(' ', '')
+        if q in name_lower or name_lower.startswith(q) or q in name_lower.replace('*', ''):
+            if code not in seen_codes:
+                seen_codes.add(code)
+                results.append({"code": code, "name": item["name"], "match": "name_fuzzy"})
+            continue
+        
+        # 4. 拼音首字母匹配
+        initials = item.get("initials", "")
+        if q in initials:
+            if code not in seen_codes:
+                seen_codes.add(code)
+                results.append({"code": code, "name": item["name"], "match": "pinyin_initials"})
+            continue
+        
+        # 5. 全拼匹配
+        full_py = item.get("full_py", "")
+        if q in full_py:
+            if code not in seen_codes:
+                seen_codes.add(code)
+                results.append({"code": code, "name": item["name"], "match": "pinyin_full"})
+            continue
     
-    return jsonify({"results": results})
+    return jsonify({"query": q, "total": len(results), "results": results})
 
 
 @app.route("/api/status")
