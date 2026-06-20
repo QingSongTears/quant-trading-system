@@ -341,7 +341,163 @@ def portfolio_page():
     return send_from_directory(str(PROJECT_ROOT / "output"), "portfolio.html")
 
 
-# ── 股票搜索API ──
+@app.route("/v5")
+def v5_tuning():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "v5_tuning.html")
+
+
+# ── v5_hybrid API ──
+
+_V5_KLINE_CACHE = None
+_V5_QUOTES_CACHE = None
+_V5_FINANCE_CACHE = None
+
+def _v5_load_cache():
+    global _V5_KLINE_CACHE, _V5_QUOTES_CACHE, _V5_FINANCE_CACHE
+    if _V5_KLINE_CACHE is not None:
+        return
+    print("[v5] 加载数据缓存...")
+    CACHE_PATH = PROJECT_ROOT / "src" / "strategies" / "stock_screener" / "data" / "processed" / "kline_2025plus.parquet"
+    if CACHE_PATH.exists():
+        _V5_KLINE_CACHE = pd.read_parquet(CACHE_PATH)
+        print(f"[v5] K线: {len(_V5_KLINE_CACHE):,}行")
+    # 加载行情和财务
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT))
+        from src.strategies.stock_screener.core.data_loader import load_quotes, load_finance
+        _V5_QUOTES_CACHE = load_quotes()
+        _V5_FINANCE_CACHE = load_finance()
+        print(f"[v5] 行情: {len(_V5_QUOTES_CACHE)}只, 财务: {len(_V5_FINANCE_CACHE)}只")
+    except Exception as e:
+        print(f"[v5] 数据加载失败: {e}")
+
+
+@app.route("/api/v5/run", methods=["POST"])
+def api_v5_run():
+    """运行 v5_hybrid 回测"""
+    _v5_load_cache()
+    if _V5_KLINE_CACHE is None:
+        return jsonify({"error": "数据缓存未就绪，请确认指标缓存文件存在"}), 503
+
+    data = request.get_json() or {}
+    # 合并参数
+    params = {
+        "MAX_RSI_14": int(data.get("MAX_RSI_14", 38)),
+        "MAX_RSI_6": int(data.get("MAX_RSI_6", 26)),
+        "MAX_BB_POSITION": float(data.get("MAX_BB_POSITION", 0.10)),
+        "MAX_DRAWDOWN_60D": float(data.get("MAX_DRAWDOWN_60D", -8)),
+        "TREND_CHECKS_MIN": int(data.get("TREND_CHECKS_MIN", 2)),
+        "STOP_LOSS": float(data.get("STOP_LOSS", -0.07)),
+        "TAKE_PROFIT": float(data.get("TAKE_PROFIT", 0.15)),
+        "TRAILING_STOP": float(data.get("TRAILING_STOP", 0.12)),
+        "TRAILING_DD": float(data.get("TRAILING_DD", -0.03)),
+    }
+    pos_pct = float(data.get("POSITION_PCT", 0.08))
+    start_date = str(data.get("start_date", "2025-01-01"))
+    end_date = str(data.get("end_date", "2026-06-12"))
+
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "strategies" / "stock_screener"))
+        from backtest.engine import BacktestEngine as V5Engine
+        from strategies.v5_hybrid import V5HybridStrategy
+
+        strategy = V5HybridStrategy(**params)
+        engine = V5Engine(
+            initial_capital=1_000_000,
+            start_date=start_date,
+            end_date=end_date,
+            max_positions=10,
+            single_position_pct=pos_pct,
+        )
+        engine.add_strategy(strategy, weight=1.0)
+        result = engine.run(verbose=False, kline=_V5_KLINE_CACHE,
+                           quotes=_V5_QUOTES_CACHE, finance=_V5_FINANCE_CACHE)
+
+        sr = result.strategies.get(strategy.name) if result else None
+        if not sr or not sr.trades:
+            return jsonify({
+                "trades": 0, "sharpe": 0, "max_dd": 0, "total_return": 0,
+                "annual_ret": 0, "win_rate": 0, "profit_factor": 0,
+                "equity_curve": [], "trades": [],
+                "message": "策略未产生交易"
+            })
+
+        trades = sr.trades
+        wins = [t for t in trades if t.return_pct > 0]
+        losses = [t for t in trades if t.return_pct <= 0]
+        wr = len(wins)/len(trades)*100 if trades else 0
+        pf_num = sum(t.return_pct for t in wins)
+        pf_den = abs(sum(t.return_pct for t in losses)) if losses else 0
+        pf = pf_num / pf_den if pf_den else 0
+        days = (pd.Timestamp(end_date) - pd.Timestamp(start_date)).days
+        annual = ((1 + result.total_return / 100) ** (365 / days) - 1) * 100 if days > 0 else 0
+
+        # 退出原因
+        reasons = {}
+        for t in trades:
+            reasons[t.exit_reason] = reasons.get(t.exit_reason, 0) + 1
+
+        # 权益曲线
+        eq = result.combined_equity
+        eq_list = [{"date": str(r["date"])[:10], "value": round(r["equity"], 2)}
+                   for _, r in eq.iterrows()]
+
+        # 计算最大回撤
+        peak = eq["equity"].cummax()
+        dd = (eq["equity"] - peak) / peak * 100
+
+        return jsonify({
+            "trades": len(trades),
+            "total_return": round(result.total_return, 2),
+            "annual_ret": round(annual, 2),
+            "max_dd": round(result.max_drawdown, 2),
+            "sharpe": round(result.sharpe, 2),
+            "win_rate": round(wr, 1),
+            "profit_factor": round(pf, 2),
+            "final_equity": round(eq["equity"].iloc[-1], 2),
+            "exit_reasons": reasons,
+            "equity_curve": eq_list,
+            "trade_list": [{
+                "code": t.code,
+                "entry_date": t.entry_date,
+                "exit_date": t.exit_date,
+                "return_pct": round(t.return_pct, 1),
+                "hold_days": t.hold_days,
+                "exit_reason": t.exit_reason,
+            } for t in trades],
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/v5/scan-results")
+def api_v5_scan_results():
+    """返回 #54 参数扫描结果"""
+    csv_path = (PROJECT_ROOT / "src" / "strategies" / "stock_screener" /
+                "output" / "combined" / "param_scan_v5_partial.csv")
+    if not csv_path.exists():
+        return jsonify({"results": []})
+    try:
+        df = pd.read_csv(csv_path)
+        df = df.sort_values("sharpe", ascending=False).head(15)
+        results = []
+        for _, r in df.iterrows():
+            results.append({
+                "params": r.get("params", ""),
+                "trades": int(r.get("trades", 0)),
+                "total_return": r.get("return", 0),
+                "annual_ret": r.get("annual_ret", 0),
+                "max_dd": r.get("max_dd", 0),
+                "sharpe": r.get("sharpe", 0),
+                "win_rate": r.get("win_rate", 0),
+                "profit_factor": r.get("profit_factor", 0),
+            })
+        return jsonify({"results": results})
+    except Exception as e:
+        return jsonify({"results": [], "error": str(e)})# ── 股票搜索API ──
 SEARCH_INDEX = None  # 懒加载
 
 def _build_search_index():
