@@ -1447,6 +1447,79 @@ def api_stock_backtest(code):
     result = _run_single_stock_backtest(code, strategy_id, params)
     if "error" in result:
         return jsonify(result), 404
+
+    # ── 保存回测结果到数据库 ──
+    try:
+        import sqlite3, json, datetime
+        db = PROJECT_ROOT / "database" / "quant.db"
+        conn = sqlite3.connect(str(db))
+        s = result.get("summary", {})
+        now = datetime.datetime.now().isoformat()
+        start_date = params.get("start", result.get("dates", [None])[0] or "2000-01-01")
+        end_date = params.get("end", result.get("dates", [None])[-1] or "2099-12-31")
+        if isinstance(start_date, str) and len(start_date) > 10: start_date = start_date[:10]
+        if isinstance(end_date, str) and len(end_date) > 10: end_date = end_date[:10]
+
+        # 查找或创建策略配置
+        strat_name = STRATEGY_REGISTRY.get(strategy_id, {}).get("name", strategy_id)
+        cur = conn.execute("SELECT id FROM strategy_config WHERE name=?", (strat_name,))
+        row = cur.fetchone()
+        if row:
+            strategy_db_id = row[0]
+        else:
+            cur.execute(
+                "INSERT INTO strategy_config (name, class_path, params, description, source, created_at) VALUES (?,?,?,?,?,?)",
+                (strat_name, f"scripts.param_server.{strategy_id}", json.dumps(params),
+                 STRATEGY_REGISTRY.get(strategy_id, {}).get("desc", ""), "param_server", now))
+            strategy_db_id = cur.lastrowid
+
+        equity_curve = json.dumps(result.get("equityCurve", []), ensure_ascii=False)
+        trades_detail = json.dumps(result.get("trades", []), ensure_ascii=False)
+
+        # 检查是否已存在相同记录（策略+代码+区间）
+        cur.execute("""SELECT id FROM backtest_result
+                       WHERE strategy_id=? AND stock_code=? AND start_date=? AND end_date=?
+                       ORDER BY created_at DESC LIMIT 1""",
+                    (strategy_db_id, code, start_date, end_date))
+        existing = cur.fetchone()
+
+        insert_sql = """INSERT INTO backtest_result
+            (strategy_id, stock_code, stock_name, start_date, end_date,
+             initial_capital, final_equity, total_return, annual_return,
+             sharpe_ratio, max_drawdown, win_rate, profit_factor, total_trades,
+             annual_volatility, benchmark_return, excess_return,
+             equity_curve, trades_detail, created_at)
+            VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?)"""
+
+        insert_vals = (
+            strategy_db_id, code, result.get("code", ""),
+            start_date, end_date,
+            s.get("initialCapital", 100000), s.get("finalValue", 100000),
+            s.get("totalReturn"), s.get("annualReturn"), s.get("sharpe"),
+            s.get("maxDrawdown"), s.get("winRate"), s.get("profitFactor", 0),
+            s.get("totalTrades"), s.get("annualVolatility"),
+            s.get("bhReturn"), s.get("excessReturn"),
+            equity_curve, trades_detail, now
+        )
+
+        if existing:
+            conn.execute(f"""UPDATE backtest_result SET
+                total_return=?, annual_return=?, sharpe_ratio=?, max_drawdown=?,
+                win_rate=?, profit_factor=?, total_trades=?, benchmark_return=?,
+                excess_return=?, equity_curve=?, trades_detail=?, created_at=?
+                WHERE id=?""",
+                (s.get("totalReturn"), s.get("annualReturn"), s.get("sharpe"),
+                 s.get("maxDrawdown"), s.get("winRate"), s.get("profitFactor", 0),
+                 s.get("totalTrades"), s.get("bhReturn"), s.get("excessReturn"),
+                 equity_curve, trades_detail, datetime.datetime.now().isoformat(),
+                 existing[0]))
+        else:
+            conn.execute(insert_sql, insert_vals)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"  [保存回测结果] 失败: {e}")
+
     return jsonify(result)
 
 
@@ -1454,6 +1527,65 @@ def api_stock_backtest(code):
 def api_strategies():
     """返回所有可用策略的元数据"""
     return jsonify(STRATEGY_REGISTRY)
+
+
+@app.route("/api/backtest/history")
+def api_backtest_history():
+    """获取回测历史记录"""
+    import sqlite3, json
+    limit = request.args.get("limit", 50, type=int)
+    db = PROJECT_ROOT / "database" / "quant.db"
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("""
+        SELECT r.id, s.name as strategy_name, r.stock_code, r.stock_name,
+               r.start_date, r.end_date, r.initial_capital,
+               r.total_return, r.sharpe_ratio, r.max_drawdown,
+               r.win_rate, r.total_trades, r.benchmark_return,
+               r.excess_return, r.created_at
+        FROM backtest_result r
+        LEFT JOIN strategy_config s ON r.strategy_id = s.id
+        WHERE r.total_return IS NOT NULL
+        ORDER BY r.created_at DESC
+        LIMIT ?
+    """, (limit,))
+    results = [dict(r) for r in rows]
+    conn.close()
+    # 处理日期格式
+    for r in results:
+        for k in ['created_at', 'start_date', 'end_date']:
+            if r.get(k):
+                r[k] = str(r[k])[:19]
+    return jsonify({"total": len(results), "results": results})
+
+
+@app.route("/api/backtest/history/<int:result_id>")
+def api_backtest_detail(result_id):
+    """获取单条回测详情（含净值曲线和交易明细）"""
+    import sqlite3, json
+    db = PROJECT_ROOT / "database" / "quant.db"
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("""
+        SELECT r.*, s.name as strategy_name
+        FROM backtest_result r
+        LEFT JOIN strategy_config s ON r.strategy_id = s.id
+        WHERE r.id = ?
+    """, (result_id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"error": "记录不存在"}), 404
+    r = dict(row)
+    # 解析JSON字段
+    for key in ['equity_curve', 'trades_detail', 'monthly_returns', 'cost_config']:
+        if r.get(key) and isinstance(r[key], str):
+            try: r[key] = json.loads(r[key])
+            except: pass
+    for k in ['created_at', 'start_date', 'end_date']:
+        if r.get(k): r[k] = str(r[k])[:19]
+    return jsonify(r)
+
+
 @app.route("/api/stock/<code>/kline/<period>")
 def api_kline(code, period="day"):
     """K线查询: 优先网络实时数据, 断网降级到本地DB"""
