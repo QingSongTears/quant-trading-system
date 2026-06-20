@@ -1,0 +1,34 @@
+{
+  "tests": [
+    {
+      "name": "workbench 跑回测",
+      "status": "PASS",
+      "detail": "总请求=1, 200=1, 回测API=1, 状态=[200]"
+    },
+    {
+      "name": "回测执行页表单字段",
+      "status": "INFO",
+      "detail": "字段数=6, 字段=[{'name': '', 'id': 'strategy-select', 'type': 'select-one'}, {'name': '', 'id': 'stock-code', 'type': 'text'}, {'name': '', 'id': 'start-date', 'type': 'date'}, {'name': '', 'id': 'end-date', 'type': 'date'}, {'name': '', 'id': 'initial-capital', 'type': 'number'}, {'name': '', 'id': 'commission', 'type': 'number'}]"
+    },
+    {
+      "name": "响应式 (iPhone 375x667)",
+      "status": "PASS",
+      "detail": "body 宽度=375, 视口=375, 横向溢出=False"
+    },
+    {
+      "name": "响应式 (iPad 768x1024)",
+      "status": "PASS",
+      "detail": "body 宽度=768, 视口=768, 横向溢出=False"
+    },
+    {
+      "name": "浏览器后退",
+      "status": "PASS",
+      "detail": "后退1: http://localhost:5054/backtest, 后退2: http://localhost:5054/"
+    },
+    {
+      "name": "/backtest/99999 404 处理",
+      "status": "PASS",
+      "detail": "页面文字前300='404 - 回测记录不存在'"
+    }
+  ]
+}

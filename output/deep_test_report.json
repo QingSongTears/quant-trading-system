@@ -1,0 +1,59 @@
+{
+  "tests": [
+    {
+      "name": "workbench_模型加载",
+      "status": "PASS",
+      "detail": "总模型=13, signal=5, portfolio=7 (期望 13/5/8)"
+    },
+    {
+      "name": "对比按钮触发请求",
+      "status": "FAIL",
+      "detail": "异常: Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"button:has-text('对比'), button:has-text('全部'), button:has-text('运行')\").first\n    - locator resolved to <button disabled id=\"b"
+    },
+    {
+      "name": "backtest列表行可点击",
+      "status": "FAIL",
+      "detail": "异常: Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"table tbody tr\").first\n    - locator resolved to <tr>…</tr>\n  - attempting click action\n    2 × waiting for element to be vi"
+    },
+    {
+      "name": "backtest详情图表渲染",
+      "status": "PASS",
+      "detail": "canvas=3, zr-dom=3, 页面文字长度=766"
+    },
+    {
+      "name": "backtest详情关键区块",
+      "status": "WARN",
+      "detail": "净值区=False, 交易区=False"
+    },
+    {
+      "name": "首页数据卡片",
+      "status": "PASS",
+      "detail": "卡片=14, canvas=1, 显示股票数=None"
+    },
+    {
+      "name": "404 backtest 优雅处理",
+      "status": "PASS",
+      "detail": "有404提示=True, 有错误提示=False, 页面前200字='404 - 回测记录不存在'"
+    },
+    {
+      "name": "策略列表展示",
+      "status": "WARN",
+      "detail": "'13'出现=False, '策略'相关词=15"
+    },
+    {
+      "name": "API 错误请求处理",
+      "status": "PASS",
+      "detail": "响应={\"status\": 422, \"body\": \"{\\\"detail\\\":[{\\\"type\\\":\\\"missing\\\",\\\"loc\\\":[\\\"body\\\",\\\"strategy_name\\\"],\\\"msg\\\":\\\"Field required\\\",\\\"input\\\":{\\\"strategy_id\\\":\\\"not_exist_xyz\\\",\\\"stock_code\\\":\\\"601138\\\",\\\"start_date\\\":\\\"2025-01-01\\\",\\\"end_date\\\":\\\"2025-12-31\\\",\\\"initial_capital\\\":100000}}]}\"}"
+    },
+    {
+      "name": "data 页面股票总数",
+      "status": "PASS",
+      "detail": "页面包含 5209/5206 = True, body 前300字='📊 QuantTrading - A股量化回测系统\\n 仪表盘\\n 数据管理\\n 回测执行\\n 策略管理\\n 多模型对比\\n 工作台\\n 数据来源: AKShare · WeStock · Baostock | 仅供参考\\n 数据管理\\n\\n全市场A股历史数据下载 · 本地SQLite存储 · 可考证数据源\\n\\n 5209 只股票\\n股票总数\\n5,209\\n沪深京三地\\n总记录数\\n3,017,078\\n日均 579 条/股\\n日期范围\\n2024-01-02 ~ 2026-06-16\\n数据覆盖区间\\n数据源状态\\n WeStock (+ AKShare)\\n腾讯自选股批量 + 东方财富兜底\\n 数据下载控制\\n下载模式\\n增量更新（推荐）'"
+    },
+    {
+      "name": "compare 页面",
+      "status": "PASS",
+      "detail": "body 长度=314, 前200字='📊 QuantTrading - A股量化回测系统\\n 仪表盘\\n 数据管理\\n 回测执行\\n 策略管理\\n 多模型对比\\n 工作台\\n 数据来源: AKShare · WeStock · Baostock | 仅供参考\\n 多模型对比\\n\\n横向对比多个策略在同一标的上的回测表现\\n\\n选择多个回测结果进行对比\\n\\n在 回测执行页 运行多个策略后，可通过 URL 参数 ?ids=1,2,3 对比\\n\\n🔵 本文档由 AI 生'"
+    }
+  ]
+}

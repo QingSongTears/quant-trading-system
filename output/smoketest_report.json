@@ -1,0 +1,42 @@
+[
+  {
+    "name": "home",
+    "errors": [],
+    "page_errors": [],
+    "failed_requests": [],
+    "canvases": 1,
+    "zr_doms": 1,
+    "screenshot": "output\\smoketest_home.png",
+    "screenshot_size": 183521
+  },
+  {
+    "name": "backtest26",
+    "errors": [],
+    "page_errors": [],
+    "failed_requests": [],
+    "canvases": 3,
+    "zr_doms": 3,
+    "screenshot": "output\\smoketest_backtest26.png",
+    "screenshot_size": 220805
+  },
+  {
+    "name": "workbench",
+    "errors": [],
+    "page_errors": [],
+    "failed_requests": [],
+    "canvases": 0,
+    "zr_doms": 0,
+    "screenshot": "output\\smoketest_workbench.png",
+    "screenshot_size": 107881
+  },
+  {
+    "name": "strategies",
+    "errors": [],
+    "page_errors": [],
+    "failed_requests": [],
+    "canvases": 0,
+    "zr_doms": 0,
+    "screenshot": "output\\smoketest_strategies.png",
+    "screenshot_size": 278635
+  }
+]

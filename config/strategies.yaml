@@ -13,6 +13,7 @@ strategies:
       slow_period: 20
     description: "短期均线上穿长期均线买入，下穿卖出。经典趋势跟踪策略。"
     source: "基于移动平均线交叉概念，广泛应用于技术分析"
+    strategy_type: "signal"
 
   - name: "MACD金叉死叉"
     class_path: "src.strategies.macd_signal.MACDSignalStrategy"
@@ -22,6 +23,7 @@ strategies:
       signal_period: 9
     description: "MACD线上穿信号线买入，下穿卖出。"
     source: "Appel, G. (1979). The Moving Average Convergence-Divergence Method"
+    strategy_type: "signal"
 
   - name: "RSI超买超卖"
     class_path: "src.strategies.rsi_reversal.RSIReversalStrategy"
@@ -31,6 +33,7 @@ strategies:
       overbought_threshold: 70
     description: "RSI低于超卖阈值买入，高于超买阈值卖出。均值回归策略。"
     source: "Wilder, J. W. (1978). New Concepts in Technical Trading Systems"
+    strategy_type: "signal"
 
   - name: "布林带突破"
     class_path: "src.strategies.bollinger_breakout.BollingerBreakoutStrategy"
@@ -39,6 +42,7 @@ strategies:
       std_dev: 2.0
     description: "价格突破布林带下轨买入，突破上轨卖出。波动率策略。"
     source: "Bollinger, J. (2001). Bollinger on Bollinger Bands"
+    strategy_type: "signal"
 
   - name: "海龟交易法则"
     class_path: "src.strategies.turtle_trading.TurtleTradingStrategy"
@@ -49,6 +53,7 @@ strategies:
       atr_multiplier: 2.0
     description: "唐奇安通道突破入场，ATR动态止损。经典趋势跟踪策略。"
     source: "Faith, C. (2007). Way of the Turtle"
+    strategy_type: "signal"
 
   # ---- v2.0 A股核心选股策略 (Portfolio Selection) ----
   # 策略类型: portfolio — 全市场选股+等权组合+定期调仓
