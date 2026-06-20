@@ -316,6 +316,11 @@ def backtest_view():
     return send_from_directory(str(PROJECT_ROOT / "output"), "backtest_view.html")
 
 
+@app.route("/strategy-compare")
+def strategy_compare():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "strategy_compare.html")
+
+
 @app.route("/diagnose")
 def diagnose_page():
     return send_from_directory(str(PROJECT_ROOT / "output"), "diagnose.html")
@@ -1759,6 +1764,58 @@ def api_backtest_detail(result_id):
     for k in ['created_at', 'start_date', 'end_date']:
         if r.get(k): r[k] = str(r[k])[:19]
     return jsonify(r)
+
+
+@app.route("/api/strategy/compare")
+def api_strategy_compare():
+    """策略对比统计"""
+    import sqlite3
+    db = PROJECT_ROOT / "database" / "quant.db"
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    
+    stats = conn.execute("""
+        SELECT s.name,
+               s.id as strategy_id,
+               COUNT(*) as cnt,
+               AVG(r.total_return) as avg_return,
+               SUM(CASE WHEN r.total_return > 0 THEN 1 ELSE 0 END) as win_count,
+               SUM(CASE WHEN r.total_return = 0 THEN 1 ELSE 0 END) as flat_count,
+               MAX(r.total_return) as best_return,
+               MIN(r.total_return) as worst_return,
+               AVG(r.sharpe_ratio) as avg_sharpe,
+               AVG(r.win_rate) as avg_win_rate,
+               AVG(r.total_trades) as avg_trades,
+               AVG(r.max_drawdown) as avg_drawdown,
+               AVG(r.benchmark_return) as avg_benchmark,
+               AVG(r.excess_return) as avg_excess
+        FROM backtest_result r
+        LEFT JOIN strategy_config s ON r.strategy_id = s.id
+        WHERE r.total_return IS NOT NULL
+        GROUP BY r.strategy_id
+        ORDER BY avg_return DESC
+    """).fetchall()
+    
+    # TOP N 股票 per strategy
+    top_by_strategy = {}
+    for s in stats:
+        sid = s['strategy_id']
+        rows = conn.execute("""
+            SELECT stock_code, total_return, sharpe_ratio, win_rate, total_trades
+            FROM backtest_result
+            WHERE strategy_id=? AND total_return IS NOT NULL
+            ORDER BY total_return DESC LIMIT 10
+        """, (sid,)).fetchall()
+        top_by_strategy[s['strategy_id']] = [dict(r) for r in rows]
+    
+    total = conn.execute("SELECT COUNT(*) as n FROM backtest_result WHERE total_return IS NOT NULL").fetchone()['n']
+    conn.close()
+    
+    return jsonify({
+        "total_records": total,
+        "strategies": [dict(r) for r in stats],
+        "top_by_strategy": {str(k): v for k, v in top_by_strategy.items()},
+    })
 
 
 @app.route("/api/stock/<code>/kline/<period>")
