@@ -32,6 +32,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 
 from ..config import get_config, get_db_url
+from ..db.sql_utils import read_sql
 from ..scoring import ScorerRegistry
 
 
@@ -178,14 +179,14 @@ class SelectionPipeline:
 
     def _load_universe(self, as_of_date: str) -> pd.DataFrame:
         """加载全市场股票 + 当日行情指标"""
-        query = f"""
+        sql = """
             SELECT DISTINCT dp.code, sb.name, dp.close
             FROM daily_price dp
             JOIN stock_basic sb ON dp.code = sb.code
-            WHERE dp.trade_date = '{as_of_date}'
+            WHERE dp.trade_date = :as_of
               AND dp.close > 0
         """
-        df = pd.read_sql(query, self.engine)
+        df = read_sql(sql, self.engine, {"as_of": as_of_date})
         return df
 
     def _apply_filters(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -199,9 +200,9 @@ class SelectionPipeline:
         # PE 负排除 — 从 finance_summary 获取（替代已删除的 finance_snapshot_v2）
         if f.exclude_pe_negative:
             try:
-                pe_data = pd.read_sql(
+                pe_data = read_sql(
                     "SELECT code FROM finance_summary WHERE NPParentCompanyOwnersTTM > 0",
-                    self.engine
+                    self.engine,
                 )
                 pe_data["code"] = pe_data["code"].astype(str).str.zfill(6)
                 df = df[df["code"].isin(pe_data["code"])]

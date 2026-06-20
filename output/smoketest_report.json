@@ -7,7 +7,7 @@
     "canvases": 1,
     "zr_doms": 1,
     "screenshot": "output\\smoketest_home.png",
-    "screenshot_size": 183521
+    "screenshot_size": 193181
   },
   {
     "name": "backtest26",
@@ -17,7 +17,7 @@
     "canvases": 3,
     "zr_doms": 3,
     "screenshot": "output\\smoketest_backtest26.png",
-    "screenshot_size": 220805
+    "screenshot_size": 214899
   },
   {
     "name": "workbench",
@@ -27,7 +27,7 @@
     "canvases": 0,
     "zr_doms": 0,
     "screenshot": "output\\smoketest_workbench.png",
-    "screenshot_size": 107881
+    "screenshot_size": 112534
   },
   {
     "name": "strategies",
@@ -37,6 +37,6 @@
     "canvases": 0,
     "zr_doms": 0,
     "screenshot": "output\\smoketest_strategies.png",
-    "screenshot_size": 278635
+    "screenshot_size": 308549
   }
 ]

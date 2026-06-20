@@ -37,23 +37,25 @@ from sqlalchemy import create_engine, text
 from typing import Dict, Any, List, Tuple
 
 from ..config import get_config, get_db_url
+from ..db.sql_utils import read_sql
+from .base import BaseScorer
 
 
-class FundamentalScorer:
+class FundamentalScorer(BaseScorer):
     """基本面评分器 v2 — 成长合理价模型"""
 
+    name = "fundamental"
+    label_zh = "基本面"
+    weight = 0.15
+    max_raw = 21
+
     def __init__(self, engine=None):
-        if engine is None:
-            config = get_config()
-            db_url = get_db_url(config)
-            self.engine = create_engine(db_url, echo=False)
-        else:
-            self.engine = engine
+        super().__init__(engine=engine)
         self._load_data()
 
     def _load_data(self):
         """v3: 从 finance_summary 加载真实财报数据 + stock_profile 行业/上市日期"""
-        self.df = pd.read_sql(
+        self.df = read_sql(
             "SELECT f.code, "
             "f.ROETTM as roe, f.EPSTTM as eps, f.NAPS, "
             "f.DebtAssetsRatio as debt_ratio, "
@@ -71,7 +73,7 @@ class FundamentalScorer:
             "COALESCE(s.sector, '') as sector "
             "FROM finance_summary f "
             "LEFT JOIN stock_profile s ON f.code = s.code",
-            self.engine
+            self.engine,
         )
         self.df = self.df.set_index("code")
 

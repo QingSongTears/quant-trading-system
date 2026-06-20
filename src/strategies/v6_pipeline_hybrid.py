@@ -23,6 +23,7 @@ from sqlalchemy import text
 
 from src.strategies.v6_reversal_selection import V6ReversalSelectionStrategy
 from src.scoring import ScorerRegistry
+from src.db.sql_utils import read_sql
 
 
 class V6PipelineHybridStrategy(V6ReversalSelectionStrategy):
@@ -148,17 +149,16 @@ class V6PipelineHybridStrategy(V6ReversalSelectionStrategy):
             return candidates
 
         codes = [c["code"] for c in candidates]
-        codes_str = ",".join([f"'{c}'" for c in codes])
 
         try:
-            query = f"""
+            sql = """
                 SELECT code,
                        NPParentCompanyOwnersTTM AS net_profit,
                        TotalShareholderEquity / NULLIF(ABS(NPParentCompanyOwnersTTM), 0) AS pe_ttm
                 FROM finance_summary
-                WHERE code IN ({codes_str})
+                WHERE code IN :codes
             """
-            df = pd.read_sql(query, self.engine)
+            df = read_sql(sql, self.engine, {"codes": list(codes)})
 
             if df.empty:
                 return candidates  # 无财务数据：不过滤

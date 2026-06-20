@@ -30,18 +30,17 @@ from sqlalchemy import create_engine
 from typing import Dict, Any, List, Optional, Tuple
 
 from ..config import get_config, get_db_url
+from ..db.sql_utils import read_sql
+from .base import BaseScorer
 
 
-class SentimentScorer:
+class SentimentScorer(BaseScorer):
     """情绪面评分器 v2 — DB驱动安静好股票模型"""
 
-    def __init__(self, engine=None):
-        if engine is None:
-            config = get_config()
-            db_url = get_db_url(config)
-            self.engine = create_engine(db_url, echo=False)
-        else:
-            self.engine = engine
+    name = "sentiment"
+    label_zh = "情绪面"
+    weight = 0.10
+    max_raw = 18
 
     # ============================================================
     #  批量数据加载
@@ -52,16 +51,19 @@ class SentimentScorer:
         """批量加载公告"""
         if not codes:
             return {}
-        codes_str = "', '".join(codes)
-        query = f"""
+        sql = """
             SELECT code, title, date FROM announcements
-            WHERE code IN ('{codes_str}')
-              AND date <= '{as_of_date}'
-              AND date >= DATE('{as_of_date}', '-{lookback} days')
+            WHERE code IN :codes
+              AND date <= :as_of
+              AND date >= DATE(:as_of, '-' || :lookback || ' days')
             ORDER BY code, date DESC
         """
         try:
-            df = pd.read_sql(query, self.engine)
+            df = read_sql(sql, self.engine, {
+                "codes": list(codes),
+                "as_of": as_of_date,
+                "lookback": int(lookback),
+            })
         except Exception:
             return {c: pd.DataFrame(columns=["title", "date"]) for c in codes}
 
@@ -76,15 +78,17 @@ class SentimentScorer:
         """批量加载价格数据"""
         if not codes:
             return {}
-        codes_str = "', '".join(codes)
-        query = f"""
+        sql = """
             SELECT code, trade_date, close, volume, pct_change
             FROM daily_price
-            WHERE code IN ('{codes_str}')
-              AND trade_date <= '{as_of_date}'
+            WHERE code IN :codes
+              AND trade_date <= :as_of
             ORDER BY code, trade_date DESC
         """
-        df = pd.read_sql(query, self.engine)
+        df = read_sql(sql, self.engine, {
+            "codes": list(codes),
+            "as_of": as_of_date,
+        })
         if df.empty:
             return {}
 
@@ -101,17 +105,20 @@ class SentimentScorer:
         """批量加载研报"""
         if not codes:
             return {}
-        codes_str = "', '".join(codes)
-        query = f"""
+        sql = """
             SELECT code, date, rating, rating_change
             FROM research_report
-            WHERE code IN ('{codes_str}')
-              AND date <= '{as_of_date}'
-              AND date >= DATE('{as_of_date}', '-{lookback} days')
+            WHERE code IN :codes
+              AND date <= :as_of
+              AND date >= DATE(:as_of, '-' || :lookback || ' days')
             ORDER BY code, date DESC
         """
         try:
-            df = pd.read_sql(query, self.engine)
+            df = read_sql(sql, self.engine, {
+                "codes": list(codes),
+                "as_of": as_of_date,
+                "lookback": int(lookback),
+            })
         except Exception:
             return {}
 

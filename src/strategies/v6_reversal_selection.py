@@ -22,6 +22,7 @@ from sqlalchemy import create_engine, text
 
 from ..backtest.base_selection_strategy import BaseSelectionStrategy
 from ..config import get_config, get_db_url
+from ..db.sql_utils import read_sql
 from ..models.repository import DataRepository
 
 
@@ -113,15 +114,18 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
         from datetime import timedelta
         data_start = start_date - timedelta(days=self.lookback_days * 2)
 
-        query = f"""
+        sql = """
             SELECT code, trade_date, open, high, low, close, volume
             FROM daily_price
-            WHERE trade_date >= '{data_start}'
-              AND trade_date <= '{end_date}'
+            WHERE trade_date >= :data_start
+              AND trade_date <= :end_date
             ORDER BY code, trade_date
         """
         print(f"  [预计算] 加载数据...")
-        df = pd.read_sql(query, self.engine)
+        df = read_sql(sql, self.engine, {
+            "data_start": data_start,
+            "end_date": end_date,
+        })
         if df.empty:
             return
 
@@ -250,16 +254,17 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
           - atr_14, atr_pct (ATR/close*100)
         """
         # 查询足够的历史数据 (往前120个交易日)
-        codes_str = ",".join([f"'{c}'" for c in codes])
-
-        query = f"""
+        sql = """
             SELECT code, trade_date, open, high, low, close, volume
             FROM daily_price
-            WHERE code IN ({codes_str})
-              AND trade_date <= '{as_of_date}'
+            WHERE code IN :codes
+              AND trade_date <= :as_of
             ORDER BY code, trade_date
         """
-        df = pd.read_sql(query, self.engine)
+        df = read_sql(sql, self.engine, {
+            "codes": list(codes),
+            "as_of": as_of_date,
+        })
         if df.empty:
             return pd.DataFrame()
 

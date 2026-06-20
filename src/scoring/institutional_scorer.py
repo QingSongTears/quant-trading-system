@@ -24,19 +24,20 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
 from ..config import get_config, get_db_url
+from ..db.sql_utils import read_sql
+from .base import BaseScorer
 
 
-class InstitutionalScorer:
+class InstitutionalScorer(BaseScorer):
     """机构持仓评分器 v3 — dragon_tiger 数据驱动"""
 
-    def __init__(self, engine=None):
-        if engine is None:
-            config = get_config()
-            db_url = get_db_url(config)
-            self.engine = create_engine(db_url, echo=False)
-        else:
-            self.engine = engine
+    name = "institutional"
+    label_zh = "机构持仓"
+    weight = 0.10
+    max_raw = 18
 
+    def __init__(self, engine=None):
+        super().__init__(engine=engine)
         # 批量预加载的数据缓存
         self._dragon_cache: Optional[pd.DataFrame] = None
         self._margin_cache: Optional[pd.DataFrame] = None
@@ -64,14 +65,15 @@ class InstitutionalScorer:
 
         # dragon_tiger_data: 近30日龙虎榜数据
         try:
-            self._dragon_cache = pd.read_sql(
-                f"""
+            self._dragon_cache = read_sql(
+                """
                 SELECT code, trade_date, net_buy_wan, turnover_pct
                 FROM dragon_tiger_data
-                WHERE trade_date >= '{start_date}'
-                  AND trade_date <= '{as_of_date}'
+                WHERE trade_date >= :start_date
+                  AND trade_date <= :as_of
                 """,
                 self.engine,
+                {"start_date": start_date, "as_of": as_of_date},
             )
             self._dragon_cache["code"] = self._dragon_cache["code"].astype(str).str.zfill(6)
         except Exception:
@@ -81,7 +83,7 @@ class InstitutionalScorer:
 
         # margin_trading: 最新融资融券快照（取每条股票的最新日期）
         try:
-            self._margin_cache = pd.read_sql(
+            self._margin_cache = read_sql(
                 """
                 SELECT m.code, m.trade_date, m.rzye, m.rzmre, m.rzche, m.rqye
                 FROM margin_trading m
@@ -101,7 +103,7 @@ class InstitutionalScorer:
 
         # shareholder_count: 最新股东户数快照
         try:
-            self._holder_cache = pd.read_sql(
+            self._holder_cache = read_sql(
                 """
                 SELECT s.code, s.end_date, s.holder_num, s.change_num, s.change_ratio, s.avg_shares
                 FROM shareholder_count s

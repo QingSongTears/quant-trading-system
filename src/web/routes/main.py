@@ -174,6 +174,36 @@ async def backtest_detail(request: Request, result_id: int):
         dd = (e - peak) / peak * 100 if peak > 0 else 0
         drawdowns.append({"date": point["date"], "drawdown": round(dd, 2)})
 
+    # 交易统计
+    trade_stats = {
+        "total": len(trades),
+        "wins": sum(1 for t in trades if (t.get("pnl") or 0) > 0),
+        "losses": sum(1 for t in trades if (t.get("pnl") or 0) < 0),
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "avg_win": 0.0,
+        "avg_loss": 0.0,
+        "profit_factor": 0.0,
+        "max_profit": 0.0,
+        "max_loss": 0.0,
+        "avg_hold_days": 0.0,
+    }
+    if trades:
+        pnls = [(t.get("pnl") or 0) for t in trades]
+        wins = [p for p in pnls if p > 0]
+        losses = [p for p in pnls if p < 0]
+        trade_stats["win_rate"] = round(len(wins) / len(trades) * 100, 1)
+        trade_stats["avg_pnl"] = round(sum(pnls) / len(pnls), 2)
+        trade_stats["avg_win"] = round(sum(wins) / len(wins), 2) if wins else 0
+        trade_stats["avg_loss"] = round(sum(losses) / len(losses), 2) if losses else 0
+        gross_profit = sum(wins)
+        gross_loss = abs(sum(losses))
+        trade_stats["profit_factor"] = round(gross_profit / gross_loss, 2) if gross_loss > 0 else (999.0 if gross_profit > 0 else 0.0)
+        trade_stats["max_profit"] = round(max(pnls), 2) if pnls else 0
+        trade_stats["max_loss"] = round(min(pnls), 2) if pnls else 0
+        hold_days = [t.get("hold_days") or 0 for t in trades]
+        trade_stats["avg_hold_days"] = round(sum(hold_days) / len(hold_days), 1) if hold_days else 0
+
     ctx = _get_global_context()
     ctx.update({
         "result": result,
@@ -183,8 +213,9 @@ async def backtest_detail(request: Request, result_id: int):
         "trades": trades,
         "monthly_returns": monthly,
         "costs": costs,
-        "model_type": "portfolio" if result.stock_code == "PORTFOLIO" 
-                      else "voting" if result.stock_code == "VOTING" 
+        "trade_stats": trade_stats,
+        "model_type": "portfolio" if result.stock_code == "PORTFOLIO"
+                      else "voting" if result.stock_code == "VOTING"
                       else "signal",
     })
     return templates.TemplateResponse(request, "backtest_detail.html", ctx)

@@ -12,96 +12,124 @@
 
 数据源: quant.db :: lhb_institutional
 """
+from typing import Any, Dict, Optional
 
-import sys, os
-from pathlib import Path
-import sqlite3
 import pandas as pd
-import numpy as np
+from sqlalchemy import create_engine
 
-PROJECT_ROOT = Path(__file__).parent.parent
+from ..config import get_config, get_db_url
+from ..db.sql_utils import read_sql
+from .base import BaseScorer
 
 
-class LhbInstitutionalScorer:
+class LhbInstitutionalScorer(BaseScorer):
     """
     龙虎榜机构评分器
 
     接口:
         scorer = LhbInstitutionalScorer()
-        score = scorer.score("000001")  # 返回 0-20 分
+        result = scorer.score("000001", "2026-06-15")  # 返回标准 dict
     """
 
-    def __init__(self, db_path=None):
-        self.db_path = db_path or PROJECT_ROOT / "database" / "quant.db"
-        self._cache = None
+    name = "lhb_institutional"
+    label_zh = "龙虎榜机构"
+    weight = 0.05
+    max_raw = 20
 
-    def _load_data(self):
+    def __init__(self, engine=None):
+        super().__init__(engine=engine)
+        self._cache: Optional[pd.DataFrame] = None
+
+    def _load_data(self) -> pd.DataFrame:
         if self._cache is not None:
             return self._cache
-        conn = sqlite3.connect(str(self.db_path))
-        df = pd.read_sql("SELECT * FROM lhb_institutional", conn)
-        conn.close()
-        self._cache = df
-        return df
+        self._cache = read_sql("SELECT * FROM lhb_institutional", self.engine)
+        return self._cache
 
-    def score(self, code, lookback_days=60):
+    def score(self, code: str, as_of_date: Optional[str] = None,
+              lookback_days: int = 60) -> Dict[str, Any]:
         """
         对单只股票计算龙虎榜机构评分
 
         参数:
             code: 6位股票代码
+            as_of_date: 评分基准日 (保留用于 BaseScorer 契约兼容)
             lookback_days: 回溯天数（默认60天）
 
         返回:
-            0-20 分（None 表示无数据）
+            标准 dict: {"code", "as_of_date", "total", "weighted",
+                       "sub_scores", "error"}
         """
-        df = self._load_data()
+        try:
+            df = self._load_data()
+        except Exception as e:
+            return {
+                "code": code, "as_of_date": as_of_date,
+                "total": 0, "weighted": 0.0,
+                "sub_scores": {}, "error": f"load_data failed: {e}",
+            }
+
         code = str(code).zfill(6)
         stock_rows = df[df["code"] == code]
 
         if stock_rows.empty:
-            return None
+            return {
+                "code": code, "as_of_date": as_of_date,
+                "total": 0, "weighted": 0.0,
+                "sub_scores": {}, "error": "no_lhb_data",
+            }
 
-        # 过滤最近 lookback_days 天
         recent = stock_rows.sort_values("trade_date", ascending=False).head(10)
 
-        total_score = 0
-        details = []
+        inst_total = 0
+        north_total = 0
+        tour_total = 0
+        buy_count = 0
 
         for _, row in recent.iterrows():
-            s = 0
-            # 机构净买入
             inst_net = row.get("inst_net", 0) or 0
-            if inst_net > 50000000:  # > 5000万
-                s += 5
-                details.append(f"机构大买: {inst_net/1e8:.1f}亿")
-            elif inst_net > 10000000:  # > 1000万
-                s += 3
-                details.append(f"机构买: {inst_net/1e8:.1f}亿")
-            elif inst_net < -50000000:
-                s -= 3
-                details.append(f"机构大卖: {inst_net/1e8:.1f}亿")
-
-            # 外资/北向
             north = row.get("north_net", 0) or 0
-            if north > 50000000:
-                s += 3
-                details.append(f"北向买: {north/1e8:.1f}亿")
-
-            # 游资行为
             tour = row.get("tour_net", 0) or 0
-            if tour < -50000000:
-                s += 2  # 游资出，机构接
-                details.append(f"游资出，机构接")
-            elif tour > 100000000:
-                s -= 2  # 纯游资炒作
-                details.append(f"游资炒作")
 
-            total_score += s
+            inst_total += inst_net
+            north_total += north
+            tour_total += tour
+            if inst_net > 10000000:
+                buy_count += 1
 
-        # 归一化到 0-20
+        total_score = 0
+        if inst_total > 50000000:
+            total_score += 5
+        elif inst_total > 10000000:
+            total_score += 3
+        elif inst_total < -50000000:
+            total_score -= 3
+
+        if north_total > 50000000:
+            total_score += 3
+        if tour_total < -50000000:
+            total_score += 2
+        elif tour_total > 100000000:
+            total_score -= 2
+
+        if buy_count >= 3:
+            total_score += 2
+
         normalized = max(0, min(20, total_score + 10))
-        return int(normalized)
+
+        return {
+            "code": code,
+            "as_of_date": as_of_date,
+            "total": int(normalized),
+            "weighted": round(int(normalized) / 20 * self.max_score, 2),
+            "sub_scores": {
+                "inst_net_yi": round(inst_total / 1e8, 3),
+                "north_net_yi": round(north_total / 1e8, 3),
+                "tour_net_yi": round(tour_total / 1e8, 3),
+                "buy_events": buy_count,
+            },
+            "error": None,
+        }
 
 
 # ─────────────────────────────────────────────
@@ -112,5 +140,6 @@ if __name__ == "__main__":
     test_codes = ["000001", "600519", "300750"]
     print("📥 龙虎榜机构评分器 v1.0 测试")
     for code in test_codes:
-        score = scorer.score(code)
-        print(f"  {code}: {score}/20" if score is not None else f"  {code}: 无龙虎榜数据")
+        r = scorer.score(code, "2026-06-15")
+        print(f"  {code}: total={r['total']} weighted={r['weighted']} "
+              f"sub={r['sub_scores']} error={r['error']}")
