@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>预测验证 · 8维量化选股</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a;
+  --text:#e0e0e0; --dim:#888; --accent:#4fc3f7;
+  --green:#4caf50; --red:#ef5350; --yellow:#ffa726; --orange:#ff7043;
+}
+body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+header { background:var(--card); border-bottom:1px solid var(--border); padding:14px 24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+header h1 { font-size:1.1rem; font-weight:600; }
+header .nav-links { margin-left:auto; display:flex; gap:12px; }
+header a { color:var(--dim); text-decoration:none; font-size:0.8rem; }
+header a:hover { color:var(--accent); }
+.container { max-width:1100px; margin:0 auto; padding:20px; }
+
+.card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:20px; }
+.card-title { font-size:0.75rem; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; }
+.card-title .badge { font-size:0.65rem; text-transform:none; padding:2px 10px; border-radius:10px; background:rgba(79,195,247,0.15); color:var(--accent); }
+
+/* 统计卡片 */
+.stats-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:12px; margin-bottom:16px; }
+.stat-card { text-align:center; padding:16px 12px; border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.02); }
+.stat-icon { font-size:1.5rem; margin-bottom:4px; }
+.stat-val { font-size:1.6rem; font-weight:700; }
+.stat-label { font-size:0.68rem; color:var(--dim); margin-top:2px; text-transform:uppercase; letter-spacing:0.3px; }
+
+/* 分组卡片 */
+.bin-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px; }
+.bin-card { text-align:center; padding:16px; border-radius:10px; border:1px solid var(--border); }
+.bin-card.buy { border-color:rgba(239,83,80,0.3); background:rgba(239,83,80,0.03); }
+.bin-card.hold { border-color:rgba(255,167,38,0.3); background:rgba(255,167,38,0.03); }
+.bin-card.avoid { border-color:rgba(76,175,80,0.3); background:rgba(76,175,80,0.03); }
+.bin-title { font-size:0.85rem; font-weight:600; margin-bottom:6px; }
+.bin-count { font-size:0.75rem; color:var(--dim); }
+.bin-avg { font-size:1.4rem; font-weight:700; margin:6px 0; }
+.bin-up { font-size:0.82rem; }
+.bin-bar { height:6px; border-radius:3px; margin-top:8px; background:var(--border); overflow:hidden; }
+.bin-bar-fill { height:100%; border-radius:3px; transition:width 0.6s ease; }
+
+/* 图表 */
+.chart-wrap { height:320px; position:relative; }
+.chart-wrap-sm { height:260px; position:relative; }
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media(max-width:800px){ .grid-2 { grid-template-columns:1fr; } }
+
+/* 表格 */
+.table-wrap { max-height:400px; overflow-y:auto; }
+table { width:100%; border-collapse:collapse; font-size:0.8rem; }
+th { text-align:left; padding:8px 10px; color:var(--dim); font-weight:600; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--card); }
+td { padding:6px 10px; border-bottom:1px solid rgba(42,45,58,0.3); }
+tr:hover td { background:rgba(255,255,255,0.02); }
+.text-right { text-align:right; }
+
+/* 空状态和加载 */
+.empty-state { text-align:center; padding:60px 20px; color:var(--dim); }
+.loading { text-align:center; padding:40px; color:var(--dim); }
+.footer { text-align:center; padding:20px; color:var(--dim); font-size:0.75rem; border-top:1px solid var(--border); margin-top:20px; }
+.pos { color:var(--red); }
+.neg { color:var(--green); }
+
+/* 刷新按钮 */
+.btn { padding:8px 20px; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem; font-weight:600; transition:opacity 0.15s; background:var(--accent); color:#000; }
+.btn:hover { opacity:0.85; }
+.btn-sm { padding:5px 14px; font-size:0.78rem; }
+.btn-outline { background:transparent; border:1px solid var(--border); color:var(--text); }
+.btn-outline:hover { border-color:var(--accent); color:var(--accent); }
+
+/* 信号标签 */
+.signal-badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:0.7rem; font-weight:600; }
+.signal-badge.buy { background:rgba(239,83,80,0.2); color:var(--red); }
+.signal-badge.hold { background:rgba(255,167,38,0.2); color:var(--yellow); }
+.signal-badge.avoid { background:rgba(76,175,80,0.2); color:var(--green); }
+
+@keyframes spin { to { transform:rotate(360deg); } }
+.spinner { display:inline-block; width:16px; height:16px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.6s linear infinite; vertical-align:middle; margin-right:6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>✅ 预测验证看板</h1>
+  <span style="font-size:0.75rem;color:var(--dim)">预测命中率 · 分组表现 · 趋势跟踪</span>
+  <div class="nav-links">
+    <a href="/predict">预测看板</a>
+    <a href="/diagnose">个股诊断</a>
+    <a href="/">← 返回首页</a>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- 操作栏 -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <div>
+      <button class="btn" onclick="refreshAll()">🔄 刷新验证数据</button>
+      <span id="lastRefresh" style="font-size:0.72rem;color:var(--dim);margin-left:10px;"></span>
+    </div>
+  </div>
+
+  <!-- 加载 -->
+  <div id="loadingState" class="card" style="text-align:center;padding:60px;">
+    <span class="spinner"></span> 正在加载预测验证数据...
+  </div>
+
+  <!-- 内容区 -->
+  <div id="contentArea" style="display:none;">
+
+    <!-- 统计概览 -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title">📊 整体预测效果 <span class="badge" id="totalBadge">-</span></div>
+      <div class="stats-row" id="statsRow"></div>
+    </div>
+
+    <!-- 分组表现 -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title">📈 概率分组表现</div>
+      <div class="bin-grid" id="binGrid"></div>
+    </div>
+
+    <!-- 图表区 -->
+    <div class="grid-2" style="margin-bottom:16px;">
+      <div class="card">
+        <div class="card-title">📊 各组平均收益对比</div>
+        <div class="chart-wrap-sm"><canvas id="binBarChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">📈 各组上涨率对比</div>
+        <div class="chart-wrap-sm"><canvas id="upRateChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- 预测分布 -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title">🎯 预测概率分布 · 实际收益散点</div>
+      <div class="chart-wrap"><canvas id="scatterChart"></canvas></div>
+    </div>
+
+    <!-- 月度趋势（如果数据充足） -->
+    <div class="card" style="margin-bottom:16px;" id="monthlyTrendCard">
+      <div class="card-title">📉 月度预测命中率趋势</div>
+      <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+    </div>
+
+    <!-- 详细记录 -->
+    <div class="card">
+      <div class="card-title">
+        <span>📋 已验证预测明细</span>
+        <span id="detailCount" style="font-weight:400;"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>股票</th><th>月份</th><th>概率</th><th>信号</th><th>实际收益</th><th>命中</th></tr></thead>
+          <tbody id="detailTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    A股量化回测系统 · 8维预测模型 · 验证数据来自 prediction_record 表
+  </div>
+</div>
+
+<script>
+let chartInstances = {};
+
+// ===== 刷新 =====
+async function refreshAll() {
+  document.getElementById('loadingState').style.display = 'block';
+  document.getElementById('contentArea').style.display = 'none';
+  document.getElementById('lastRefresh').textContent = '';
+
+  try {
+    // 1. 验证最新数据
+    await fetch('/api/predict/verify');
+    // 2. 加载统计
+    const statsR = await fetch('/api/predict/stats');
+    const stats = await statsR.json();
+    // 3. 加载明细
+    const detailR = await fetch('/api/predict/history?limit=200');
+    const detail = await detailR.json();
+
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('contentArea').style.display = 'block';
+    document.getElementById('lastRefresh').textContent = '上次更新: ' + new Date().toLocaleTimeString();
+
+    renderStats(stats);
+    renderBinCharts(stats);
+    renderScatter(detail.results || []);
+    renderMonthlyTrend(detail.results || []);
+    renderDetailTable(detail.results || []);
+
+  } catch(e) {
+    document.getElementById('loadingState').innerHTML = '❌ 加载失败: ' + e.message;
+  }
+}
+
+// ===== 渲染统计 =====
+function renderStats(stats) {
+  document.getElementById('totalBadge').textContent = stats.total + '条已验证';
+
+  document.getElementById('statsRow').innerHTML =
+    '<div class="stat-card"><div class="stat-icon">🎯</div><div class="stat-val" style="color:' + (stats.hit_rate >= 50 ? 'var(--red)' : 'var(--green)') + '">' + stats.hit_rate + '%</div><div class="stat-label">整体命中率</div></div>' +
+    '<div class="stat-card"><div class="stat-icon">📝</div><div class="stat-val">' + stats.total + '</div><div class="stat-label">已验证记录</div></div>' +
+    '<div class="stat-card"><div class="stat-icon">📊</div><div class="stat-val">' + (stats.bin_stats ? stats.bin_stats.length : 0) + '</div><div class="stat-label">概率分组</div></div>';
+
+  // 分组网格
+  if (stats.bin_stats) {
+    const binGrid = document.getElementById('binGrid');
+    binGrid.innerHTML = stats.bin_stats.map(b => {
+      const binClass = b.bin === '>=0.55' ? 'buy' : (b.bin === '<0.4' ? 'avoid' : 'hold');
+      const avgColor = b.avg_return >= 0 ? 'var(--red)' : 'var(--green)';
+      return '<div class="bin-card ' + binClass + '">' +
+        '<div class="bin-title">' + b.bin + ' 概率区间</div>' +
+        '<div class="bin-count">' + b.count + ' 条记录</div>' +
+        '<div class="bin-avg" style="color:' + avgColor + '">' + (b.avg_return >= 0 ? '+' : '') + b.avg_return + '%</div>' +
+        '<div class="bin-up">上涨率 <strong>' + b.up_rate + '%</strong></div>' +
+        '<div class="bin-bar"><div class="bin-bar-fill" style="width:' + b.up_rate + '%;background:' + (b.up_rate >= 50 ? 'var(--red)' : 'var(--green)') + '"></div></div>' +
+      '</div>';
+    }).join('');
+  }
+}
+
+// ===== 分组图表 =====
+function renderBinCharts(stats) {
+  if (!stats.bin_stats || !stats.bin_stats.length) return;
+
+  const labels = stats.bin_stats.map(b => b.bin);
+  const avgReturns = stats.bin_stats.map(b => b.avg_return);
+  const upRates = stats.bin_stats.map(b => b.up_rate);
+  const colors = stats.bin_stats.map(b => b.bin === '>=0.55' ? '#ef5350' : (b.bin === '<0.4' ? '#4caf50' : '#ffa726'));
+
+  // 平均收益柱状图
+  destroyChart('binBarChart');
+  chartInstances.binBarChart = new Chart(document.getElementById('binBarChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: '平均收益 (%)',
+        data: avgReturns,
+        backgroundColor: colors,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ctx.raw >= 0 ? '+' + ctx.raw + '%' : ctx.raw + '%' } }
+      },
+      scales: {
+        y: { ticks: { color: '#666', callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        x: { ticks: { color: '#888' }, grid: { display: false } }
+      }
+    }
+  });
+
+  // 上涨率柱状图
+  destroyChart('upRateChart');
+  chartInstances.upRateChart = new Chart(document.getElementById('upRateChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: '上涨率 (%)',
+        data: upRates,
+        backgroundColor: colors,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ctx.raw + '%' } }
+      },
+      scales: {
+        y: { min: 0, max: 100, ticks: { color: '#666', callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        x: { ticks: { color: '#888' }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+// ===== 散点图 =====
+function renderScatter(records) {
+  const verified = records.filter(r => r.verified && r.actual_return_20d != null);
+  if (!verified.length) return;
+
+  destroyChart('scatterChart');
+  const points = verified.map(r => ({
+    x: r.pred_proba * 100,
+    y: r.actual_return_20d,
+    code: r.code,
+    month: r.pred_month,
+    signal: r.signal,
+  }));
+
+  // 按信号分组
+  const buyPts = points.filter(p => p.signal === '买入');
+  const holdPts = points.filter(p => p.signal === '中性');
+  const avoidPts = points.filter(p => p.signal === '回避');
+
+  chartInstances.scatterChart = new Chart(document.getElementById('scatterChart').getContext('2d'), {
+    type: 'scatter',
+    data: {
+      datasets: [
+        { label: '买入', data: buyPts, backgroundColor: 'rgba(239,83,80,0.5)', pointRadius: 4 },
+        { label: '中性', data: holdPts, backgroundColor: 'rgba(255,167,38,0.5)', pointRadius: 4 },
+        { label: '回避', data: avoidPts, backgroundColor: 'rgba(76,175,80,0.5)', pointRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#aaa', font: { size: 10 }, boxWidth: 12 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.raw.code + ' | ' + ctx.raw.month + ' | 收益: ' + (ctx.raw.y >= 0 ? '+' : '') + ctx.raw.y.toFixed(2) + '%'
+          }
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: '预测概率 (%)', color: '#666' }, ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.03)' } },
+        y: { title: { display: true, text: '实际收益 (%)', color: '#666' }, ticks: { color: '#888', callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+      }
+    }
+  });
+}
+
+// ===== 月度命中率趋势 =====
+function renderMonthlyTrend(records) {
+  const verified = records.filter(r => r.verified && r.actual_return_20d != null);
+  if (verified.length < 5) {
+    document.getElementById('monthlyTrendCard').style.display = 'none';
+    return;
+  }
+
+  // 按月聚合
+  const monthMap = {};
+  verified.forEach(r => {
+    const m = r.pred_month || (r.as_of_date || '').slice(0,7);
+    if (!monthMap[m]) monthMap[m] = { total: 0, hits: 0, avgRet: 0, retSum: 0 };
+    monthMap[m].total++;
+    monthMap[m].retSum += (r.actual_return_20d || 0);
+    // 命中：买入→涨 或 回避→跌
+    const isHit = (r.signal === '买入' && r.actual_return_20d > 0) ||
+                  (r.signal === '回避' && r.actual_return_20d < 0);
+    if (isHit) monthMap[m].hits++;
+  });
+
+  const months = Object.keys(monthMap).sort();
+  const hitRates = months.map(m => monthMap[m].total > 0 ? (monthMap[m].hits / monthMap[m].total * 100) : 0);
+  const avgRets = months.map(m => monthMap[m].total > 0 ? (monthMap[m].retSum / monthMap[m].total) : 0);
+  const counts = months.map(m => monthMap[m].total);
+
+  destroyChart('trendChart');
+  chartInstances.trendChart = new Chart(document.getElementById('trendChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [
+        {
+          label: '命中率 (%)',
+          data: hitRates,
+          borderColor: '#4fc3f7',
+          backgroundColor: 'rgba(79,195,247,0.1)',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointBackgroundColor: '#4fc3f7',
+          fill: true,
+          tension: 0.2,
+          yAxisID: 'y',
+        },
+        {
+          label: '平均收益 (%)',
+          data: avgRets,
+          borderColor: '#ffa726',
+          borderWidth: 1.5,
+          borderDash: [4,3],
+          pointRadius: 3,
+          pointBackgroundColor: '#ffa726',
+          tension: 0.2,
+          yAxisID: 'y1',
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#aaa', font: { size: 10 }, boxWidth: 12 } },
+        tooltip: {
+          callbacks: {
+            afterLabel: ctx => {
+              const idx = ctx.dataIndex;
+              return '样本数: ' + (counts[idx] || 0);
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#888', font: { size: 9 } }, grid: { display: false } },
+        y: { position: 'left', ticks: { color: '#888', callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        y1: { position: 'right', ticks: { color: '#888', callback: v => v + '%' }, grid: { display: false } },
+      }
+    }
+  });
+}
+
+// ===== 明细表 =====
+function renderDetailTable(records) {
+  const verified = records.filter(r => r.verified && r.actual_return_20d != null);
+  document.getElementById('detailCount').textContent = '(' + verified.length + '条)';
+
+  const body = document.getElementById('detailTableBody');
+  if (!verified.length) {
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--dim);padding:20px;">暂无已验证预测记录</td></tr>';
+    return;
+  }
+
+  body.innerHTML = verified.map(r => {
+    const pct = (r.pred_proba * 100);
+    const ret = r.actual_return_20d;
+    const isHit = (r.signal === '买入' && ret > 0) || (r.signal === '回避' && ret < 0);
+    const sigClass = r.signal === '买入' ? 'buy' : (r.signal === '回避' ? 'avoid' : 'hold');
+    return '<tr>' +
+      '<td style="font-family:monospace;">' + (r.code || '') + '</td>' +
+      '<td>' + (r.pred_month || '') + '</td>' +
+      '<td style="color:' + (pct >= 55 ? 'var(--red)' : pct >= 40 ? 'var(--yellow)' : 'var(--green)') + ';font-weight:600">' + pct.toFixed(1) + '%</td>' +
+      '<td><span class="signal-badge ' + sigClass + '">' + r.signal + '</span></td>' +
+      '<td style="color:' + (ret >= 0 ? 'var(--red)' : 'var(--green)') + ';font-weight:600">' + (ret >= 0 ? '+' : '') + ret.toFixed(2) + '%</td>' +
+      '<td>' + (isHit ? '<span style="color:var(--red)">✅</span>' : '<span style="color:var(--green)">❌</span>') + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function destroyChart(id) {
+  if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; }
+}
+
+// ===== 初始化 =====
+document.addEventListener('DOMContentLoaded', refreshAll);
+</script>
+</body>
+</html>
