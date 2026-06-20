@@ -1818,6 +1818,115 @@ def api_strategy_compare():
     })
 
 
+@app.route("/api/strategy/signal/<code>")
+def api_strategy_signal(code):
+    """综合信号：XGBoost预测 + 策略投票 + 大盘过滤 + 仓位建议"""
+    code = str(code).zfill(6)
+    import sqlite3
+    
+    # 1. XGBoost 预测
+    xgb_result, err = _predict_with_xgb(code, "")
+    if err:
+        return jsonify({"error": err}), 404
+    if xgb_result is None:
+        return jsonify({"error": "预测失败"}), 500
+    
+    pred_proba = xgb_result["pred_proba"]
+    pred_signal = xgb_result["signal"]
+    
+    # 2. 7策略回测结果投票
+    db = PROJECT_ROOT / "database" / "quant.db"
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    strat_results = conn.execute("""
+        SELECT s.name, r.total_return, r.sharpe_ratio, r.win_rate, r.total_trades
+        FROM backtest_result r
+        LEFT JOIN strategy_config s ON r.strategy_id = s.id
+        WHERE r.stock_code=? AND r.total_return IS NOT NULL AND r.total_trades > 0
+        ORDER BY r.total_return DESC
+    """, (code,)).fetchall()
+    conn.close()
+    
+    # 投票：正收益 = 看多票
+    votes_for = sum(1 for r in strat_results if (r['total_return'] or 0) > 0)
+    votes_against = sum(1 for r in strat_results if (r['total_return'] or 0) < 0)
+    total_votes = votes_for + votes_against
+    
+    # 3. 大盘过滤
+    market_ok = True
+    try:
+        conn = sqlite3.connect(str(db))
+        hs300 = conn.execute("""
+            SELECT trade_date, close FROM benchmark_data 
+            WHERE index_code='000300.SH' ORDER BY trade_date DESC LIMIT 21
+        """).fetchall()
+        conn.close()
+        if len(hs300) >= 21:
+            closes = [r[1] for r in hs300]
+            ma20 = sum(closes[:20]) / 20
+            market_ok = closes[0] > ma20  # 最新收盘 > 20日均线
+    except:
+        pass
+    
+    # 4. 综合信号计算
+    xgb_score = pred_proba  # 0~1
+    vote_score = votes_for / max(total_votes, 1) if total_votes > 0 else 0.5
+    
+    # 加权综合 (XGBoost 60%, 策略投票 40%)
+    composite = xgb_score * 0.6 + vote_score * 0.4
+    
+    # 大盘过滤器
+    if not market_ok:
+        composite *= 0.5  # 大盘不好时减半
+    
+    # 仓位建议
+    if composite >= 0.55:
+        position = "重仓"
+        pos_pct = min(round(composite * 100 / 55, 1), 1.0) * 100
+    elif composite >= 0.45:
+        position = "轻仓"
+        pos_pct = round((composite - 0.45) / 0.1 * 30 + 20, 0)
+    else:
+        position = "空仓/回避"
+        pos_pct = 0
+    
+    # 5. 获取策略详情
+    strategy_details = []
+    for r in strat_results:
+        ret = r['total_return'] or 0
+        strategy_details.append({
+            "name": r['name'] or "未知",
+            "return": round(ret, 2),
+            "sharpe": round(r['sharpe_ratio'] or 0, 2),
+            "win_rate": round(r['win_rate'] or 0, 1),
+            "trades": r['total_trades'] or 0,
+            "vote": "看多" if ret > 0 else ("看空" if ret < 0 else "中性"),
+        })
+    
+    return jsonify({
+        "code": code,
+        "pred_month": xgb_result.get("pred_month", ""),
+        "model": "xgb_v2",
+        "xgb_prediction": {
+            "proba": round(pred_proba, 4),
+            "signal": pred_signal,
+        },
+        "strategy_vote": {
+            "for": votes_for,
+            "against": votes_against,
+            "total": total_votes,
+        },
+        "market_filter": {
+            "hs300_above_ma20": market_ok,
+        },
+        "composite_score": round(composite, 4),
+        "signal": "买入" if composite >= 0.55 else ("中性" if composite >= 0.45 else "回避"),
+        "position": position,
+        "position_pct": pos_pct,
+        "strategy_details": strategy_details,
+    })
+
+
 @app.route("/api/stock/<code>/kline/<period>")
 def api_kline(code, period="day"):
     """K线查询: 优先网络实时数据, 断网降级到本地DB"""
