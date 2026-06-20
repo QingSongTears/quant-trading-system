@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>综合信号 · 龙头模型 v2</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:1.1rem;font-weight:600}
+header .nav-links{margin-left:auto;display:flex;gap:12px}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem}
+header a:hover{color:var(--accent)}
+.container{max-width:1000px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+.card-title{font-size:0.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+.card-title .badge{font-size:0.65rem;text-transform:none;padding:2px 10px;border-radius:10px;background:rgba(79,195,247,0.15);color:var(--accent)}
+
+/* 搜索 */
+.search-box{display:flex;gap:10px;margin-bottom:20px}
+.search-box input{flex:1;padding:12px 16px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:1rem;outline:none}
+.search-box input:focus{border-color:var(--accent)}
+.search-box button{padding:12px 24px;border:none;border-radius:8px;background:var(--accent);color:#000;font-weight:600;cursor:pointer;font-size:0.9rem}
+.search-box button:hover{opacity:0.85}
+
+/* 信号面板 */
+.signal-grid{display:grid;grid-template-columns:280px 1fr;gap:16px}
+@media(max-width:800px){.signal-grid{grid-template-columns:1fr}}
+
+/* 仪表盘 */
+.gauge-wrap{text-align:center;padding:6px 0}
+.gauge-circle{width:160px;height:160px;border-radius:50%;margin:0 auto 10px;position:relative;display:flex;align-items:center;justify-content:center}
+.gauge-inner{width:130px;height:130px;border-radius:50%;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gauge-pct{font-size:2rem;font-weight:700}
+.gauge-pct.buy{color:var(--red)}
+.gauge-pct.hold{color:var(--yellow)}
+.gauge-pct.avoid{color:var(--green)}
+.gauge-label{font-size:0.72rem;color:var(--dim)}
+
+/* 仓位 */
+.position-badge{display:inline-block;padding:6px 24px;border-radius:20px;font-size:1.1rem;font-weight:700}
+.position-badge.heavy{background:rgba(239,83,80,0.15);color:var(--red)}
+.position-badge.light{background:rgba(255,167,38,0.15);color:var(--yellow)}
+.position-badge.none{background:rgba(76,175,80,0.15);color:var(--green)}
+
+/* 信号标签 */
+.signal-badge{display:inline-block;padding:3px 14px;border-radius:16px;font-weight:600;font-size:0.85rem}
+.signal-badge.buy{background:rgba(239,83,80,0.2);color:var(--red)}
+.signal-badge.hold{background:rgba(255,167,38,0.2);color:var(--yellow)}
+.signal-badge.avoid{background:rgba(76,175,80,0.2);color:var(--green)}
+
+/* 指标块 */
+.metrics-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:14px}
+.metric-card{text-align:center;padding:10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid var(--border)}
+.metric-val{font-size:1.1rem;font-weight:700}
+.metric-label{font-size:0.68rem;color:var(--dim);margin-top:2px}
+
+/* 进度条 */
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:0.82rem}
+.bar-label{min-width:80px;text-align:right;flex-shrink:0}
+.bar-track{flex:1;height:20px;background:#1e2130;border-radius:10px;overflow:hidden}
+.bar-fill{height:100%;border-radius:10px;transition:width 0.6s ease}
+
+/* 表格 */
+table{width:100%;border-collapse:collapse;font-size:0.8rem}
+th{padding:8px 6px;border-bottom:2px solid var(--border);color:var(--dim);font-weight:600;font-size:0.7rem;text-transform:uppercase;text-align:center;position:sticky;top:0;background:var(--card)}
+td{padding:6px;border-bottom:1px solid rgba(42,45,58,0.3);text-align:center}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.pos{color:var(--red);font-weight:600}
+.neg{color:var(--green);font-weight:600}
+
+/* 空 */
+.empty-state{text-align:center;padding:60px 20px;color:var(--dim)}
+.loading{text-align:center;padding:40px;color:var(--dim)}
+.footer{text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.6s linear infinite;vertical-align:middle;margin-right:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ 综合信号 · 龙头模型 v2</h1>
+  <span style="font-size:0.75rem;color:var(--dim)">XGBoost + 7策略投票 + 大盘风控</span>
+  <div class="nav-links">
+    <a href="/predict">预测看板</a>
+    <a href="/strategy-compare">策略对比</a>
+    <a href="/">← 返回首页</a>
+  </div>
+</header>
+<div class="container">
+
+  <div class="search-box">
+    <input type="text" id="stockInput" placeholder="输入股票代码，如 002079、000001..." autocomplete="off">
+    <button onclick="searchSignal()">🔍 查询信号</button>
+  </div>
+
+  <div id="emptyState" class="empty-state">
+    <div style="font-size:2.5rem;margin-bottom:8px;">⚡</div>
+    <p>输入股票代码查询综合信号</p>
+    <p style="font-size:0.78rem;color:var(--accent);margin-top:6px">
+      XGBoost预测 · 7策略投票 · 大盘过滤 · 动态仓位
+    </p>
+  </div>
+
+  <div id="loadingState" class="loading" style="display:none">
+    <span class="spinner"></span> 计算综合信号...
+  </div>
+
+  <div id="resultArea" style="display:none">
+    <div class="signal-grid">
+      <!-- 左侧：综合评分 -->
+      <div>
+        <!-- 仪表盘 -->
+        <div class="card" style="margin-bottom:14px;padding:16px">
+          <div class="card-title">📊 综合评分</div>
+          <div class="gauge-wrap">
+            <div class="gauge-circle" id="gaugeCircle">
+              <div class="gauge-inner">
+                <div class="gauge-label">综合评分</div>
+                <div class="gauge-pct" id="gaugePct">-</div>
+                <div class="signal-badge" id="signalBadge">-</div>
+              </div>
+            </div>
+            <div class="position-badge" id="positionBadge">-</div>
+          </div>
+          <div style="text-align:center;margin-top:8px">
+            <span id="signalMeta" style="font-size:0.75rem;color:var(--dim)"></span>
+          </div>
+        </div>
+
+        <!-- 模型对比 -->
+        <div class="card" style="padding:16px">
+          <div class="card-title">🤖 预测模型</div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(42,45,58,0.3)">
+            <span style="font-size:0.82rem">XGBoost v2</span>
+            <span id="xgbProba" style="font-weight:600;color:var(--accent)">-</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(42,45,58,0.3)">
+            <span style="font-size:0.82rem">旧模型 (Logistic)</span>
+            <span id="oldProba" style="font-weight:600;color:var(--dim)">-</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0">
+            <span style="font-size:0.82rem">AUC 提升</span>
+            <span id="aucBoost" style="font-weight:700;color:var(--red)">+0.4030</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧：详细信号 -->
+      <div>
+        <!-- 信号指标 -->
+        <div class="card" style="padding:16px">
+          <div class="card-title">📋 信号分解</div>
+          <div class="metrics-row">
+            <div class="metric-card"><div class="metric-val" id="xgbScore">-</div><div class="metric-label">XGBoost</div></div>
+            <div class="metric-card"><div class="metric-val" id="voteScore">-</div><div class="metric-label">策略投票</div></div>
+            <div class="metric-card"><div class="metric-val" id="marketFilter">-</div><div class="metric-label">大盘过滤</div></div>
+            <div class="metric-card"><div class="metric-val" id="posPct">-</div><div class="metric-label">建议仓位</div></div>
+          </div>
+
+          <div class="card-title" style="margin-top:6px">权重分配</div>
+          <div class="bar-row">
+            <span class="bar-label" style="color:var(--red)">XGBoost 60%</span>
+            <div class="bar-track"><div class="bar-fill" id="xgbBar" style="width:0%;background:var(--red)"></div></div>
+            <span class="bar-val" id="xgbBarVal" style="color:var(--red)">0%</span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label" style="color:var(--yellow)">投票 40%</span>
+            <div class="bar-track"><div class="bar-fill" id="voteBar" style="width:0%;background:var(--yellow)"></div></div>
+            <span class="bar-val" id="voteBarVal" style="color:var(--yellow)">0%</span>
+          </div>
+        </div>
+
+        <!-- 策略投票明细 -->
+        <div class="card" style="padding:16px">
+          <div class="card-title">
+            <span>🗳️ 7策略投票</span>
+            <span id="voteCount" style="font-weight:400;font-size:0.72rem"></span>
+          </div>
+          <div class="table-wrap" style="max-height:300px;overflow-y:auto">
+            <table><thead><tr>
+              <th>策略</th><th>收益</th><th>夏普</th><th>胜率</th><th>交易</th><th>投票</th>
+            </tr></thead><tbody id="voteTableBody"></tbody></table>
+            <div id="voteEmpty" class="empty-state" style="display:none;padding:20px;font-size:0.8rem">
+              该股暂无回测记录
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 模型说明 -->
+    <div class="card" style="padding:14px">
+      <div class="card-title">📖 信号计算说明</div>
+      <div style="font-size:0.78rem;line-height:1.8;color:var(--dim)">
+        <strong>综合评分</strong> = XGBoost预测概率 × 0.6 + 策略投票看多比例 × 0.4<br>
+        <strong>大盘过滤</strong>: 沪深300指数收盘价低于20日均线时，综合评分减半<br>
+        <strong>仓位规则</strong>: 评分 ≥ 55% → 重仓 | ≥ 45% → 轻仓 | &lt; 45% → 空仓回避<br>
+        <strong>XGBoost v2</strong>: 57维特征 (8维评分+截面百分位+动量+行业+交叉), AUC=0.9545 (旧Logistic AUC=0.5515)
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">A股龙头模型 v2 · XGBoost AUC 0.9545 · 综合信号仅供参考</div>
+</div>
+
+<script>
+const DIM_KEYS = ['tech_weighted','fundam_weighted','fund_weighted','institutional_weighted',
+                  'lh_institutional_weighted','sentiment_weighted','news_event_weighted','chip_weighted'];
+
+async function searchSignal() {
+  let code = document.getElementById('stockInput').value.trim().replace(/[^0-9]/g, '').padStart(6, '0');
+  if (code.length !== 6) { alert('请输入6位股票代码'); return; }
+  
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('loadingState').style.display = 'block';
+  document.getElementById('resultArea').style.display = 'none';
+
+  try {
+    // 综合信号
+    let r = await fetch('/api/strategy/signal/' + code);
+    let d = await r.json();
+    
+    // 旧模型对比
+    let rOld = await fetch('/api/predict/' + code);
+    let dOld = await rOld.json();
+
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('resultArea').style.display = 'block';
+    
+    renderSignal(code, d, dOld);
+  } catch(e) {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('emptyState').style.display = 'block';
+    document.getElementById('emptyState').innerHTML = '❌ 查询失败: ' + e.message;
+  }
+}
+
+function renderSignal(code, d, dOld) {
+  const composite = d.composite_score || 0;
+  const pct = composite * 100;
+  const signal = d.signal || '回避';
+  const xgb = d.xgb_prediction || {};
+  const vote = d.strategy_vote || {};
+  const mkt = d.market_filter || {};
+  const pos = d.position || '空仓';
+
+  // 仪表盘
+  const color = pct >= 55 ? '#ef5350' : (pct >= 45 ? '#ffa726' : '#4caf50');
+  const deg = Math.min(pct * 1.8, 180);
+  document.getElementById('gaugeCircle').style.background = 
+    `conic-gradient(${color} 0deg ${deg}deg, #2a2d3a ${deg}deg 360deg)`;
+  
+  const pctEl = document.getElementById('gaugePct');
+  pctEl.textContent = pct.toFixed(1) + '%';
+  pctEl.className = 'gauge-pct ' + (pct >= 55 ? 'buy' : (pct >= 45 ? 'hold' : 'avoid'));
+
+  const badge = document.getElementById('signalBadge');
+  badge.textContent = signal;
+  badge.className = 'signal-badge ' + (signal === '买入' ? 'buy' : (signal === '中性' ? 'hold' : 'avoid'));
+
+  const posBadge = document.getElementById('positionBadge');
+  posBadge.textContent = pos + ' (' + d.position_pct + '%)';
+  posBadge.className = 'position-badge ' + (pos === '重仓' ? 'heavy' : (pos === '轻仓' ? 'light' : 'none'));
+
+  document.getElementById('signalMeta').textContent = code + ' · ' + (d.pred_month || '') + ' · xgb_v2';
+
+  // 模型对比
+  document.getElementById('xgbProba').textContent = (xgb.proba || 0) >= 0.55 ? 
+    '<span style="color:var(--red)">' + (xgb.proba*100).toFixed(1) + '% 买入</span>' :
+    ((xgb.proba||0) >= 0.4 ? '<span style="color:var(--yellow)">' + (xgb.proba*100).toFixed(1) + '% 中性</span>' :
+    '<span style="color:var(--green)">' + (xgb.proba*100).toFixed(1) + '% 回避</span>');
+  // Fix: use text
+  const xgbP = (xgb.proba || 0) * 100;
+  document.getElementById('xgbProba').innerHTML = xgbP >= 55 ? 
+    `<span style="color:var(--red)">${xgbP.toFixed(1)}% ${xgb.signal||''}</span>` :
+    (xgbP >= 40 ? `<span style="color:var(--yellow)">${xgbP.toFixed(1)}% ${xgb.signal||''}</span>` :
+    `<span style="color:var(--green)">${xgbP.toFixed(1)}% ${xgb.signal||''}</span>`);
+  
+  const oldP = (dOld.pred_proba_up || 0) * 100;
+  document.getElementById('oldProba').innerHTML = oldP >= 55 ?
+    `<span style="color:var(--red)">${oldP.toFixed(1)}% ${dOld.signal||''}</span>` :
+    (oldP >= 40 ? `<span style="color:var(--yellow)">${oldP.toFixed(1)}% ${dOld.signal||''}</span>` :
+    `<span style="color:var(--green)">${oldP.toFixed(1)}% ${dOld.signal||''}</span>`);
+
+  // 信号分解指标
+  const xgbPct = (xgb.proba || 0) * 100;
+  document.getElementById('xgbScore').textContent = xgbPct.toFixed(1) + '%';
+  document.getElementById('xgbScore').style.color = xgbPct >= 55 ? 'var(--red)' : (xgbPct >= 40 ? 'var(--yellow)' : 'var(--green)');
+
+  const votePct = vote.total > 0 ? (vote.for / vote.total * 100) : 0;
+  document.getElementById('voteScore').textContent = votePct.toFixed(0) + '%';
+  document.getElementById('voteScore').style.color = votePct >= 50 ? 'var(--red)' : 'var(--green)';
+
+  const mktOk = mkt.hs300_above_ma20;
+  document.getElementById('marketFilter').textContent = mktOk ? '✅ 正常' : '❌ 减半';
+  document.getElementById('marketFilter').style.color = mktOk ? 'var(--red)' : 'var(--green)';
+
+  document.getElementById('posPct').textContent = d.position_pct + '%';
+  document.getElementById('posPct').style.color = (d.position_pct||0) >= 70 ? 'var(--red)' : ((d.position_pct||0) >= 20 ? 'var(--yellow)' : 'var(--green)');
+
+  // 权重条
+  const xgbWeight = xgbPct * 0.6;
+  const voteWeight = votePct * 0.4;
+  const maxW = Math.max(xgbWeight + voteWeight, 1);
+  document.getElementById('xgbBar').style.width = (xgbWeight / maxW * 100) + '%';
+  document.getElementById('xgbBarVal').textContent = (xgb.proba || 0) >= 0.55 ? '看多' : ((xgb.proba||0) >= 0.4 ? '中性' : '看空');
+  document.getElementById('voteBar').style.width = (votePct) + '%';
+  document.getElementById('voteBarVal').textContent = vote.for + '/' + vote.total + '票看多';
+
+  // 投票明细
+  document.getElementById('voteCount').textContent = '(' + vote.total + '票)';
+  const details = d.strategy_details || [];
+  const tbody = document.getElementById('voteTableBody');
+  const empty = document.getElementById('voteEmpty');
+  if (!details.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+  } else {
+    empty.style.display = 'none';
+    tbody.innerHTML = details.map(s => {
+      const ret = s.return || 0;
+      return '<tr>' +
+        '<td style="text-align:left;font-weight:600">' + (s.name || '') + '</td>' +
+        '<td class="' + (ret >= 0 ? 'pos' : 'neg') + '">' + (ret >= 0 ? '+' : '') + ret.toFixed(2) + '%</td>' +
+        '<td class="' + ((s.sharpe||0) >= 0 ? 'pos' : 'neg') + '">' + (s.sharpe||0).toFixed(2) + '</td>' +
+        '<td>' + (s.win_rate||0).toFixed(1) + '%</td>' +
+        '<td>' + (s.trades||0) + '笔</td>' +
+        '<td><span class="signal-badge ' + (s.vote === '看多' ? 'buy' : (s.vote === '看空' ? 'avoid' : 'hold')) + '" style="font-size:0.65rem;padding:1px 8px">' + s.vote + '</span></td>' +
+      '</tr>';
+    }).join('');
+  }
+}
+
+document.getElementById('stockInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') searchSignal();
+});
+
+// 默认搜索002079
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('stockInput').value = '002079';
+  searchSignal();
+});
+</script>
+</body>
+</html>
