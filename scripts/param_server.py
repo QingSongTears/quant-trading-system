@@ -1921,45 +1921,209 @@ def _load_pred_model():
 
 @app.route("/api/predict/<code>")
 def api_predict(code):
-    """预测单只股票下月上涨概率"""
+    """预测单只股票上涨概率，支持历史日期回溯"""
     code = str(code).zfill(6)
+    date_param = request.args.get("date", "")  # YYYY-MM
     model = _load_pred_model()
     if model is None:
         return jsonify({"error": "预测模型未找到"}), 404
     
-    # 加载最新分数
     scores_path = PROJECT_ROOT / "data" / "all_7d_scores.json"
     if not scores_path.exists():
         return jsonify({"error": "分数数据未找到"}), 404
     
     with open(scores_path) as f:
-        scores = json.load(f)
+        all_scores = json.load(f)
     
-    # 找该股票最新一条
-    stock_scores = [s for s in scores if s['code'] == code]
+    # 找该股票指定日期的分数
+    stock_scores = [s for s in all_scores if s['code'] == code]
     if not stock_scores:
         return jsonify({"error": f"未找到股票 {code} 的分数"}), 404
     
-    latest = max(stock_scores, key=lambda x: x['as_of_date'])
+    if date_param:
+        # 历史回溯：找指定月份的最新一条
+        candidates = [s for s in stock_scores if s.get('year_month', '') <= date_param]
+        if not candidates:
+            return jsonify({"error": f"未找到 {code} 在 {date_param} 前的分数"}), 404
+        latest = max(candidates, key=lambda x: x['as_of_date'])
+    else:
+        latest = max(stock_scores, key=lambda x: x['as_of_date'])
     
     # 计算预测概率
     dim_cols = list(model['logistic_coef'].keys())
     coef = np.array([model['logistic_coef'][c] for c in dim_cols])
     intercept = model['intercept']
     
-    x = np.array([[latest.get(c, 0) for c in dim_cols]])
+    x = np.array([[latest.get(c, 0) or 0 for c in dim_cols]])
     logit = x @ coef + intercept
     proba = float((1 / (1 + np.exp(-logit))).item())
     
     signal = "买入" if proba >= 0.55 else ("回避" if proba < 0.4 else "中性")
     
-    return jsonify({
+    result = {
         "code": code,
+        "pred_month": latest.get('year_month', latest['as_of_date'][:7]),
         "as_of_date": latest['as_of_date'],
         "pred_proba_up": round(proba, 4),
         "signal": signal,
-        "dim_scores": {c.replace('_weighted',''): latest.get(c, 0) for c in dim_cols},
-        "auc": model['auc']
+        "dim_scores": {c.replace('_weighted',''): latest.get(c, 0) or 0 for c in dim_cols},
+        "auc": model['auc'],
+        "ret_20d": latest.get('ret_20d'),
+        "ret_60d": latest.get('ret_60d'),
+    }
+    
+    # ── 保存到数据库 ──
+    try:
+        import sqlite3
+        db = PROJECT_ROOT / "database" / "quant.db"
+        conn = sqlite3.connect(str(db))
+        pred_month = result["pred_month"]
+        # 检查是否已存在
+        cur = conn.execute("SELECT id FROM prediction_record WHERE code=? AND pred_month=?",
+                          (code, pred_month))
+        existing = cur.fetchone()
+        dim_scores_json = json.dumps(result["dim_scores"], ensure_ascii=False)
+        coef_json = json.dumps({k: float(v) for k, v in zip(dim_cols, coef)}, ensure_ascii=False)
+        if existing:
+            conn.execute("""UPDATE prediction_record SET
+                pred_proba=?, signal=?, dim_scores=?, logistic_coef=?,
+                actual_return_20d=?, actual_return_60d=?
+                WHERE id=?""",
+                (result["pred_proba_up"], signal, dim_scores_json, coef_json,
+                 result.get("ret_20d"), result.get("ret_60d"), existing[0]))
+        else:
+            conn.execute("""INSERT INTO prediction_record
+                (code, stock_name, pred_month, as_of_date, pred_proba, signal,
+                 auc, dim_scores, logistic_coef, actual_return_20d, actual_return_60d)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (code, latest.get("name", ""), pred_month, latest["as_of_date"],
+                 result["pred_proba_up"], signal, model['auc'],
+                 dim_scores_json, coef_json,
+                 result.get("ret_20d"), result.get("ret_60d")))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"  [保存预测] 失败: {e}")
+    
+    return jsonify(result)
+
+
+@app.route("/api/predict/history")
+def api_predict_history():
+    """获取预测历史记录"""
+    import sqlite3
+    code = request.args.get("code", "")
+    limit = request.args.get("limit", 50, type=int)
+    db = PROJECT_ROOT / "database" / "quant.db"
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    if code:
+        rows = conn.execute("""
+            SELECT * FROM prediction_record
+            WHERE code=? ORDER BY pred_month DESC LIMIT ?
+        """, (code, limit)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT * FROM prediction_record
+            ORDER BY created_at DESC LIMIT ?
+        """, (limit,)).fetchall()
+    results = []
+    for r in rows:
+        d = dict(r)
+        for k in ['dim_scores', 'logistic_coef']:
+            if d.get(k) and isinstance(d[k], str):
+                try: d[k] = json.loads(d[k])
+                except: pass
+        for k in ['created_at', 'as_of_date']:
+            if d.get(k): d[k] = str(d[k])[:19]
+        results.append(d)
+    conn.close()
+    return jsonify({"total": len(results), "results": results})
+
+
+@app.route("/api/predict/verify")
+def api_predict_verify():
+    """验证预测准确率：对比预测概率与实际收益，更新 verified 标记"""
+    import sqlite3
+    db = PROJECT_ROOT / "database" / "quant.db"
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    
+    # 加载评分数据（含实际收益）
+    scores_path = PROJECT_ROOT / "data" / "all_7d_scores.json"
+    with open(scores_path) as f:
+        all_scores = json.load(f)
+    
+    # 建立 code+year_month → actual_return 映射
+    ret_map = {}
+    for s in all_scores:
+        key = (s['code'], s.get('year_month', ''))
+        if key not in ret_map or s['as_of_date'] > ret_map[key].get('date', ''):
+            ret_map[key] = {
+                'ret_20d': s.get('ret_20d'),
+                'ret_60d': s.get('ret_60d'),
+                'date': s.get('as_of_date', ''),
+            }
+    
+    # 更新未验证的记录
+    rows = conn.execute("SELECT id, code, pred_month FROM prediction_record WHERE verified=0").fetchall()
+    updated = 0
+    for r in rows:
+        key = (r['code'], r['pred_month'])
+        if key in ret_map:
+            data = ret_map[key]
+            conn.execute("""UPDATE prediction_record SET
+                actual_return_20d=?, actual_return_60d=?, verified=1
+                WHERE id=?""",
+                (data['ret_20d'], data['ret_60d'], r['id']))
+            updated += 1
+    conn.commit()
+    conn.close()
+    return jsonify({"updated": updated, "total_pending": len(rows)})
+
+
+@app.route("/api/predict/stats")
+def api_predict_stats():
+    """预测效果统计：命中率、分组表现"""
+    import sqlite3
+    db = PROJECT_ROOT / "database" / "quant.db"
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    
+    # 已验证的记录
+    rows = conn.execute("""
+        SELECT pred_proba, signal, actual_return_20d, actual_return_60d
+        FROM prediction_record
+        WHERE verified=1 AND actual_return_20d IS NOT NULL
+    """).fetchall()
+    
+    total = len(rows)
+    if total == 0:
+        return jsonify({"total": 0, "message": "暂无已验证预测记录，请先调用 /api/predict/verify"})
+    
+    # 整体命中率（预测涨→实际涨）
+    hits = sum(1 for r in rows if (r['pred_proba'] >= 0.55 and (r['actual_return_20d'] or 0) > 0)
+                                or (r['pred_proba'] < 0.4 and (r['actual_return_20d'] or 0) < 0))
+    # 分组统计
+    bins = {"<0.4": [], "0.4-0.55": [], ">=0.55": []}
+    for r in rows:
+        p = r['pred_proba']
+        if p < 0.4: bins["<0.4"].append(r['actual_return_20d'] or 0)
+        elif p >= 0.55: bins[">=0.55"].append(r['actual_return_20d'] or 0)
+        else: bins["0.4-0.55"].append(r['actual_return_20d'] or 0)
+    
+    stats = []
+    for label, vals in bins.items():
+        if vals:
+            avg_ret = sum(vals) / len(vals)
+            up_rate = sum(1 for v in vals if v > 0) / len(vals) * 100
+            stats.append({"bin": label, "count": len(vals), "avg_return": round(avg_ret, 2), "up_rate": round(up_rate, 1)})
+    
+    conn.close()
+    return jsonify({
+        "total": total,
+        "hit_rate": round(hits / total * 100, 1) if total else 0,
+        "bin_stats": stats,
     })
 
 @app.route("/api/predict/batch")
