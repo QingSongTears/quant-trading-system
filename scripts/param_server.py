@@ -567,13 +567,58 @@ def _build_search_index():
     return SEARCH_INDEX
 
 
+def _verify_stock_online(code):
+    """联网验证股票是否真实存在（东财实时行情API）"""
+    import requests
+    code = str(code).zfill(6)
+    market = 1 if code.startswith("6") else 0
+    secid = f"{market}.{code}"
+    try:
+        url = (
+            f"https://push2.eastmoney.com/api/qt/stock/get"
+            f"?secid={secid}&fields=f57,f58,f43,f170,f100"
+        )
+        resp = requests.get(url, timeout=5, headers={
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://quote.eastmoney.com/",
+        })
+        data = resp.json()
+        if data and data.get("data") and data["data"].get("f57"):
+            d = data["data"]
+            return {
+                "verified": True,
+                "code": str(d.get("f57", code)).zfill(6),
+                "name": d.get("f58", ""),
+                "price": d.get("f43"),
+                "source": "eastmoney_quote",
+            }
+    except:
+        pass
+    # 第二方案: 东财搜索API
+    try:
+        url2 = f"https://searchadapter.eastmoney.com/api/suggest/get?input={code}&count=5"
+        resp2 = requests.get(url2, timeout=5, headers={
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://www.eastmoney.com/",
+        })
+        data2 = resp2.json()
+        if data2 and data2.get("QuotationCodeTable") and data2["QuotationCodeTable"].get("Data"):
+            for item in data2["QuotationCodeTable"]["Data"]:
+                if item.get("Code", "").replace(".", "") == code or item.get("Code", "").endswith(code):
+                    return {"verified": True, "code": code, "name": item.get("Name", ""), "source": "eastmoney_search"}
+    except:
+        pass
+    return {"verified": False, "code": code, "source": None}
+
+
 @app.route("/api/stock/search")
 def api_stock_search():
-    """通用搜索: 股票代码/中文名称/拼音首字母/全拼 模糊搜索"""
+    """通用搜索: 本地数据库 + 联网验证"""
     q = request.args.get("q", "").strip().lower()
     if not q or len(q) < 1:
-        return jsonify({"results": []})
+        return jsonify({"query": q, "total": 0, "results": [], "online_verify": None})
     
+    # 本地搜索
     index = _build_search_index()
     results = []
     seen_codes = set()
@@ -582,38 +627,28 @@ def api_stock_search():
         if len(results) >= 20:
             break
         code = item["code"]
-        
-        # 1. 代码精确匹配优先
         if q == code or (len(q) <= 6 and code.endswith(q.zfill(6))):
             if code not in seen_codes:
                 seen_codes.add(code)
                 results.insert(0, {"code": code, "name": item["name"], "match": "code"})
             continue
-        
-        # 2. 代码模糊匹配
         if q in code:
             if code not in seen_codes:
                 seen_codes.add(code)
                 results.append({"code": code, "name": item["name"], "match": "fuzzy_code"})
             continue
-        
-        # 3. 中文名称模糊匹配（正向+子串）
         name_lower = item["name"].lower().replace(' ', '')
         if q in name_lower or name_lower.startswith(q) or q in name_lower.replace('*', ''):
             if code not in seen_codes:
                 seen_codes.add(code)
                 results.append({"code": code, "name": item["name"], "match": "name_fuzzy"})
             continue
-        
-        # 4. 拼音首字母匹配
         initials = item.get("initials", "")
         if q in initials:
             if code not in seen_codes:
                 seen_codes.add(code)
                 results.append({"code": code, "name": item["name"], "match": "pinyin_initials"})
             continue
-        
-        # 5. 全拼匹配
         full_py = item.get("full_py", "")
         if q in full_py:
             if code not in seen_codes:
@@ -621,7 +656,21 @@ def api_stock_search():
                 results.append({"code": code, "name": item["name"], "match": "pinyin_full"})
             continue
     
-    return jsonify({"query": q, "total": len(results), "results": results})
+    # 本地0结果 → 联网验证（仅限代码格式查询）
+    online_verify = None
+    clean_q = q.replace('.', '').replace('sh', '').replace('sz', '')
+    if len(results) == 0 and clean_q.isdigit() and len(clean_q) <= 6:
+        online_verify = _verify_stock_online(clean_q)
+    
+    resp_data = {"query": q, "total": len(results), "results": results}
+    if online_verify:
+        resp_data["online_verify"] = online_verify
+        if online_verify["verified"]:
+            resp_data["message"] = f"股票 {clean_q} ({online_verify.get('name','')}) 在A股市场真实存在，但未收录到本地数据库"
+        else:
+            resp_data["message"] = f"股票 {clean_q} 在A股市场也未找到，请确认代码是否正确"
+    
+    return jsonify(resp_data)
 
 
 @app.route("/api/status")
