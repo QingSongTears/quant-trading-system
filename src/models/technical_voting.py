@@ -62,6 +62,8 @@ class TechnicalVotingModel:
         )
     """
 
+    name = "技术指标投票模型"
+
     def __init__(self):
         config = get_config()
         self.repo = DataRepository()
@@ -329,7 +331,7 @@ class TechnicalVotingModel:
         close_pivot = all_data.pivot_table(
             index="trade_date", columns="code", values="close"
         )
-        close_pivot = close_pivot.fillna(method="ffill")
+        close_pivot = close_pivot.ffill()
 
         # 每日投票 pivot
         vote_pivot = votes_df.pivot_table(

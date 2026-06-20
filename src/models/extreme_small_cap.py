@@ -25,6 +25,7 @@ from typing import List
 import pandas as pd
 
 from ..backtest.base_selection_strategy import BaseSelectionStrategy
+from ._list_date import add_days_since_list
 
 
 class ExtremeSmallCapStrategy(BaseSelectionStrategy):
@@ -75,15 +76,11 @@ class ExtremeSmallCapStrategy(BaseSelectionStrategy):
         if "close" in df.columns:
             df = df[df["close"] >= self.min_price]
 
-        # 上市天数
+        # 上市天数 (NaT 自动填 99999 → 被 min_list_days 过滤)
         if "list_date" in df.columns:
-            df["_list_date_dt"] = pd.to_datetime(df["list_date"])
-            today = date.today()
-            df["_days_since_list"] = df["_list_date_dt"].apply(
-                lambda d: (today - d.date()).days if hasattr(d, 'date') else 9999
-            )
+            df = add_days_since_list(df, "list_date")
             df = df[df["_days_since_list"] >= self.min_list_days]
-            df = df.drop(columns=["_list_date_dt", "_days_since_list"], errors="ignore")
+            df = df.drop(columns=["_days_since_list"], errors="ignore")
 
         # ── 层3: 流动性过滤 ──
         if "avg_amount_wan" in df.columns:

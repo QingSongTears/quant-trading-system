@@ -29,6 +29,7 @@ from ..backtest.base_selection_strategy import BaseSelectionStrategy
 from ..strategies.small_cap import SmallCapStrategy
 from ..strategies.reversal import ReversalStrategy
 from ..strategies.low_volatility import LowVolatilityStrategy
+from ._list_date import add_days_since_list
 
 
 class ThreeFactorStrategy(BaseSelectionStrategy):
@@ -79,18 +80,11 @@ class ThreeFactorStrategy(BaseSelectionStrategy):
             df = df[df["close"] >= self.min_price]
 
         # 上市 ≥ min_list_days 个自然日 (≈1年)
+        # NaT / 缺失 list_date 自动填 99999 → 被 min_list_days 过滤掉
         if "list_date" in df.columns:
-            # list_date 可能是 date 或 datetime 对象
-            df["_list_date_dt"] = pd.to_datetime(df["list_date"])
-            # 按最近调仓日判断 — 粗略用现在日期，实际操作中引擎传入
-            from datetime import date
-            today = date.today()
-            df["_days_since_list"] = df["_list_date_dt"].apply(
-                lambda d: (today - d.date()).days if hasattr(d, 'date') else 9999
-            )
+            df = add_days_since_list(df, "list_date")
             df = df[df["_days_since_list"] >= self.min_list_days]
-            # 清理临时列
-            df = df.drop(columns=["_list_date_dt", "_days_since_list"], errors="ignore")
+            df = df.drop(columns=["_days_since_list"], errors="ignore")
 
         return df
 

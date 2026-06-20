@@ -329,7 +329,39 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnRun) btnRun.addEventListener('click', runBacktest);
     const btnCompare = $('btn-compare-all');
     if (btnCompare) btnCompare.addEventListener('click', compareAll);
+    // 接收外部跳转 URL 参数: ?code=600519&name=贵州茅台&strategy=双均线交叉&start=2024-01-01&end=2025-12-31
+    applyUrlParams();
 });
+
+/** 应用 URL 参数: 让 /data、/index 等页面的"对该股回测"按钮直接预填表单 */
+function applyUrlParams() {
+    const params = new URLSearchParams(location.search);
+    const code = params.get('code');
+    const name = params.get('name');
+    if (code) {
+        selectStock(code, name || code);
+        // 滚动到顶部让用户看到表单已就绪
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    const strategyName = params.get('strategy');
+    if (strategyName) {
+        const sel = $('model-select');
+        if (sel) {
+            // 直接设置 value 并触发 change 让 setupFormWatchers 拿到 selectedModel
+            for (const opt of sel.options) {
+                if (opt.value === strategyName) {
+                    sel.value = strategyName;
+                    sel.dispatchEvent(new Event('change'));
+                    break;
+                }
+            }
+        }
+    }
+    const start = params.get('start');
+    const end = params.get('end');
+    if (start && $('start-date')) $('start-date').value = start;
+    if (end && $('end-date')) $('end-date').value = end;
+}
 
 /** 历史回测行点击: 事件委托避免 onclick 注入 */
 function setupHistoryRowClick() {

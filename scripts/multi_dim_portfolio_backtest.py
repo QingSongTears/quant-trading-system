@@ -20,20 +20,19 @@ from src.config import get_config, get_db_url
 from src.scoring import ScorerRegistry
 
 
-def get_recent_weekly_dates(engine, n_dates=5):
-    """获取最近 n 个调仓日（每周五）"""
+def get_recent_weekly_dates(engine, n_dates=8):
+    """获取最近 n 个调仓日（每月取 2 个间隔 2 周）"""
     q = """
         SELECT DISTINCT trade_date FROM daily_price
-        WHERE trade_date >= '2026-04-01'
+        WHERE trade_date >= '2025-12-01'
         ORDER BY trade_date DESC
-        LIMIT 30
+        LIMIT 120
     """
     df = pd.read_sql(q, engine)
     df["trade_date"] = pd.to_datetime(df["trade_date"])
-    # 取周五的日期
-    weekly = df.groupby([df["trade_date"].dt.year, df["trade_date"].dt.isocalendar().week])["trade_date"].max()
-    weekly = weekly.sort_values(ascending=False).head(n_dates)
-    return [d.strftime("%Y-%m-%d") for d in weekly]
+    # 每 2 周取一个（双周调仓）
+    biweekly = df.iloc[::10].head(n_dates)
+    return sorted([d.strftime("%Y-%m-%d") for d in biweekly["trade_date"]])
 
 
 def get_universe(engine, as_of_date, min_amount_wan=3000):
@@ -98,53 +97,12 @@ def simulate_portfolio(picks_by_date, price_data, start_d, end_d, initial=1_000_
     # 交易成本
     commission_rate = 0.0003
     stamp_duty_rate = 0.0005
+    slippage = 0.0001
 
     current_holding_set = set()
 
     for dt in all_trade_dates:
-        # 检查是否调仓日（用下一个交易日的开盘价交易 - 简化用当日收盘价）
-        is_rebalance = dt.strftime("%Y-%m-%d") in rebalance_dates
-
-        if is_rebalance:
-            target_codes = picks_by_date[dt.strftime("%Y-%m-%d")][:n_per_period]
-        else:
-            target_codes = list(current_holding_set)
-
-        # 当前持仓市值
-        if holdings:
-            cur_value = 0
-            for code, shares in holdings.items():
-                if code in pivot.columns and not pd.isna(pivot.loc[dt, code]):
-                    cur_value += shares * pivot.loc[dt, code]
-            cash += cur_value
-        else:
-            cash = initial if dt == all_trade_dates[0] else cash
-
-        # 清仓
-        new_holdings = {}
-        if target_codes and len(target_codes) > 0:
-            valid_targets = [c for c in target_codes if c in pivot.columns and not pd.isna(pivot.loc[dt, c])]
-            if valid_targets:
-                target_per_stock = cash / len(valid_targets)
-                for code in valid_targets:
-                    price = pivot.loc[dt, code]
-                    shares = target_per_stock / price
-                    # 扣除买入手续费
-                    cost = target_per_stock * commission_rate
-                    cash -= cost
-                    new_holdings[code] = shares
-
-        # 卖出未持仓的（收印花税）
-        for old_code in current_holding_set - set(new_holdings.keys()):
-            if old_code in pivot.columns and not pd.isna(pivot.loc[dt, old_code]):
-                sell_value = holdings.get(old_code, 0) * pivot.loc[dt, old_code]
-                tax = sell_value * stamp_duty_rate
-                cash -= tax
-
-        holdings = new_holdings
-        current_holding_set = set(new_holdings.keys())
-
-        # 当日总市值 = 持仓 + 现金
+        # 当日收盘时计算净值（基于当前 holdings）
         position_value = sum(shares * pivot.loc[dt, code] for code, shares in holdings.items()
                              if code in pivot.columns and not pd.isna(pivot.loc[dt, code]))
         total_equity = cash + position_value
@@ -154,6 +112,51 @@ def simulate_portfolio(picks_by_date, price_data, start_d, end_d, initial=1_000_
             "cash": cash,
             "positions": len(holdings),
         })
+
+        # 是否调仓日（次日才用今天的价格调仓 — 简化：用当天收盘价做信号、当天调仓）
+        is_rebalance = dt.strftime("%Y-%m-%d") in rebalance_dates
+        if not is_rebalance:
+            continue
+
+        target_codes = picks_by_date[dt.strftime("%Y-%m-%d")][:n_per_period]
+
+        # Step 1: 卖出所有现有持仓（按当天收盘价 + 滑点）
+        if holdings:
+            sell_proceeds = 0
+            for code, shares in holdings.items():
+                if code in pivot.columns and not pd.isna(pivot.loc[dt, code]):
+                    sell_price = pivot.loc[dt, code] * (1 - slippage)
+                    sell_value = shares * sell_price
+                    tax = sell_value * stamp_duty_rate
+                    sell_proceeds += sell_value - tax
+                # 停牌卖不掉 → 继续持有
+            cash += sell_proceeds
+
+        # Step 2: 买入目标股票（按当天收盘价 + 滑点）
+        valid_targets = [c for c in target_codes if c in pivot.columns and not pd.isna(pivot.loc[dt, c])]
+        if not valid_targets:
+            holdings = {}
+            current_holding_set = set()
+            continue
+
+        # 预留少量现金（保留 2%）
+        investable_cash = cash * 0.98
+        budget_per_stock = investable_cash / len(valid_targets)
+        new_holdings = {}
+        total_buy_cost = 0
+        total_invested = 0
+        for code in valid_targets:
+            price = pivot.loc[dt, code] * (1 + slippage)
+            shares = budget_per_stock / price
+            cost = budget_per_stock * commission_rate
+            new_holdings[code] = shares
+            total_invested += budget_per_stock
+            total_buy_cost += cost
+
+        # 现金扣减：投入本金 + 买入佣金
+        cash = cash - total_invested - total_buy_cost
+        holdings = new_holdings
+        current_holding_set = set(new_holdings.keys())
 
     return pd.DataFrame(equity_curve)
 
@@ -197,8 +200,8 @@ def main():
 
     engine = create_engine(get_db_url(get_config()), echo=False)
 
-    # 1) 取 5 个最近调仓日
-    dates = get_recent_weekly_dates(engine, n_dates=5)
+    # 1) 取 8 个最近调仓日
+    dates = get_recent_weekly_dates(engine, n_dates=8)
     print(f"\n>>> 调仓日 ({len(dates)}个): {dates[0]} ~ {dates[-1]}")
 
     # 2) 初始化 4 个评分器
@@ -212,52 +215,94 @@ def main():
 
     # 3) 每期评分 + 选股
     picks_by_date = {}
-    for dt in dates:
-        t0 = time.time()
-        print(f"\n>>> 调仓日: {dt}")
+    scores_by_date = {}  # 新增：每期每只股票各评分器分数
 
-        universe = get_universe(engine, dt, min_amount_wan=3000)
-        codes = universe["code"].tolist()
-        print(f"  股票池: {len(codes)} 只")
+    # 检查是否有缓存
+    import json
+    cache_path = PROJECT_ROOT / "data" / "picks_by_date_cache.json"
+    if cache_path.exists():
+        with open(cache_path, "r", encoding="utf-8") as f:
+            cached = json.load(f)
+        cached_dates = cached.get("dates", [])
+        if cached_dates == dates:
+            print(f"\n>>> 加载缓存选股 ({len(cached['picks'])} 期)")
+            picks_by_date = cached["picks"]
+            scores_by_date = cached.get("scores", {})
+            for dt in dates:
+                print(f"  {dt}: {len(picks_by_date[dt])} 只")
+        else:
+            print(f"\n>>> 缓存日期不匹配，需重新评分")
+            cache_path.unlink(missing_ok=True)
 
-        if len(codes) < 50:
-            print(f"  [SKIP] 股票池过小")
-            continue
+    if not picks_by_date:
+        for dt in dates:
+            t0 = time.time()
+            print(f"\n>>> 调仓日: {dt}")
 
-        # 多维评分
-        score_df = pd.DataFrame({"code": codes})
-        for name, scorer in scorers.items():
-            try:
-                t1 = time.time()
-                batch = scorer.batch_score(codes, dt)
-                if batch is None or batch.empty:
-                    continue
-                # 取加权分数
-                if "weighted" in batch.columns:
-                    score_df[f"{name}_score"] = batch["weighted"].values
-                elif "score" in batch.columns:
-                    score_df[f"{name}_score"] = batch["score"].values
-                elapsed = time.time() - t1
-                print(f"    {name}: {len(batch)} 条 ({elapsed:.1f}s)")
-            except Exception as e:
-                print(f"    {name}: ERROR {e}")
+            universe = get_universe(engine, dt, min_amount_wan=3000)
+            codes = universe["code"].tolist()
+            print(f"  股票池: {len(codes)} 只")
 
-        # 多维融合（等权平均，缺失用中位值填充）
-        score_cols = [c for c in score_df.columns if c.endswith("_score")]
-        for c in score_cols:
-            med = score_df[c].median()
-            if pd.isna(med):
-                med = 5.0  # 默认中性分
-            score_df[c] = score_df[c].fillna(med)
-        score_df["composite"] = score_df[score_cols].mean(axis=1)
+            if len(codes) < 50:
+                print(f"  [SKIP] 股票池过小")
+                continue
 
-        # 选 Top 30（实际持仓 20，留 buffer）
-        top30 = score_df.nlargest(30, "composite")
-        picks_by_date[dt] = top30["code"].tolist()
-        print(f"  入选 Top30: {top30['composite'].mean():.2f} (avg composite)")
-        print(f"  示例: {top30['code'].head(5).tolist()}")
+            # 多维评分
+            score_df = pd.DataFrame({"code": codes})
+            for name, scorer in scorers.items():
+                try:
+                    t1 = time.time()
+                    batch = scorer.batch_score(codes, dt)
+                    if batch is None or batch.empty:
+                        score_df[f"{name}_score"] = np.nan
+                        continue
+                    # 取加权分数
+                    if "weighted" in batch.columns:
+                        batch_score = batch[["code", "weighted"]].rename(columns={"weighted": f"{name}_score"})
+                    elif "score" in batch.columns:
+                        batch_score = batch[["code", "score"]].rename(columns={"score": f"{name}_score"})
+                    else:
+                        continue
+                    batch_score["code"] = batch_score["code"].astype(str).str.zfill(6)
+                    score_df["code"] = score_df["code"].astype(str).str.zfill(6)
+                    # merge 避免长度不一致报错
+                    score_df = score_df.drop(columns=[f"{name}_score"], errors="ignore").merge(batch_score, on="code", how="left")
+                    elapsed = time.time() - t1
+                    print(f"    {name}: {len(batch)} 条 ({elapsed:.1f}s)")
+                except Exception as e:
+                    print(f"    {name}: ERROR {e}")
+                    score_df[f"{name}_score"] = np.nan
 
-        print(f"  调仓耗时: {time.time()-t0:.1f}s")
+            # 多维融合（等权平均，缺失用中位值填充）
+            score_cols = [c for c in score_df.columns if c.endswith("_score")]
+            for c in score_cols:
+                med = score_df[c].median()
+                if pd.isna(med):
+                    med = 5.0  # 默认中性分
+                score_df[c] = score_df[c].fillna(med)
+            score_df["composite"] = score_df[score_cols].mean(axis=1)
+
+            # 缓存每只股票各维度分数
+            scores_dict = score_df.set_index("code")[score_cols + ["composite"]].to_dict("index")
+            scores_by_date[dt] = scores_dict
+
+            # 选 Top 30（实际持仓 20，留 buffer）
+            top30 = score_df.nlargest(30, "composite")
+            picks_by_date[dt] = top30["code"].tolist()
+            print(f"  入选 Top30: {top30['composite'].mean():.2f} (avg composite)")
+            print(f"  示例: {top30['code'].head(5).tolist()}")
+
+            print(f"  调仓耗时: {time.time()-t0:.1f}s")
+
+        # 写缓存（含各评分器分数，用于多组合对比）
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "dates": dates,
+                "picks": picks_by_date,
+                # 每个日期每只股票各评分器分数（来自最后一次 score_df）
+                "scores": scores_by_date,
+            }, f, ensure_ascii=False)
+        print(f"\n  ✅ 选股结果已缓存: {cache_path}")
 
     if not picks_by_date:
         print("\n[ERROR] 没有生成选股结果")
@@ -268,14 +313,17 @@ def main():
     print(">>> 模拟组合净值")
     print("=" * 70)
 
-    start_d = dates[-1]  # 最早调仓日
-    end_d = (pd.Timestamp(dates[0]) + timedelta(days=60)).strftime("%Y-%m-%d")  # 跑 60 天
+    start_d = dates[0]  # 最早调仓日（升序后 dates[0] 是最早的）
+    end_d = dates[-1]   # 最晚调仓日
+    # 模拟窗口：从最早调仓日 - 5 天开始，到最晚调仓日 + 30 天结束（用于跟踪最后持仓）
+    start_d_ext = (pd.Timestamp(start_d) - timedelta(days=5)).strftime("%Y-%m-%d")
+    end_d_ext = (pd.Timestamp(end_d) + timedelta(days=30)).strftime("%Y-%m-%d")
 
     q = "SELECT code, trade_date, close FROM daily_price WHERE trade_date BETWEEN :s AND :e"
-    price_data = pd.read_sql(q, engine, params={"s": start_d, "e": end_d})
-    print(f"  价格数据: {len(price_data)} 行 ({start_d} ~ {end_d})")
+    price_data = pd.read_sql(q, engine, params={"s": start_d_ext, "e": end_d_ext})
+    print(f"  价格数据: {len(price_data)} 行 ({start_d_ext} ~ {end_d_ext})")
 
-    equity_df = simulate_portfolio(picks_by_date, price_data, start_d, end_d,
+    equity_df = simulate_portfolio(picks_by_date, price_data, start_d_ext, end_d_ext,
                                     initial=1_000_000, n_per_period=20)
 
     # 5) 计算指标
@@ -304,6 +352,63 @@ def main():
             print(f"\n  同期沪深300: {bench_cum.iloc[-1]*100:+.2f}%")
     except Exception as e:
         print(f"  [基准对比失败] {e}")
+
+    # 8) 多组合对比（不同评分器组合、不同持仓数量）
+    print("\n" + "=" * 70)
+    print(">>> 多组合对比（不同评分器组合 / 持仓数）")
+    print("=" * 70)
+
+    def run_combo(combo_dims, n_hold=20, label=""):
+        """对每个调仓日按指定维度重算综合分，选 Top n"""
+        combo_picks = {}
+        for dt in dates:
+            scores = scores_by_date.get(dt, {})
+            if not scores:
+                combo_picks[dt] = picks_by_date.get(dt, [])
+                continue
+            # 按 combo_dims 计算 composite
+            ranked = []
+            for code, sc_dict in scores.items():
+                vals = [sc_dict.get(f"{d}_score", np.nan) for d in combo_dims]
+                # 缺失用中位
+                vals = [v if not pd.isna(v) else 5.0 for v in vals]
+                if vals:
+                    ranked.append((code, np.mean(vals)))
+            ranked.sort(key=lambda x: x[1], reverse=True)
+            combo_picks[dt] = [c for c, _ in ranked[:30]]
+        # 跑模拟
+        eq = simulate_portfolio(combo_picks, price_data, start_d_ext, end_d_ext,
+                                initial=1_000_000, n_per_period=n_hold)
+        m = compute_sharpe(eq)
+        m["组合"] = label
+        return m
+
+    combos = [
+        (["technical"], 20, "单维度-技术"),
+        (["fund_flow"], 20, "单维度-资金"),
+        (["institutional"], 20, "单维度-机构"),
+        (["news_event"], 20, "单维度-消息"),
+        (["technical", "fund_flow"], 20, "双因子-技+资"),
+        (["technical", "institutional"], 20, "双因子-技+机"),
+        (["technical", "fund_flow", "institutional"], 20, "三因子-技+资+机"),
+        (["technical", "fund_flow", "institutional", "news_event"], 20, "四因子-全"),
+        (["technical", "fund_flow", "institutional", "news_event"], 10, "四因子-持仓10"),
+        (["technical", "fund_flow", "institutional", "news_event"], 30, "四因子-持仓30"),
+    ]
+
+    combo_results = []
+    for dims, n, label in combos:
+        try:
+            m = run_combo(dims, n, label)
+            combo_results.append(m)
+        except Exception as e:
+            print(f"  [{label}] 失败: {e}")
+
+    print(f"\n{'组合':<25s} {'总收益':>10s} {'年化':>10s} {'波动率':>8s} {'夏普':>8s} {'最大回撤':>10s}")
+    print("-" * 75)
+    for m in combo_results:
+        print(f"  {m['组合']:<23s} {m['总收益']:>10s} {m['年化']:>10s} {m['波动率']:>8s} "
+              f"{m['夏普比率']:>8} {m['最大回撤']:>10s}")
 
 
 if __name__ == "__main__":

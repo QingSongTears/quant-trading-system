@@ -74,6 +74,22 @@ async def index(request: Request):
             "sharpe_ratio": r.sharpe_ratio,
         })
 
+    # 准备"一键对比"用的 top 回测 (用于首页 checkbox 选择)
+    # 取每个不同 strategy 最新的一个回测, 最多 6 个
+    top_strategy_cards = []
+    seen_strategies = set()
+    for r in all_backtests:
+        strat_name = r.strategy.name if r.strategy else "未知"
+        if strat_name in seen_strategies:
+            continue
+        seen_strategies.add(strat_name)
+        top_strategy_cards.append({
+            "id": r.id,
+            "name": strat_name,
+        })
+        if len(top_strategy_cards) >= 6:
+            break
+
     ctx = _get_global_context()
     ctx.update({
         "coverage": coverage,
@@ -83,6 +99,7 @@ async def index(request: Request):
         "best_return": best_return,
         "avg_sharpe": avg_sharpe,
         "win_rate": win_rate,
+        "top_strategy_cards": top_strategy_cards,
         "has_data": coverage.get("total_records", 0) > 0,
         "data_sources": [
             {"name": "AKShare", "url": "https://akshare.readthedocs.io", "desc": "东方财富/新浪财经公开接口"},
@@ -124,30 +141,13 @@ async def data_page(request: Request):
 
 
 @router.get("/backtest", response_class=HTMLResponse)
-async def backtest_page(request: Request):
-    """回测执行页"""
-    repo = DataRepository()
-    try:
-        strategies = repo.get_all_strategies()
-        stock_list = repo.get_stock_list()
-    except Exception:
-        strategies = []
-        stock_list = []
-
-    # 加载 strategies.yaml 获取 strategy_type 信息
-    from ...config import load_strategies
-    yaml_strategies = load_strategies().get("strategies", [])
-    yaml_map = {s["name"]: s for s in yaml_strategies}
-
-    ctx = _get_global_context()
-    ctx.update({
-        "strategies": strategies,
-        "strategy_configs": yaml_map,  # 包含 strategy_type 等字段
-        "stock_list": stock_list.to_dict("records") if hasattr(stock_list, "to_dict") else [],
-        "default_start": (date.today() - timedelta(days=365 * 3)).strftime("%Y-%m-%d"),
-        "default_end": date.today().strftime("%Y-%m-%d"),
-    })
-    return templates.TemplateResponse(request, "backtest.html", ctx)
+async def backtest_page_redirect(request: Request):
+    """回测执行页 — 已合并到 /workbench, 旧链接保留向后重定向"""
+    from fastapi.responses import RedirectResponse
+    # 透传 URL 参数 (data.html 的"对该股回测"用 ?code=xxx&name=yyy 跳转)
+    qs = request.url.query
+    target = f"/workbench{qs}" if qs else "/workbench"
+    return RedirectResponse(url=target, status_code=301)
 
 
 @router.get("/backtest/{result_id}", response_class=HTMLResponse)

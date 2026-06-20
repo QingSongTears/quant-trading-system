@@ -275,7 +275,8 @@ function showStockDetail(code, name, market) {
     document.getElementById('stock-detail-content').innerHTML =
         `<strong>${escHtml(name)}</strong> <span class="stock-tag">${escHtml(code)}</span>
          <small class="text-muted">${escHtml(market)}</small>
-         <a href="/backtest" class="btn btn-sm btn-outline-primary ms-3">对该股回测 →</a>`;
+         <a href="/workbench?code=${encodeURIComponent(code)}&name=${encodeURIComponent(name)}"
+            class="btn btn-sm btn-outline-primary ms-3">对该股回测 →</a>`;
 }
 
 // 下载控制（事件绑定）
