@@ -249,8 +249,19 @@ tr:hover td { background:rgba(255,255,255,0.02); }
             <button class="btn btn-sm btn-outline" onclick="clearHistory()" style="margin-left:4px;">🗑️ 清空</button>
           </div>
         </div>
-        <div id="logList" class="log-grid">
-          <div class="empty-state">暂无回测记录</div>
+        <div class="tabs" style="margin-bottom:8px;border-bottom:1px solid var(--border);display:flex;gap:0;">
+          <span class="tab active" data-tab="localLog" onclick="switchLogTab(this,'localLog')" style="padding:6px 14px;cursor:pointer;font-size:0.78rem;color:var(--dim);border-bottom:2px solid var(--accent);font-weight:600;">📁 本地日志</span>
+          <span class="tab" data-tab="dbHistory" onclick="switchLogTab(this,'dbHistory')" style="padding:6px 14px;cursor:pointer;font-size:0.78rem;color:var(--dim);border-bottom:2px solid transparent;">💾 数据库历史</span>
+        </div>
+        <div id="localLog" class="log-tab-content">
+          <div id="logList" class="log-grid">
+            <div class="empty-state">暂无回测记录</div>
+          </div>
+        </div>
+        <div id="dbHistory" class="log-tab-content" style="display:none;">
+          <div id="dbLogList" class="log-grid">
+            <div class="empty-state">加载中...</div>
+          </div>
         </div>
       </div>
 
@@ -285,15 +296,6 @@ let state = {
   equityChart: null,
   compareChart: null,
 };
-
-// ===== 初始化 =====
-document.addEventListener('DOMContentLoaded', () => {
-  loadStrategies();
-  setupSearch();
-  setupDates();
-  loadHistory();
-  setupFormWatchers();
-});
 
 // ===== 日期 =====
 function setupDates() {
@@ -867,6 +869,200 @@ function renderCompareChart(records, colors) {
 // 点击模态外部关闭
 document.getElementById('compareModal').addEventListener('click', function(e) {
   if (e.target === this) closeCompare();
+});
+
+// ====================================================================
+// ===== 数据库历史 =====
+// ====================================================================
+const DB_HISTORY_API = '/api/backtest/history';
+let dbHistoryData = [];
+
+// Tab切换
+function switchLogTab(el, tabId) {
+  document.querySelectorAll('.log-tab-content').forEach(t => t.style.display = 'none');
+  document.querySelectorAll('.tabs .tab').forEach(t => {
+    t.style.color = 'var(--dim)';
+    t.style.borderBottomColor = 'transparent';
+    t.style.fontWeight = '400';
+  });
+  document.getElementById(tabId).style.display = 'block';
+  el.style.color = 'var(--accent)';
+  el.style.borderBottomColor = 'var(--accent)';
+  el.style.fontWeight = '600';
+  if (tabId === 'dbHistory') loadDbHistory();
+}
+
+async function loadDbHistory() {
+  const list = document.getElementById('dbLogList');
+  list.innerHTML = '<div class="empty-state"><span class="spinner"></span> 加载中...</div>';
+  try {
+    const r = await fetch(DB_HISTORY_API + '?limit=50');
+    const d = await r.json();
+    dbHistoryData = d.results || [];
+    renderDbHistory(dbHistoryData);
+  } catch(e) {
+    list.innerHTML = '<div class="empty-state">❌ 加载失败: ' + e.message + '</div>';
+  }
+}
+
+function renderDbHistory(records) {
+  const list = document.getElementById('dbLogList');
+  if (!records.length) {
+    list.innerHTML = '<div class="empty-state">暂无数据库回测记录</div>';
+    return;
+  }
+  list.innerHTML = records.map((r, i) => {
+    const ret = r.total_return;
+    const retColor = ret != null ? (ret >= 0 ? 'var(--red)' : 'var(--green)') : 'var(--dim)';
+    const sharpeColor = r.sharpe_ratio != null ? (r.sharpe_ratio >= 0 ? 'var(--red)' : 'var(--green)') : 'var(--dim)';
+    return `<div class="log-row" onclick="loadDbDetail(${r.id})" style="cursor:pointer;">
+      <input type="checkbox" class="db-cb" data-dbid="${r.id}" onclick="event.stopPropagation(); onDbCheckChange()">
+      <span style="display:flex;gap:6px;align-items:center;">
+        <span class="log-time">${(r.created_at||'').slice(5,16)}</span>
+        <span class="log-strat">${escHtml(r.strategy_name||'')}</span>
+      </span>
+      <span class="log-code">${r.stock_code||''}</span>
+      <span class="log-return" style="color:${retColor}">${ret != null ? (ret>=0?'+':'')+ret.toFixed(2)+'%' : '-'}</span>
+      <span style="color:${sharpeColor}">${r.sharpe_ratio != null ? r.sharpe_ratio.toFixed(2) : '-'}</span>
+      <span style="color:var(--dim);">${r.total_trades != null ? r.total_trades+'笔' : '-'}</span>
+      <span style="color:var(--dim);font-size:0.7rem;">${r.stock_name || ''}</span>
+    </div>`;
+  }).join('');
+}
+
+async function loadDbDetail(id) {
+  try {
+    const r = await fetch(DB_HISTORY_API + '/' + id);
+    const detail = await r.json();
+    if (detail.error) { alert(detail.error); return; }
+
+    // 转换为前端结果格式
+    const result = {
+      code: detail.stock_code,
+      strategyName: detail.strategy_name,
+      summary: {
+        totalReturn: detail.total_return,
+        sharpe: detail.sharpe_ratio,
+        maxDrawdown: detail.max_drawdown,
+        winRate: detail.win_rate,
+        totalTrades: detail.total_trades,
+        avgHoldDays: detail.avg_hold_days,
+        bhReturn: detail.benchmark_return,
+        excessReturn: detail.excess_return,
+      },
+      equityCurve: detail.equity_curve || [],
+      bhCurve: detail.benchmark_curve || [],
+      trades: detail.trades_detail || [],
+    };
+
+    state.currentResult = result;
+    renderResult(result);
+    setStatus('✅ 已加载数据库记录 #' + id, 'success');
+
+    // 滚动到结果区
+    document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth' });
+  } catch(e) {
+    setStatus('❌ 加载详情失败: ' + e.message, 'error');
+  }
+}
+
+// DB记录勾选状态
+function onDbCheckChange() {
+  const checked = document.querySelectorAll('.db-cb:checked').length;
+  document.getElementById('btnCompare').disabled = checked < 2;
+  // 如果勾选了DB记录，也启用对比按钮
+  const localChecked = document.querySelectorAll('.log-cb:checked').length;
+  document.getElementById('btnCompare').disabled = (checked + localChecked) < 2;
+}
+
+// 覆盖原有的onCheckChange和updateCompareBtn
+const origOnCheckChange = onCheckChange;
+const origUpdateCompareBtn = updateCompareBtn;
+onCheckChange = function() {
+  origOnCheckChange();
+  onDbCheckChange();
+};
+updateCompareBtn = function() {
+  origUpdateCompareBtn();
+  onDbCheckChange();
+};
+
+// 覆盖showCompare以支持DB记录
+const origShowCompare = showCompare;
+showCompare = function() {
+  const localChecked = document.querySelectorAll('.log-cb:checked');
+  const dbChecked = document.querySelectorAll('.db-cb:checked');
+  const totalChecked = localChecked.length + dbChecked.length;
+  if (totalChecked < 2) return;
+
+  const records = [];
+
+  // localStorage记录
+  Array.from(localChecked).forEach(cb => {
+    const idx = parseInt(cb.dataset.idx);
+    if (state.history[idx]) records.push(state.history[idx]);
+  });
+
+  // DB记录（异步加载详情后对比）
+  const dbIds = Array.from(dbChecked).map(cb => parseInt(cb.dataset.dbid));
+  if (dbIds.length === 0) {
+    // 只有local记录
+    document.getElementById('compareModal').classList.add('show');
+    renderCompare(records);
+    return;
+  }
+
+  // 混合对比：先显示local，再异步加载DB
+  document.getElementById('compareModal').classList.add('show');
+  document.getElementById('compareBody').innerHTML = '<div class="empty-state"><span class="spinner"></span> 加载DB记录详情...</div>';
+
+  Promise.all(dbIds.map(id =>
+    fetch(DB_HISTORY_API + '/' + id).then(r => r.json())
+  )).then(dbDetails => {
+    dbDetails.forEach(detail => {
+      if (detail.error) return;
+      records.push({
+        id: detail.id,
+        time: (detail.created_at || '').slice(0,16),
+        strategy: detail.strategy_name || 'DB#' + detail.id,
+        code: detail.stock_code,
+        capital: detail.initial_capital,
+        totalReturn: detail.total_return,
+        sharpe: detail.sharpe_ratio,
+        maxDrawdown: detail.max_drawdown,
+        winRate: detail.win_rate,
+        totalTrades: detail.total_trades,
+        bhReturn: detail.benchmark_return,
+        excessReturn: detail.excess_return,
+        params: JSON.stringify({}),
+        equityCurve: JSON.stringify(detail.equity_curve || []),
+        bhCurve: JSON.stringify(detail.benchmark_curve || []),
+      });
+    });
+    renderCompare(records);
+  }).catch(e => {
+    document.getElementById('compareBody').innerHTML =
+      '<div class="empty-state">❌ 加载DB详情失败: ' + e.message + '</div>';
+  });
+};
+
+// 页面加载时自动加载DB历史计数
+document.addEventListener('DOMContentLoaded', () => {
+  // 原有初始化
+  loadStrategies();
+  setupSearch();
+  setupDates();
+  loadHistory();
+  setupFormWatchers();
+
+  // 额外：加载DB历史计数
+  setTimeout(() => {
+    fetch(DB_HISTORY_API + '?limit=1').then(r => r.json()).then(d => {
+      if (d.total > 0) {
+        document.getElementById('logCount').textContent = '(本地' + state.history.length + ' · DB' + d.total + ')';
+      }
+    }).catch(() => {});
+  }, 500);
 });
 </script>
 </body>

@@ -281,6 +281,11 @@ def predict_dashboard():
     return send_from_directory(str(PROJECT_ROOT / "output"), "predict_dashboard.html")
 
 
+@app.route("/verify")
+def predict_verify():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "predict_verify.html")
+
+
 @app.route("/ic")
 def ic_analysis():
     return send_from_directory(str(PROJECT_ROOT / "output"), "ic_analysis.html")

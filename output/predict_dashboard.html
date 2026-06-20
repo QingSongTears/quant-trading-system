@@ -13,25 +13,28 @@
   --green:#4caf50; --red:#ef5350; --yellow:#ffa726; --orange:#ff7043;
 }
 body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
-header { background:var(--card); border-bottom:1px solid var(--border); padding:14px 24px; display:flex; align-items:center; gap:16px; }
+header { background:var(--card); border-bottom:1px solid var(--border); padding:14px 24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
 header h1 { font-size:1.1rem; font-weight:600; }
-header a { color:var(--dim); text-decoration:none; font-size:0.8rem; margin-left:auto; }
+header .nav-links { margin-left:auto; display:flex; gap:12px; }
+header a { color:var(--dim); text-decoration:none; font-size:0.8rem; }
 header a:hover { color:var(--accent); }
 .container { max-width:1200px; margin:0 auto; padding:20px; }
 
 /* 搜索框 */
 .search-section { margin-bottom:20px; }
-.search-box { display:flex; gap:10px; align-items:center; }
+.search-box { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 .search-box input {
-  flex:1; padding:12px 16px; border-radius:8px; border:1px solid var(--border);
+  flex:1; min-width:180px; padding:12px 16px; border-radius:8px; border:1px solid var(--border);
   background:var(--card); color:var(--text); font-size:1rem; outline:none;
 }
 .search-box input:focus { border-color:var(--accent); }
+.search-box input[type="month"] { flex:0 0 160px; padding:12px 12px; }
 .search-box button {
   padding:12px 24px; border:none; border-radius:8px; background:var(--accent);
   color:#000; font-weight:600; cursor:pointer; font-size:0.9rem;
 }
 .search-box button:hover { opacity:0.85; }
+.search-box .hint { font-size:0.72rem; color:var(--dim); margin-left:auto; }
 .suggestions {
   position:absolute; z-index:100; width:100%; max-height:240px; overflow-y:auto;
   background:var(--card); border:1px solid var(--border); border-radius:8px; display:none;
@@ -45,14 +48,14 @@ header a:hover { color:var(--accent); }
 
 /* 卡片 */
 .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:20px; }
-.card-title { font-size:0.75rem; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:14px; }
+.card-title { font-size:0.75rem; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; }
+.card-title .badge { font-size:0.65rem; text-transform:none; padding:2px 8px; border-radius:10px; background:rgba(79,195,247,0.15); color:var(--accent); }
 
 /* 概率仪表盘 */
 .gauge-wrap { text-align:center; padding:10px 0; }
 .gauge-circle {
   width:160px; height:160px; border-radius:50%; margin:0 auto 12px;
   position:relative; display:flex; align-items:center; justify-content:center;
-  background:conic-gradient(var(--green) 0deg, var(--yellow) 0deg, var(--red) 0deg);
 }
 .gauge-inner {
   width:130px; height:130px; border-radius:50%; background:var(--card);
@@ -88,12 +91,40 @@ td:last-child { text-align:right; font-family:monospace; }
 .neg { color:var(--green); }
 .zero { color:var(--dim); }
 
+/* 历史记录 */
+.history-section { margin-top:20px; display:none; }
+.history-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:10px; }
+.history-card {
+  background:var(--card); border:1px solid var(--border); border-radius:8px; padding:12px; cursor:pointer; transition:border-color 0.15s;
+}
+.history-card:hover { border-color:var(--accent); }
+.history-card .h-date { font-size:0.72rem; color:var(--dim); }
+.history-card .h-proba { font-size:1.1rem; font-weight:700; }
+.history-card .h-signal { font-size:0.72rem; display:inline-block; padding:1px 8px; border-radius:10px; }
+
+/* 统计卡片 */
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
+.stat-card { text-align:center; padding:12px; border-radius:8px; background:rgba(255,255,255,0.02); border:1px solid var(--border); }
+.stat-val { font-size:1.4rem; font-weight:700; }
+.stat-label { font-size:0.65rem; color:var(--dim); margin-top:2px; text-transform:uppercase; }
+
+/* 分组统计 */
+.bin-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.bin-card { text-align:center; padding:12px; border-radius:8px; border:1px solid var(--border); }
+.bin-card.buy { border-color:rgba(239,83,80,0.3); }
+.bin-card.hold { border-color:rgba(255,167,38,0.3); }
+.bin-card.avoid { border-color:rgba(76,175,80,0.3); }
+.bin-title { font-size:0.7rem; color:var(--dim); text-transform:uppercase; letter-spacing:0.5px; }
+.bin-count { font-size:0.75rem; color:var(--dim); }
+.bin-avg { font-size:1.1rem; font-weight:700; margin:4px 0; }
+.bin-up { font-size:0.8rem; }
+
 /* 空状态和加载 */
 .empty-state { text-align:center; padding:60px 20px; color:var(--dim); }
 .empty-state i { font-size:3rem; display:block; margin-bottom:12px; }
 .loading { text-align:center; padding:40px; color:var(--dim); }
 
-/* 底部信息 */
+/* 底部 */
 .footer { text-align:center; padding:20px; color:var(--dim); font-size:0.75rem; border-top:1px solid var(--border); margin-top:20px; }
 
 /* 维度颜色 */
@@ -108,6 +139,17 @@ td:last-child { text-align:right; font-family:monospace; }
 
 /* 扇形指示圆 */
 .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+
+/* Tab切换 */
+.tabs { display:flex; gap:0; margin-bottom:14px; border-bottom:1px solid var(--border); }
+.tab { padding:8px 18px; cursor:pointer; font-size:0.82rem; color:var(--dim); border-bottom:2px solid transparent; transition:all 0.15s; }
+.tab:hover { color:var(--text); }
+.tab.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+.tab-content { display:none; }
+.tab-content.active { display:block; }
+
+@keyframes spin { to { transform:rotate(360deg); } }
+.spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.6s linear infinite; vertical-align:middle; margin-right:6px; }
 </style>
 </head>
 <body>
@@ -115,7 +157,11 @@ td:last-child { text-align:right; font-family:monospace; }
 <header>
   <h1>🔮 8维预测看板</h1>
   <span style="font-size:0.75rem;color:var(--dim)">8维评分 → 下月上涨概率</span>
-  <a href="/">← 返回调优面板</a>
+  <div class="nav-links">
+    <a href="/diagnose">个股诊断</a>
+    <a href="/verify">验证看板</a>
+    <a href="/">← 返回首页</a>
+  </div>
 </header>
 
 <div class="container">
@@ -124,7 +170,21 @@ td:last-child { text-align:right; font-family:monospace; }
     <div class="search-box" style="position:relative">
       <input type="text" id="stockInput" placeholder="输入股票代码或名称，如 000001、平安银行..." autocomplete="off">
       <div class="suggestions" id="suggestions"></div>
+      <input type="month" id="monthPicker">
       <button onclick="searchStock()">🔍 查询</button>
+      <span class="hint">不选日期 = 最新数据</span>
+    </div>
+  </div>
+
+  <!-- ========== 统计总览 ========== -->
+  <div id="statsOverview" style="display:none;margin-bottom:16px;">
+    <div class="card">
+      <div class="card-title">📊 预测验证统计 <span class="badge" id="statsBadge">加载中...</span></div>
+      <div class="stats-grid" id="statsGrid"></div>
+      <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px;">
+        <div class="card-title" style="margin-bottom:8px;">分组表现</div>
+        <div class="bin-grid" id="binGrid"></div>
+      </div>
     </div>
   </div>
 
@@ -133,11 +193,12 @@ td:last-child { text-align:right; font-family:monospace; }
     <i>🔍</i>
     <p>输入股票代码，查看下月上涨概率</p>
     <p style="font-size:0.8rem;margin-top:8px">例如: 000001 平安银行 / 600519 贵州茅台</p>
+    <p style="font-size:0.75rem;margin-top:4px;color:var(--accent)">支持选择历史月份回溯预测</p>
   </div>
 
   <!-- 加载 -->
   <div id="loadingState" class="loading" style="display:none">
-    <p>正在预测...</p>
+    <span class="spinner"></span> 正在预测...
   </div>
 
   <!-- 主面板 -->
@@ -157,6 +218,7 @@ td:last-child { text-align:right; font-family:monospace; }
           </div>
           <div class="meta">
             基于 <span id="metaDate">-</span> 数据 · 模型AUC=<span id="metaAuc">0.55</span>
+            · 月份 <span id="metaMonth" style="color:var(--accent)">-</span>
           </div>
         </div>
       </div>
@@ -177,7 +239,7 @@ td:last-child { text-align:right; font-family:monospace; }
       </div>
     </div>
 
-    <!-- 右侧：雷达图 -->
+    <!-- 右侧：雷达图 + 洞察 -->
     <div>
       <div class="card" style="margin-bottom:14px">
         <div class="card-title">🎯 8维能力雷达</div>
@@ -195,8 +257,33 @@ td:last-child { text-align:right; font-family:monospace; }
     </div>
   </div>
 
+  <!-- ========== 历史预测记录 ========== -->
+  <div id="historySection" class="history-section">
+    <div class="card">
+      <div class="card-title">
+        <span>📜 历史预测记录</span>
+        <span id="historyCount" style="font-size:0.72rem;font-weight:400;"></span>
+      </div>
+      <div class="tabs" style="border-bottom-color:var(--border);">
+        <span class="tab active" data-tab="historyMonth" onclick="switchTab(this,'historyMonth')">按月份</span>
+        <span class="tab" data-tab="historyList" onclick="switchTab(this,'historyList')">完整列表</span>
+      </div>
+      <div id="historyMonth" class="tab-content active">
+        <div class="history-grid" id="historyGrid"></div>
+      </div>
+      <div id="historyList" class="tab-content">
+        <div class="table-wrap" style="max-height:400px;overflow-y:auto;">
+          <table>
+            <thead><tr><th>月份</th><th>概率</th><th>信号</th><th>数据日期</th><th>实际收益</th><th>命中</th></tr></thead>
+            <tbody id="historyTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="footer">
-    A股量化回测系统 · 8维预测模型 AUC=0.5515 · 仅供参考
+    A股量化回测系统 · 8维预测模型 AUC=0.5515 · 预测仅供参考
   </div>
 </div>
 
@@ -213,7 +300,6 @@ const DIMS = [
   { key:'chip',           label:'筹码面',     color:'#8d6e63', short:'筹码' },
 ];
 
-// 权重系数（从模型加载）
 const COEF = {
   tech: 0.0132, fundam: 0.0136, fund: -0.0703,
   institutional: 0.006, lh_institutional: 0.0229,
@@ -233,10 +319,7 @@ stockInput.addEventListener('input', function() {
   if (q.length < 1) { suggestions.style.display = 'none'; return; }
   searchTimer = setTimeout(() => fetchSuggestions(q), 200);
 });
-
-stockInput.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') searchStock();
-});
+stockInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') searchStock(); });
 
 async function fetchSuggestions(q) {
   try {
@@ -251,9 +334,6 @@ async function fetchSuggestions(q) {
       }
     }
     if (matched.length === 0) {
-      // 试试按名称搜 - 请求全stock列表
-      let stockResp = await fetch('/api/status');
-      let statusData = await stockResp.json();
       suggestions.style.display = 'none';
       return;
     }
@@ -279,6 +359,17 @@ function selectStock(code) {
   searchStock();
 }
 
+// 设置本月为默认
+document.getElementById('monthPicker').value = new Date().toISOString().slice(0,7);
+
+// ===== Tab切换 =====
+function switchTab(el, tabId) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
+
 // ===== 主查询 =====
 async function searchStock() {
   let code = stockInput.value.trim().replace(/[^0-9]/g, '').padStart(6, '0');
@@ -287,9 +378,14 @@ async function searchStock() {
   document.getElementById('emptyState').style.display = 'none';
   document.getElementById('loadingState').style.display = 'block';
   document.getElementById('resultArea').style.display = 'none';
+  document.getElementById('historySection').style.display = 'none';
+
+  const month = document.getElementById('monthPicker').value;
+  let url = '/api/predict/' + code;
+  if (month) url += '?date=' + month;
 
   try {
-    let resp = await fetch('/api/predict/' + code);
+    let resp = await fetch(url);
     if (!resp.ok) throw new Error('未找到股票');
     let data = await resp.json();
 
@@ -302,6 +398,11 @@ async function searchStock() {
     renderRadar(data);
     renderInsight(data);
 
+    // 加载历史和统计
+    loadPredictHistory(code);
+    loadStats();
+    document.getElementById('historySection').style.display = 'block';
+
   } catch(e) {
     document.getElementById('loadingState').style.display = 'none';
     document.getElementById('emptyState').style.display = 'block';
@@ -309,11 +410,101 @@ async function searchStock() {
   }
 }
 
+// ===== 加载预测历史 =====
+async function loadPredictHistory(code) {
+  try {
+    const r = await fetch('/api/predict/history?code=' + code + '&limit=30');
+    const d = await r.json();
+    renderHistory(d.results || []);
+  } catch(e) { console.log(e); }
+}
+
+function renderHistory(records) {
+  document.getElementById('historyCount').textContent = '(' + records.length + '条)';
+  // 网格
+  const grid = document.getElementById('historyGrid');
+  if (!records.length) {
+    grid.innerHTML = '<div class="empty-state" style="padding:20px;">暂无历史预测</div>';
+  } else {
+    grid.innerHTML = records.map(r => {
+      const pct = (r.pred_proba * 100);
+      const sigClass = r.signal === '买入' ? 'buy' : (r.signal === '回避' ? 'avoid' : 'hold');
+      const ret = r.actual_return_20d;
+      const retColor = ret != null ? (ret >= 0 ? 'var(--red)' : 'var(--green)') : 'var(--dim)';
+      return `<div class="history-card" onclick="loadHistoryMonth('${r.pred_month}')">
+        <div class="h-date">${r.pred_month}</div>
+        <div class="h-proba" style="color:${pct >= 55 ? 'var(--red)' : pct >= 40 ? 'var(--yellow)' : 'var(--green)'}">${pct.toFixed(1)}%</div>
+        <div><span class="h-signal signal-badge ${sigClass}" style="font-size:0.65rem;padding:1px 8px">${r.signal}</span></div>
+        <div style="margin-top:6px;font-size:0.72rem;">
+          <span>实际: </span>
+          <span style="color:${retColor};font-weight:600">${ret != null ? (ret>=0?'+':'')+ret.toFixed(2)+'%' : '-'}</span>
+        </div>
+        <div class="h-date" style="margin-top:2px;">AUC=${(r.auc||0.5515).toFixed(4)}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // 表格
+  const tbody = document.getElementById('historyTableBody');
+  tbody.innerHTML = records.map((r, i) => {
+    const pct = (r.pred_proba * 100);
+    const ret = r.actual_return_20d;
+    const retColor = ret != null ? (ret >= 0 ? 'var(--red)' : 'var(--green)') : 'var(--dim)';
+    const isHit = ret != null && ((r.signal === '买入' && ret > 0) || (r.signal === '回避' && ret < 0));
+    const sigClass = r.signal === '买入' ? 'buy' : (r.signal === '回避' ? 'avoid' : 'hold');
+    return '<tr onclick="loadHistoryMonth(\'' + r.pred_month + '\')" style="cursor:pointer;">' +
+      '<td style="font-weight:600;">' + (r.pred_month || '') + '</td>' +
+      '<td style="color:' + (pct >= 55 ? 'var(--red)' : pct >= 40 ? 'var(--yellow)' : 'var(--green)') + '">' + pct.toFixed(1) + '%</td>' +
+      '<td><span class="signal-badge ' + sigClass + '" style="font-size:0.65rem;padding:1px 8px">' + r.signal + '</span></td>' +
+      '<td style="color:var(--dim);font-size:0.75rem;">' + (r.as_of_date||'').slice(0,10) + '</td>' +
+      '<td style="color:' + retColor + ';font-weight:600">' + (ret != null ? (ret>=0?'+':'')+ret.toFixed(2)+'%' : '-') + '</td>' +
+      '<td>' + (ret != null ? (isHit ? '<span style="color:var(--red)">✅ 命中</span>' : '<span style="color:var(--green)">❌ 未中</span>') : '<span style="color:var(--dim)">待验证</span>') + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function loadHistoryMonth(month) {
+  document.getElementById('monthPicker').value = month;
+  searchStock();
+}
+
+// ===== 加载统计 =====
+async function loadStats() {
+  document.getElementById('statsOverview').style.display = 'block';
+  document.getElementById('statsBadge').innerHTML = '<span class="spinner"></span>';
+  try {
+    // 先验证
+    await fetch('/api/predict/verify');
+    const r = await fetch('/api/predict/stats');
+    const d = await r.json();
+    document.getElementById('statsBadge').textContent = d.total + '条已验证';
+
+    document.getElementById('statsGrid').innerHTML =
+      '<div class="stat-card"><div class="stat-val" style="color:' + (d.hit_rate >= 50 ? 'var(--red)' : 'var(--green)') + '">' + d.hit_rate + '%</div><div class="stat-label">整体命中率</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + d.total + '</div><div class="stat-label">已验证记录</div></div>';
+
+    if (d.bin_stats) {
+      document.getElementById('binGrid').innerHTML = d.bin_stats.map(b => {
+        const binClass = b.bin === '>=0.55' ? 'buy' : (b.bin === '<0.4' ? 'avoid' : 'hold');
+        const avgColor = b.avg_return >= 0 ? 'var(--red)' : 'var(--green)';
+        return '<div class="bin-card ' + binClass + '">' +
+          '<div class="bin-title">' + b.bin + '</div>' +
+          '<div class="bin-count">' + b.count + '只</div>' +
+          '<div class="bin-avg" style="color:' + avgColor + '">' + (b.avg_return >= 0 ? '+' : '') + b.avg_return + '%</div>' +
+          '<div class="bin-up">上涨率 <strong>' + b.up_rate + '%</strong></div>' +
+        '</div>';
+      }).join('');
+    }
+  } catch(e) {
+    document.getElementById('statsBadge').textContent = '加载失败';
+  }
+}
+
 // ===== 渲染概率仪表盘 =====
 function renderGauge(data) {
   let pct = (data.pred_proba_up * 100);
-  let deg = pct * 1.8; // 0~100 → 0~180度
-  let color = pct >= 55 ? '#4caf50' : (pct >= 40 ? '#ffa726' : '#ef5350');
+  let deg = pct * 1.8;
+  let color = pct >= 55 ? '#ef5350' : (pct >= 40 ? '#ffa726' : '#4caf50');
   document.getElementById('gaugeCircle').style.background =
     `conic-gradient(${color} 0deg ${deg}deg, #2a2d3a ${deg}deg 360deg)`;
   let el = document.getElementById('gaugePct');
@@ -326,9 +517,9 @@ function renderGauge(data) {
 
   document.getElementById('metaDate').textContent = data.as_of_date || '-';
   document.getElementById('metaAuc').textContent = (data.auc || 0.5515).toFixed(4);
+  document.getElementById('metaMonth').textContent = data.pred_month || '-';
 }
 
-// ===== 渲染分数表 =====
 function renderScoreTable(data) {
   let scores = data.dim_scores || {};
   let html = DIMS.map(d => {
@@ -338,7 +529,6 @@ function renderScoreTable(data) {
   document.getElementById('scoreTable').innerHTML = html;
 }
 
-// ===== 渲染贡献条形图 =====
 function renderBarChart(data) {
   let scores = data.dim_scores || {};
   let items = DIMS.map(d => ({
@@ -348,19 +538,15 @@ function renderBarChart(data) {
     color: d.color,
     contribution: ((scores[d.key] || 0) * (COEF[d.key] || 0))
   }));
-  // 按贡献绝对值排序
   items.sort((a,b) => Math.abs(b.contribution) - Math.abs(a.contribution));
-
   let maxAbs = Math.max(...items.map(i => Math.abs(i.contribution)), 0.01);
   let html = items.map(i => {
-    let pct = (i.contribution / maxAbs) * 50; // 最大50%
-    let pctAbs = Math.abs(pct);
+    let pctAbs = Math.abs(i.contribution / maxAbs) * 50;
     let isPos = i.contribution >= 0;
-    let barColor = isPos ? i.color : '#ef5350';
     return `<div class="bar-item">
       <span class="bar-label">${i.label}</span>
       <div class="bar-track">
-        <div class="bar-fill" style="width:${pctAbs+20}%;background:${barColor}"></div>
+        <div class="bar-fill" style="width:${pctAbs+20}%;background:${isPos ? i.color : '#ef5350'}"></div>
       </div>
       <span class="bar-val ${isPos ? 'pos' : 'neg'}">${i.contribution > 0 ? '+' : ''}${i.contribution.toFixed(3)}</span>
     </div>`;
@@ -368,15 +554,12 @@ function renderBarChart(data) {
   document.getElementById('barChart').innerHTML = html;
 }
 
-// ===== 渲染雷达图 =====
 function renderRadar(data) {
   let scores = data.dim_scores || {};
   let labels = DIMS.map(d => d.label);
   let values = DIMS.map(d => scores[d.key] || 0);
   let colors = DIMS.map(d => d.color);
-
   if (radarChart) radarChart.destroy();
-
   let ctx = document.getElementById('radarChart').getContext('2d');
   radarChart = new Chart(ctx, {
     type: 'radar',
@@ -395,8 +578,7 @@ function renderRadar(data) {
       }]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       scales: {
         r: {
           min: 0, max: 20,
@@ -406,20 +588,15 @@ function renderRadar(data) {
           pointLabels: { color: '#ccc', font: { size: 11 } }
         }
       },
-      plugins: {
-        legend: { display: false }
-      }
+      plugins: { legend: { display: false } }
     }
   });
 }
 
-// ===== 渲染综合研判 =====
 function renderInsight(data) {
   let scores = data.dim_scores || {};
   let pct = (data.pred_proba_up * 100);
   let signal = data.signal;
-
-  // 找出最强的正向和反向维度
   let contribs = DIMS.map(d => ({
     label: d.label, key: d.key,
     contrib: (scores[d.key] || 0) * (COEF[d.key] || 0),
@@ -427,32 +604,28 @@ function renderInsight(data) {
     coef: COEF[d.key] || 0
   }));
   contribs.sort((a,b) => b.contrib - a.contrib);
-
   let posDims = contribs.filter(c => c.contrib > 0).slice(0, 2);
   let negDims = contribs.filter(c => c.contrib < 0).slice(-2);
-
   let lines = [];
   lines.push(`<strong>${data.code}</strong> 基于 ${data.as_of_date} 的8维评分，`);
   if (pct >= 55) {
-    lines.push(`下月上涨概率 <strong style="color:var(--green)">${pct.toFixed(1)}%</strong>，信号为 <strong style="color:var(--green)">${signal}</strong>，建议关注。`);
+    lines.push(`下月上涨概率 <strong style="color:var(--red)">${pct.toFixed(1)}%</strong>，信号为 <strong style="color:var(--red)">${signal}</strong>，建议关注。`);
   } else if (pct >= 40) {
     lines.push(`下月上涨概率 <strong style="color:var(--yellow)">${pct.toFixed(1)}%</strong>，信号为 <strong style="color:var(--yellow)">${signal}</strong>，方向不明确。`);
   } else {
     lines.push(`下月上涨概率 <strong style="color:var(--green)">${pct.toFixed(1)}%</strong>，信号为 <strong style="color:var(--green)">${signal}</strong>，建议回避。`);
   }
-
   if (posDims.length > 0) {
-    lines.push(`<br><span style="color:var(--green)">▲ 正向贡献:</span> ${posDims.map(d => `${d.label}(${d.score.toFixed(1)}分, +${d.contrib.toFixed(3)})`).join('、')}`);
+    lines.push(`<br><span style="color:var(--red)">▲ 正向贡献:</span> ${posDims.map(d => `${d.label}(${d.score.toFixed(1)}分, +${d.contrib.toFixed(3)})`).join('、')}`);
   }
   if (negDims.length > 0) {
-    lines.push(`<br><span style="color:var(--red)">▼ 反向贡献:</span> ${negDims.map(d => `${d.label}(${d.score.toFixed(1)}分, ${d.contrib.toFixed(3)})`).join('、')}`);
+    lines.push(`<br><span style="color:var(--green)">▼ 反向贡献:</span> ${negDims.map(d => `${d.label}(${d.score.toFixed(1)}分, ${d.contrib.toFixed(3)})`).join('、')}`);
   }
   lines.push(`<br><br><span style="color:var(--dim)">模型AUC=${(data.auc||0.5515).toFixed(4)}，概率>0.55为买入区，<0.4为回避区</span>`);
-
   document.getElementById('insightBox').innerHTML = lines.join('');
 }
 
-// ===== 回车搜索 =====
+// ===== 点击关闭建议 =====
 document.addEventListener('click', function(e) {
   if (!e.target.closest('.search-box')) suggestions.style.display = 'none';
 });
