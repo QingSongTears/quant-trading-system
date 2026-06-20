@@ -1,0 +1,164 @@
+[
+  {
+    "page": "home",
+    "url": "http://localhost:5054/",
+    "http_status": 200,
+    "console_errors": [],
+    "console_warnings": [],
+    "page_errors": [],
+    "failed_requests": [],
+    "echarts_canvas_count": 1,
+    "key_elements": {
+      "navbar": 1,
+      "echarts": 1,
+      "data_table": 3,
+      "forms": 3,
+      "errors_visible": 0
+    },
+    "leaked_jinja_placeholders": [],
+    "html_size_kb": 28.6,
+    "load_ms": 2612
+  },
+  {
+    "page": "backtest26",
+    "url": "http://localhost:5054/backtest/26",
+    "http_status": 200,
+    "console_errors": [],
+    "console_warnings": [],
+    "page_errors": [],
+    "failed_requests": [],
+    "echarts_canvas_count": 3,
+    "key_elements": {
+      "navbar": 2,
+      "echarts": 3,
+      "data_table": 3,
+      "forms": 3,
+      "errors_visible": 0
+    },
+    "leaked_jinja_placeholders": [],
+    "html_size_kb": 41.5,
+    "load_ms": 1697
+  },
+  {
+    "page": "workbench",
+    "url": "http://localhost:5054/workbench",
+    "http_status": 200,
+    "console_errors": [],
+    "console_warnings": [],
+    "page_errors": [],
+    "failed_requests": [],
+    "echarts_canvas_count": 0,
+    "key_elements": {
+      "navbar": 1,
+      "echarts": 0,
+      "data_table": 4,
+      "forms": 14,
+      "errors_visible": 0
+    },
+    "leaked_jinja_placeholders": [],
+    "html_size_kb": 65.7,
+    "load_ms": 2185
+  },
+  {
+    "page": "strategies",
+    "url": "http://localhost:5054/strategies",
+    "http_status": 200,
+    "console_errors": [],
+    "console_warnings": [],
+    "page_errors": [],
+    "failed_requests": [],
+    "echarts_canvas_count": 0,
+    "key_elements": {
+      "navbar": 1,
+      "echarts": 0,
+      "data_table": 14,
+      "forms": 3,
+      "errors_visible": 0
+    },
+    "leaked_jinja_placeholders": [],
+    "html_size_kb": 33.1,
+    "load_ms": 1578
+  },
+  {
+    "page": "backtest_list",
+    "url": "http://localhost:5054/backtest",
+    "http_status": 200,
+    "console_errors": [],
+    "console_warnings": [],
+    "page_errors": [],
+    "failed_requests": [],
+    "echarts_canvas_count": 0,
+    "key_elements": {
+      "navbar": 1,
+      "echarts": 0,
+      "data_table": 1,
+      "forms": 11,
+      "errors_visible": 1
+    },
+    "leaked_jinja_placeholders": [],
+    "html_size_kb": 31.3,
+    "load_ms": 1880
+  },
+  {
+    "page": "compare",
+    "url": "http://localhost:5054/compare",
+    "http_status": 200,
+    "console_errors": [],
+    "console_warnings": [],
+    "page_errors": [],
+    "failed_requests": [],
+    "echarts_canvas_count": 0,
+    "key_elements": {
+      "navbar": 1,
+      "echarts": 0,
+      "data_table": 1,
+      "forms": 3,
+      "errors_visible": 0
+    },
+    "leaked_jinja_placeholders": [],
+    "html_size_kb": 13.6,
+    "load_ms": 1734
+  },
+  {
+    "page": "data",
+    "url": "http://localhost:5054/data",
+    "http_status": 200,
+    "console_errors": [],
+    "console_warnings": [],
+    "page_errors": [],
+    "failed_requests": [],
+    "echarts_canvas_count": 0,
+    "key_elements": {
+      "navbar": 1,
+      "echarts": 0,
+      "data_table": 2,
+      "forms": 7,
+      "errors_visible": 1
+    },
+    "leaked_jinja_placeholders": [],
+    "html_size_kb": 27.4,
+    "load_ms": 1661
+  },
+  {
+    "page": "backtest_detail",
+    "url": "http://localhost:5054/backtest_detail",
+    "http_status": 404,
+    "console_errors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "console_warnings": [],
+    "page_errors": [],
+    "failed_requests": [],
+    "echarts_canvas_count": 0,
+    "key_elements": {
+      "navbar": 0,
+      "echarts": 0,
+      "data_table": 0,
+      "forms": 0,
+      "errors_visible": 0
+    },
+    "leaked_jinja_placeholders": [],
+    "html_size_kb": 1.9,
+    "load_ms": 1375
+  }
+]

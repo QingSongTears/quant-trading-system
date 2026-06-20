@@ -505,7 +505,7 @@ function updateConfigStatus() {
 async function runBacktest() {
     if (state.isLoading) return;
     const model = state.selectedModel;
-    const code = $('stock-code').value;
+    let code = $('stock-code').value;
     const start = $('start-date').value;
     const end = $('end-date').value;
     const capital = parseFloat($('capital').value);
@@ -513,6 +513,14 @@ async function runBacktest() {
     const stampDuty = parseFloat($('stamp-duty').value) / 100;
 
     if (!model || !code) return;
+
+    // 防御: 如果 stock_code 是组合/投票占位符 (来自历史回测回填), 提示用户
+    if ((code === 'PORTFOLIO' || code === 'VOTING') && model.type === 'signal') {
+        alert(`"${model.name}" 是单股策略，不能用于组合/投票回测。\n请在「股票代码/名称」框重新搜索真实股票代码（如 603986）。`);
+        $('stock-input').focus();
+        $('stock-input').select();
+        return;
+    }
 
     setLoading(true);
     hideResults();
