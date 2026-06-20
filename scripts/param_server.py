@@ -321,6 +321,11 @@ def strategy_compare():
     return send_from_directory(str(PROJECT_ROOT / "output"), "strategy_compare.html")
 
 
+@app.route("/signal")
+def signal_dashboard():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "signal_dashboard.html")
+
+
 @app.route("/diagnose")
 def diagnose_page():
     return send_from_directory(str(PROJECT_ROOT / "output"), "diagnose.html")
