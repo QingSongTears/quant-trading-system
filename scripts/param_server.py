@@ -611,12 +611,22 @@ def _verify_stock_online(code):
     return {"verified": False, "code": code, "source": None}
 
 
+# 搜索缓存
+SEARCH_CACHE = {}
+SEARCH_CACHE_MAX = 200
+
+
 @app.route("/api/stock/search")
 def api_stock_search():
     """通用搜索: 本地数据库 + 联网验证"""
     q = request.args.get("q", "").strip().lower()
     if not q or len(q) < 1:
         return jsonify({"query": q, "total": 0, "results": [], "online_verify": None})
+    
+    # 缓存命中
+    cached = SEARCH_CACHE.get(q)
+    if cached:
+        return jsonify(cached)
     
     # 本地搜索
     index = _build_search_index()
@@ -669,6 +679,10 @@ def api_stock_search():
             resp_data["message"] = f"股票 {clean_q} ({online_verify.get('name','')}) 在A股市场真实存在，但未收录到本地数据库"
         else:
             resp_data["message"] = f"股票 {clean_q} 在A股市场也未找到，请确认代码是否正确"
+    
+    # 写入缓存
+    if len(SEARCH_CACHE) < SEARCH_CACHE_MAX:
+        SEARCH_CACHE[q] = resp_data
     
     return jsonify(resp_data)
 
@@ -2650,6 +2664,11 @@ def api_predict_batch():
 
 if __name__ == "__main__":
     load_data()
+    
+    # ── 预热搜索索引（避免首次请求慢）──
+    print("  [预热] 构建搜索索引...")
+    _build_search_index()
+    print(f"  ✅ 搜索索引已就绪 ({len(SEARCH_INDEX)} 只)")
     
     # ── 加载 XGBoost 模型 ──
     XGB_MODEL = None
