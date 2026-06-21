@@ -19,6 +19,19 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
+# PR2.2: 委托给 src.metrics 单一实现 (消除 sqrt(252) 硬编码)
+from src.metrics import sharpe_ratio as _sharpe_ratio, max_drawdown as _max_drawdown
+
+# PR2.3: 反转阈值默认值从 src.constants.signal 读取 (消除与策略硬编码 30/0.08/-15 的直接冲突)
+from src.constants.signal import (
+    MAX_RSI_14 as _DEFAULT_MAX_RSI_14,    # 30 (策略默认)
+    MAX_RSI_6 as _DEFAULT_MAX_RSI_6,      # 20
+    MAX_BB_POS as _DEFAULT_MAX_BB_POS,    # 0.08
+    MAX_DD_60D as _DEFAULT_MAX_DD_60D,    # -15
+    MIN_VOL_RATIO as _DEFAULT_MIN_VOL_RATIO,  # 1.3
+    MIN_PRICE_CHG as _DEFAULT_MIN_PRICE_CHG,  # 1.0
+)
+
 app = Flask(__name__, static_folder=str(PROJECT_ROOT))
 CORS(app)
 
@@ -402,12 +415,12 @@ def api_v5_run():
         return jsonify({"error": "数据缓存未就绪，请确认指标缓存文件存在"}), 503
 
     data = request.get_json() or {}
-    # 合并参数
+    # 合并参数 (PR2.3: 默认值从 src.constants.signal 读取,与策略硬编码 30/20/0.08/-15 一致)
     params = {
-        "MAX_RSI_14": int(data.get("MAX_RSI_14", 38)),
-        "MAX_RSI_6": int(data.get("MAX_RSI_6", 26)),
-        "MAX_BB_POSITION": float(data.get("MAX_BB_POSITION", 0.10)),
-        "MAX_DRAWDOWN_60D": float(data.get("MAX_DRAWDOWN_60D", -8)),
+        "MAX_RSI_14": int(data.get("MAX_RSI_14", _DEFAULT_MAX_RSI_14)),
+        "MAX_RSI_6": int(data.get("MAX_RSI_6", _DEFAULT_MAX_RSI_6)),
+        "MAX_BB_POSITION": float(data.get("MAX_BB_POSITION", _DEFAULT_MAX_BB_POS)),
+        "MAX_DRAWDOWN_60D": float(data.get("MAX_DRAWDOWN_60D", _DEFAULT_MAX_DD_60D)),
         "TREND_CHECKS_MIN": int(data.get("TREND_CHECKS_MIN", 2)),
         "STOP_LOSS": float(data.get("STOP_LOSS", -0.07)),
         "TAKE_PROFIT": float(data.get("TAKE_PROFIT", 0.15)),
@@ -1464,12 +1477,10 @@ def _run_single_stock_backtest(code, strategy_id, params):
         dd = (v - peak) / peak * 100
         if dd < max_dd: max_dd = dd
 
-    # 夏普比率
+    # PR2.2: 夏普比率 — 委托给 metrics.performance (ann_factor=250, risk_free=0.02)
     if len(eq_vals) > 10:
-        daily_r = [(eq_vals[j]-eq_vals[j-1])/eq_vals[j-1] for j in range(1, len(eq_vals))]
-        mean_r = np.mean(daily_r)
-        std_r = np.std(daily_r)
-        sharpe = round((mean_r/std_r)*np.sqrt(252), 2) if std_r > 0 else 0
+        daily_r = np.array([(eq_vals[j]-eq_vals[j-1])/eq_vals[j-1] for j in range(1, len(eq_vals))])
+        sharpe = round(_sharpe_ratio(daily_r, risk_free=0.02, ann_factor=250), 2)
     else:
         sharpe = 0
 
