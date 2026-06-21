@@ -1,0 +1,48 @@
+[tool.pytest.ini_options]
+# pytest 顶层配置 — 集中放在 pyproject.toml 而不是 setup.cfg/pytest.ini
+# 匹配 .github/workflows/ci.yml 的 test job
+testpaths = ["tests"]
+addopts = [
+    "-ra",                  # 显示所有非 pass 结果摘要
+    "--strict-markers",     # 拼错的 marker 直接报错,避免静默
+    "--showlocals",         # 失败时显示局部变量(便于排查)
+]
+markers = [
+    "slow: 跑得慢的测试(>5s)",
+    "network: 需要外部网络",
+    "integration: 跨模块集成测试",
+    "smoke: 烟雾测试,核心路径连通性",
+    "regression: 已知 bug 回归保护",
+]
+
+[tool.coverage.run]
+# 仅测量 src/ 下代码,排除测试、虚拟环境、迁移脚本
+source = ["src"]
+branch = true                  # 分支覆盖
+omit = [
+    "*/tests/*",
+    "*/.venv/*",
+    "*/__pycache__/*",
+    "*/migrations/*",
+    "*/scripts/*",             # 一次性脚本,不纳入覆盖率
+]
+
+[tool.coverage.report]
+# 报告排除
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "\\.\\.\\.",                 # Ellipsis
+]
+# 显示缺失行
+show_missing = true
+skip_empty = true
+# 排序:缺失行多的文件先显示
+sort = "-Miss"
+# 精度
+precision = 1
+
+[tool.coverage.html]
+directory = "output/coverage_html"
