@@ -45,7 +45,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          # --require-hashes 强制校验 sha256,防 supply chain 攻击
+          pip install --require-hashes -r requirements.txt
           pip install pytest pytest-cov
       - name: Run tests with coverage
         run: |
@@ -80,9 +81,9 @@ jobs:
         run: pip install pip-audit
       - name: Run pip-audit
         # 高危漏洞失败,中等漏洞警告
-        # requirements.txt 未 pin 完整哈希,暂不强制 --strict
+        # requirements.txt 已 hash-pinned,使用 --strict 模式
         run: |
-          pip-audit --strict
+          pip-audit --strict -r requirements.txt
         continue-on-error: false   # 发现漏洞则失败
 
   # ─── Release (tag push only) ─────────────────────────
