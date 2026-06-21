@@ -6,12 +6,48 @@ from datetime import date
 from typing import List, Optional
 
 import pandas as pd
-from sqlalchemy import create_engine, func, text
+from sqlalchemy import create_engine, event, func, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
 
 from ..config import get_config, get_db_url
 from ..db.sql_utils import read_sql
 from .database import Base, StockBasic, DailyPrice, BenchmarkData, StrategyConfig, BacktestResult, DataSourceMeta, TechnicalIndicator, FinanceSummary, StockProfile, FundFlowData
+
+
+# ============================================================
+# SQLite 性能调优 (2026-06-21)
+# ============================================================
+# WAL 模式:读写不互斥,读并发性能提升 5-10x
+# synchronous=NORMAL: 配合 WAL,断电丢失风险仅"最后一个事务"
+# 替代默认的 synchronous=FULL (每次事务 fsync,慢但最安全)
+#
+# 注意: 共享缓存数据库(/:memory:)不支持 WAL,仅文件型 DB 生效
+#       多进程写仍需互斥(SQLite 写锁),WAL 只解决读并发
+
+@event.listens_for(Engine, "connect")
+def _set_sqlite_pragma(dbapi_connection, connection_record):
+    """新连接建立时自动启用 WAL + NORMAL 同步
+
+    注意: PRAGMA 在 Python sqlite3 默认隐式事务中不生效,
+    必须 commit 才能让 journal_mode 切换真正生效
+    (SQLAlchemy 的 connect 事件触发时,连接处于 autocommit,
+    所以 commit() 是 no-op 但能保证 PRAGMA 生效)
+    """
+    mod = type(dbapi_connection).__module__ or ""
+    if not mod.startswith("sqlite3"):
+        return
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        # commit 确保 PRAGMA 生效
+        if hasattr(dbapi_connection, "commit"):
+            dbapi_connection.commit()
+    except Exception:
+        pass  # 内存 DB 或不支持 WAL 时静默跳过
+    finally:
+        cursor.close()
 
 
 class DataRepository:
