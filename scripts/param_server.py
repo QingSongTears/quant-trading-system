@@ -700,8 +700,23 @@ def api_status():
 
 @app.route("/api/data/db-status")
 def api_db_status():
-    """数据库状态：各表行数、最新/最早日期"""
+    """数据库状态：各表行数、最新/最早日期
+
+    PR1.3: 新增 DataRepository 路径,保留老 sqlite3 路径作为 fallback。
+    双轨期 (PR1-PR3 期间) — 若新路径抛错,自动回退老逻辑,行为完全一致。
+    """
     import sqlite3
+    import warnings
+
+    # ── 新路径:DataRepository (PR1.3 新增,推荐) ──
+    try:
+        from src.models.repository import DataRepository
+        repo = DataRepository()
+        return jsonify(repo.get_db_status())
+    except Exception as e:
+        warnings.warn(f"DataRepository 路径失败, fallback 老 sqlite3: {e}")
+
+    # ── 老路径:直接 sqlite3 (向后兼容,PR3 时移除) ──
     db = PROJECT_ROOT / "database" / "quant.db"
     conn = sqlite3.connect(str(db))
     tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
