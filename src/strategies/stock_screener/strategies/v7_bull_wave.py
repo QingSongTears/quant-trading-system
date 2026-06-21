@@ -258,7 +258,7 @@ class BullWaveStrategy:
     def __init__(self,
                  initial_capital: float = 1_000_000,
                  max_positions: int = 10,
-                 stop_loss_pct: float = -8.0,
+                 stop_loss_pct: float = -0.08,  # ⚠️ 单位:小数 (PR1.2 修复,原值 -8.0 是百分比,与全项目小数惯例差 100 倍)
                  take_profit_pct: float = 0.0,  # 0=移动止盈
                  max_hold_days: int = 60):
         self.initial_capital = initial_capital
