@@ -3,7 +3,9 @@ Web 层认证与策略加载安全工具
 ============================
 
 提供:
-- verify_api_key: HTTPBearer 依赖,校验 Authorization: Bearer <key>
+- check_bearer_token: 框架无关的 Bearer token 校验
+- verify_api_key: FastAPI Depends,使用 check_bearer_token
+- require_api_key: Flask before_request / view decorator
 - safe_import_strategy: 白名单 importlib,只允许 src.strategies.* / src.models.*
 - get_api_key: API key 来源(env QUANT_API_KEY > 临时生成)
 """
@@ -11,7 +13,7 @@ import importlib
 import logging
 import os
 import secrets
-from typing import Tuple, Type
+from typing import Optional, Tuple, Type
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -19,8 +21,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 logger = logging.getLogger(__name__)
 
 # ===== API Key 管理 =====
-
-_bearer_scheme = HTTPBearer(auto_error=True, description="API Key 认证")
 
 
 def _generate_key() -> str:
@@ -56,20 +56,76 @@ def get_api_key() -> str:
     return _api_key_cache
 
 
+def check_bearer_token(authorization_header: Optional[str]) -> bool:
+    """框架无关:校验 Authorization header 的 Bearer token
+
+    Args:
+        authorization_header: 完整 header 值,形如 "Bearer xxx" 或 None
+
+    Returns:
+        True = 通过, False = 拒绝
+    """
+    if not authorization_header:
+        return False
+    parts = authorization_header.split(None, 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return False
+    token = parts[1].strip()
+    if not token:
+        return False
+    expected = get_api_key()
+    return secrets.compare_digest(token, expected)
+
+
+# ===== FastAPI 适配 =====
+
+_bearer_scheme = HTTPBearer(auto_error=True, description="API Key 认证")
+
+
 def verify_api_key(
     creds: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
 ) -> str:
     """FastAPI 依赖:校验 Bearer token
     通过比较 return creds.credentials; 失败抛 403
     """
-    expected = get_api_key()
-    # 用 compare_digest 防时序攻击
-    if not secrets.compare_digest(creds.credentials, expected):
+    if not check_bearer_token(f"Bearer {creds.credentials}"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="invalid API key",
         )
     return creds.credentials
+
+
+# ===== Flask 适配 =====
+
+
+def require_api_key(protected_prefix: str = "/api/"):
+    """Flask before_request 工厂:对特定前缀的路由要求 Bearer token
+
+    用法:
+        app.before_request(require_api_key("/api/"))
+
+    Args:
+        protected_prefix: 需要保护的路径前缀,默认 "/api/"
+    """
+    def _check():
+        from flask import request, jsonify
+        # 跳过非保护路径
+        if not request.path.startswith(protected_prefix):
+            return None
+        # 跳过 CORS 预检
+        if request.method == "OPTIONS":
+            return None
+        if not check_bearer_token(request.headers.get("Authorization")):
+            logger.warning(
+                "拒绝访问 %s %s — 来自 %s",
+                request.method, request.path, request.remote_addr,
+            )
+            resp = jsonify({"success": False, "error": "invalid or missing API key"})
+            resp.status_code = 401
+            return resp
+        return None
+    return _check
 
 
 # ===== 策略类安全 import =====
@@ -130,3 +186,4 @@ def safe_import_strategy(class_path: str) -> Type:
         raise ValueError(f"{class_path!r} 不是类,得到 {type(cls).__name__}")
 
     return cls
+

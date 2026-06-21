@@ -22,6 +22,20 @@ from flask_cors import CORS
 app = Flask(__name__, static_folder=str(PROJECT_ROOT))
 CORS(app)
 
+# ── 安全:所有 /api/* 端点需要 Bearer token 认证 (2026-06-21) ──
+# 复用 src/web/auth.py 的逻辑(FastAPI/Flask 共用)
+sys.path.insert(0, str(PROJECT_ROOT))
+from src.web.auth import require_api_key, get_api_key  # noqa: E402
+
+app.before_request(require_api_key("/api/"))
+
+# 启动时打印 API key(临时模式)便于开发
+_key = get_api_key()
+import os as _os
+if not _os.environ.get("QUANT_API_KEY"):
+    print(f"  [AUTH] 临时 API key: {_key}")
+    print(f"         建议: export QUANT_API_KEY=<your-key> (重启生效)")
+
 # ── 全局数据 ──
 records = []
 dim_cols = []
