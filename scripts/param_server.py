@@ -2344,7 +2344,6 @@ def _compute_industry_ics(scores, combo_name):
 
 
 # ── XGBoost 预测 ──
-import pickle as _pickle
 def _predict_with_xgb(code, date_param=""):
     """使用XGBoost模型预测，返回(proba, signal, dim_scores)
     
@@ -2352,7 +2351,6 @@ def _predict_with_xgb(code, date_param=""):
     - 8维加权分 + 8维百分位 + avg_score_pct
     - 8维滞后特征(_lag1m) + 8维动量特征(_delta)
     - 技术指标(macd_hist, rsi14, kdj_k, kdj_j, boll_pos)
-    - 动量特征(pct_5d, pct_20d, vol_ratio, new_high_20d, turnover)
     - 交叉特征(score_x_rsi, score_x_macd, score_x_kdj)
     - 行业 one-hot
     """
@@ -2433,7 +2431,7 @@ def _predict_with_xgb(code, date_param=""):
                 prev_scores[d] = prev_latest.get(d, 0) or 0
     
     for d in dim_cols:
-        feat_dict[d + '_lag1m'] = prev_scores.get(d, feat_dict[d])  # 没有上月用当月替代
+        feat_dict[d + '_lag1m'] = prev_scores.get(d, 0)  # 无上月用0（与train_xgb_v4.py一致）
     
     # 动量特征（本月-上月）
     for d in dim_cols:
@@ -2441,21 +2439,13 @@ def _predict_with_xgb(code, date_param=""):
         lag_val = feat_dict[d + '_lag1m']
         feat_dict[d + '_delta'] = cur_val - lag_val
     
-    # 技术指标特征
+    # 技术指标特征（与train_xgb_v4.py一致：RSI/KDJ已归一化到0-1）
     tech = _get_tech_features_single(code, as_of_date)
     feat_dict['macd_hist'] = tech.get('macd_hist', 0)
     feat_dict['rsi14'] = tech.get('rsi14', 0.5)
     feat_dict['kdj_k'] = tech.get('kdj_k', 0.5)
     feat_dict['kdj_j'] = tech.get('kdj_j', 0.5)
-    feat_dict['boll_pos'] = tech.get('boll_pos', 0.5)
-    
-    # 动量特征（从K线计算）
-    mf = _get_momentum_features_single(code, as_of_date)
-    feat_dict['pct_5d'] = mf.get('pct_5d', 0) / 100.0   # 归一化到约 -0.1~0.1
-    feat_dict['pct_20d'] = mf.get('pct_20d', 0) / 100.0
-    feat_dict['vol_ratio'] = min(mf.get('vol_ratio', 1), 5) / 5.0  # 归一化
-    feat_dict['new_high_20d'] = mf.get('new_high_20d', 0)
-    feat_dict['turnover'] = min(mf.get('turnover', 0), 20) / 20.0
+    feat_dict['boll_pos'] = 0.5  # 无close数据，用0.5
     
     # 交叉特征: 综合评分×技术指标
     feat_dict['score_x_rsi'] = avg_score * (feat_dict['rsi14'] - 0.5)
@@ -2466,23 +2456,21 @@ def _predict_with_xgb(code, date_param=""):
     industry = industry_map.get(code, '其他')
     feat_dict['industry'] = industry
     
-    # 获取特征顺序
+    # 使用scaler的feature_names确定特征顺序（确保与训练时完全一致）
     if XGB_FEATURES is not None:
         feature_order = XGB_FEATURES
     else:
-        # 从硬编码顺序 + 行业 one-hot 生成
-        base_order = _get_xgb_feature_order()
-        # 获取所有行业列表
-        all_industries = sorted(set(industry_map.values()))
-        ind_order = ['ind_' + ind for ind in all_industries]
-        feature_order = base_order + ind_order
+        # 从scaler加载特征顺序
+        from src.data.xgb_scaler import load_scaler
+        sc = load_scaler(PROJECT_ROOT / "data" / "xgb_scaler.json")
+        feature_order = sc['feature_names']
     
-    # one-hot 行业
-    all_industries = sorted(set(industry_map.values()))
+    # one-hot 行业（确保所有行业列与训练时一致）
+    all_industries = [fn for fn in feature_order if fn.startswith('ind_')]
     industry_dummies = {}
-    for ind in all_industries:
-        col_name = 'ind_' + ind
-        industry_dummies[col_name] = 1 if industry == ind else 0
+    for col_name in all_industries:
+        ind_name = col_name[4:]  # 去掉'ind_'前缀
+        industry_dummies[col_name] = 1 if industry == ind_name else 0
     
     # 构建特征向量
     feature_vec = []
@@ -2515,6 +2503,49 @@ def _predict_with_xgb(code, date_param=""):
         "as_of_date": as_of_date,
         "pred_month": ym,
     }, None
+
+
+def _get_tech_features_single(code, as_of_date):
+    """从DB获取单只股票的技术指标（与train_xgb_v4.py一致）"""
+    import sqlite3
+    db = PROJECT_ROOT / "database" / "quant.db"
+    default = {'macd_hist': 0, 'rsi14': 0.5, 'kdj_k': 0.5, 'kdj_j': 0.5, 'boll_pos': 0.5}
+    d = str(as_of_date)[:10]
+    try:
+        conn = sqlite3.connect(str(db))
+        # 精确匹配当日
+        row = conn.execute(
+            "SELECT macd_hist, rsi14, kdj_k, kdj_j FROM technical_indicators WHERE code=? AND trade_date=?",
+            (code, d)
+        ).fetchone()
+        if not row:
+            # 向前找最近10天的数据
+            from datetime import datetime, timedelta
+            for offset in range(1, 10):
+                try:
+                    dt = datetime.strptime(d[:10], '%Y-%m-%d') - timedelta(days=offset)
+                    prev_d = dt.strftime('%Y-%m-%d')
+                    row = conn.execute(
+                        "SELECT macd_hist, rsi14, kdj_k, kdj_j FROM technical_indicators WHERE code=? AND trade_date=?",
+                        (code, prev_d)
+                    ).fetchone()
+                    if row:
+                        break
+                except:
+                    pass
+        conn.close()
+        if row:
+            return {
+                'macd_hist': row[0] or 0,
+                'rsi14': (row[1] or 50) / 100.0,  # 归一化0-1（与train_xgb_v4.py一致）
+                'kdj_k': (row[2] or 50) / 100.0,
+                'kdj_j': (row[3] or 50) / 100.0,
+                'boll_pos': 0.5,
+            }
+        return default
+    except Exception as e:
+        print(f"  [WARN] _get_tech_features_single({code}): {e}")
+        return default
 
 
 def _get_momentum_features_single(code, as_of_date):
@@ -2874,11 +2905,31 @@ if __name__ == "__main__":
     print(f"  ✅ 搜索索引已就绪 ({len(SEARCH_INDEX)} 只)")
     
     # ── 加载 XGBoost 模型 ──
-    # 安全:不再使用 pickle 加载 scaler (P0-3 反序列化 RCE 风险)
-    # 改用 JSON 格式 (src/data/xgb_scaler.py)
+    # 安全:改用 JSON 格式加载 scaler (src/data/xgb_scaler.py)
     XGB_MODEL = None
     XGB_SCALER = None
     XGB_FEATURES = None
-    print("ℹ️ 使用逻辑回归模型预测（XGBoost v4 特征对齐中）")
+    try:
+        import xgboost as xgb
+        xgb_model_path = PROJECT_ROOT / "data" / "xgb_model.json"
+        xgb_scaler_path = PROJECT_ROOT / "data" / "xgb_scaler.json"
+        if xgb_model_path.exists():
+            xgb_model = xgb.XGBClassifier()
+            xgb_model.load_model(str(xgb_model_path))
+            XGB_MODEL = xgb_model
+            print(f"  ✅ XGBoost v4 模型已加载 (特征数: {xgb_model.n_features_in_})")
+        if xgb_scaler_path.exists():
+            from src.data.xgb_scaler import load_scaler
+            sc = load_scaler(str(xgb_scaler_path))
+            XGB_SCALER = sc['scaler']
+            XGB_FEATURES = sc['feature_names']
+            print(f"  ✅ XGBoost Scaler 已加载 (特征数: {len(XGB_FEATURES)})")
+        else:
+            print(f"  ⚠️ xgb_scaler.json 不存在，使用无缩放预测")
+    except Exception as e:
+        XGB_MODEL = None
+        XGB_SCALER = None
+        XGB_FEATURES = None
+        print(f"  ⚠️ XGBoost 加载失败: {e}，将使用逻辑回归模型预测")
     
     app.run(host="0.0.0.0", port=8081, debug=False, threaded=True)
