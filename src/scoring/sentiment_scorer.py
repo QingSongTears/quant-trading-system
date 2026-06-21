@@ -24,10 +24,11 @@ v2 设计理念:
     result = scorer.score(code="000001", as_of_date="2026-06-12")
 """
 
+from __future__ import annotations
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine
-from typing import Dict, Any, List, Optional, Tuple
+# PR3.2: create_engine 由 base.py 通过 get_engine 单例提供
+from typing import Any
 
 from ..config import get_config, get_db_url
 from ..db.sql_utils import read_sql
@@ -46,8 +47,8 @@ class SentimentScorer(BaseScorer):
     #  批量数据加载
     # ============================================================
     def _load_bulk_announcements(
-        self, codes: List[str], as_of_date: str, lookback: int = 60
-    ) -> Dict[str, pd.DataFrame]:
+        self, codes: list[str], as_of_date: str, lookback: int = 60
+    ) -> dict[str, pd.DataFrame]:
         """批量加载公告"""
         if not codes:
             return {}
@@ -73,8 +74,8 @@ class SentimentScorer(BaseScorer):
         return result
 
     def _load_bulk_price_data(
-        self, codes: List[str], as_of_date: str, lookback: int = 60
-    ) -> Dict[str, pd.DataFrame]:
+        self, codes: list[str], as_of_date: str, lookback: int = 60
+    ) -> dict[str, pd.DataFrame]:
         """批量加载价格数据"""
         if not codes:
             return {}
@@ -100,8 +101,8 @@ class SentimentScorer(BaseScorer):
         return result
 
     def _load_bulk_research(
-        self, codes: List[str], as_of_date: str, lookback: int = 180
-    ) -> Dict[str, pd.DataFrame]:
+        self, codes: list[str], as_of_date: str, lookback: int = 180
+    ) -> dict[str, pd.DataFrame]:
         """批量加载研报"""
         if not codes:
             return {}
@@ -301,7 +302,7 @@ class SentimentScorer(BaseScorer):
     # ============================================================
     #  主入口
     # ============================================================
-    def score(self, code: str, as_of_date: str) -> Dict[str, Any]:
+    def score(self, code: str, as_of_date: str) -> dict[str, Any]:
         """单只股票评分"""
         # 加载数据
         price_df = self._load_bulk_price_data([code], as_of_date).get(code)
@@ -334,7 +335,7 @@ class SentimentScorer(BaseScorer):
         }
 
     def batch_score(
-        self, codes: List[str], as_of_date: Optional[str] = None, verbose: bool = False
+        self, codes: list[str], as_of_date: str | None = None, verbose: bool = False
     ) -> pd.DataFrame:
         """批量评分 — 使用批量数据加载"""
         if not codes or as_of_date is None:

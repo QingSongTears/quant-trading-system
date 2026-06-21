@@ -17,10 +17,11 @@ v3 更新 (2026-06): 使用 dragon_tiger_data 替代 lhb_institutional
   5. 筹码综合       (0-3): 综合筹码评分
   6. 北向资金       (0-3): 北向资金 (stub, 后续下载)
 """
+from __future__ import annotations
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, text
-from typing import Dict, Any, List, Optional
+# PR3.2: create_engine 由 base.py 通过 get_engine 单例提供, text
+from typing import Any
 from datetime import datetime, timedelta
 
 from ..config import get_config, get_db_url
@@ -39,16 +40,16 @@ class InstitutionalScorer(BaseScorer):
     def __init__(self, engine=None):
         super().__init__(engine=engine)
         # 批量预加载的数据缓存
-        self._dragon_cache: Optional[pd.DataFrame] = None
-        self._margin_cache: Optional[pd.DataFrame] = None
-        self._holder_cache: Optional[pd.DataFrame] = None
-        self._cache_date: Optional[str] = None
+        self._dragon_cache: pd.DataFrame | None = None
+        self._margin_cache: pd.DataFrame | None = None
+        self._holder_cache: pd.DataFrame | None = None
+        self._cache_date: str | None = None
 
     # ============================================================
     #  DB 数据加载
     # ============================================================
 
-    def _prefetch_all(self, as_of_date: Optional[str] = None):
+    def _prefetch_all(self, as_of_date: str | None = None):
         """批量模式下预加载全部机构数据到内存"""
         if as_of_date is None:
             as_of_date = datetime.now().strftime("%Y-%m-%d")
@@ -251,8 +252,8 @@ class InstitutionalScorer(BaseScorer):
     # ============================================================
 
     def score(
-        self, code: str, as_of_date: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, code: str, as_of_date: str | None = None
+    ) -> dict[str, Any]:
         """
         单只股票评分 — 从DB读取数据。
 
@@ -296,7 +297,7 @@ class InstitutionalScorer(BaseScorer):
         }
 
     def batch_score(
-        self, codes: List[str], as_of_date: Optional[str] = None, verbose: bool = False
+        self, codes: list[str], as_of_date: str | None = None, verbose: bool = False
     ) -> "pd.DataFrame":
         """
         批量评分 — 全量数据从DB预加载，逐只内存评分。

@@ -16,18 +16,19 @@
   6. 评级动量       (0-3): 近期评级上调趋势
   7. 事件综合       (0-3): 综合事件催化剂评分
 """
+from __future__ import annotations
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text  # PR3.2: create_engine 由 base.py 通过 get_engine 单例提供
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Any
 
 from ..config import get_config, get_db_url
 from ..db.sql_utils import read_sql
 from .base import BaseScorer
 
 # 研报数据缓存
-_research_cache: Optional[pd.DataFrame] = None
+_research_cache: pd.DataFrame | None = None
 
 
 class NewsEventScorer(BaseScorer):
@@ -272,7 +273,7 @@ class NewsEventScorer(BaseScorer):
     # ============================================================
     #  主入口
     # ============================================================
-    def score(self, code: str, as_of_date: Optional[str] = None) -> Dict[str, Any]:
+    def score(self, code: str, as_of_date: str | None = None) -> dict[str, Any]:
         """计算消息面综合评分
 
         Args:
@@ -314,8 +315,8 @@ class NewsEventScorer(BaseScorer):
         }
 
     def _get_bulk_announcements(
-        self, codes: List[str], as_of_date: str
-    ) -> Dict[str, pd.DataFrame]:
+        self, codes: list[str], as_of_date: str
+    ) -> dict[str, pd.DataFrame]:
         """批量加载所有股票的公告数据"""
         if not codes:
             return {}
@@ -339,7 +340,7 @@ class NewsEventScorer(BaseScorer):
     def _score_from_data(
         self, code: str, as_of_date: str,
         announcements_df: pd.DataFrame
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """从已加载的数据评分（不查询DB）"""
         sub_scores = {
             "density": self._score_density(announcements_df),
@@ -364,7 +365,7 @@ class NewsEventScorer(BaseScorer):
         }
 
     def batch_score(
-        self, codes: List[str], as_of_date: Optional[str] = None, verbose: bool = False
+        self, codes: list[str], as_of_date: str | None = None, verbose: bool = False
     ) -> "pd.DataFrame":
         import pandas as pd
         if not codes:

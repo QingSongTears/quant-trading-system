@@ -25,10 +25,11 @@
     result = scorer.score("000001")
 """
 
+from __future__ import annotations
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine
-from typing import Dict, Any, List, Optional
+from typing import Any
+# PR3.2: create_engine 由 base.py 通过 get_engine 单例提供
 
 from ..config import get_config, get_db_url
 from ..db.sql_utils import read_sql
@@ -189,7 +190,7 @@ class ChipScorer(BaseScorer):
     # ============================================================
     #  主入口
     # ============================================================
-    def score(self, code: str) -> Dict[str, Any]:
+    def score(self, code: str) -> dict[str, Any]:
         if code not in self.df.index:
             return {
                 "code": code, "total": 0, "weighted": 0.0,
@@ -220,7 +221,7 @@ class ChipScorer(BaseScorer):
             "sub_scores": sub_scores, "error": None,
         }
 
-    def batch_score(self, codes: List[str]) -> pd.DataFrame:
+    def batch_score(self, codes: list[str]) -> pd.DataFrame:
         results = []
         for code in codes:
             r = self.score(code)

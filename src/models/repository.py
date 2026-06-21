@@ -2,63 +2,24 @@
 数据访问层 (Repository)
 封装所有数据库查询操作，返回 Pandas DataFrame 或 ORM 对象
 """
+from __future__ import annotations
 from datetime import date
-from typing import List, Optional
 
 import pandas as pd
-from sqlalchemy import create_engine, event, func, text
-from sqlalchemy.engine import Engine
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session, joinedload
 
-from ..config import get_config, get_db_url
+from ..config import get_config
+from ..db.engine import get_engine
 from ..db.sql_utils import read_sql
 from .database import Base, StockBasic, DailyPrice, BenchmarkData, StrategyConfig, BacktestResult, DataSourceMeta, TechnicalIndicator, FinanceSummary, StockProfile, FundFlowData
-
-
-# ============================================================
-# SQLite 性能调优 (2026-06-21)
-# ============================================================
-# WAL 模式:读写不互斥,读并发性能提升 5-10x
-# synchronous=NORMAL: 配合 WAL,断电丢失风险仅"最后一个事务"
-# 替代默认的 synchronous=FULL (每次事务 fsync,慢但最安全)
-#
-# 注意: 共享缓存数据库(/:memory:)不支持 WAL,仅文件型 DB 生效
-#       多进程写仍需互斥(SQLite 写锁),WAL 只解决读并发
-
-@event.listens_for(Engine, "connect")
-def _set_sqlite_pragma(dbapi_connection, connection_record):
-    """新连接建立时自动启用 WAL + NORMAL 同步
-
-    注意: PRAGMA 在 Python sqlite3 默认隐式事务中不生效,
-    必须 commit 才能让 journal_mode 切换真正生效
-    (SQLAlchemy 的 connect 事件触发时,连接处于 autocommit,
-    所以 commit() 是 no-op 但能保证 PRAGMA 生效)
-    """
-    mod = type(dbapi_connection).__module__ or ""
-    if not mod.startswith("sqlite3"):
-        return
-    cursor = dbapi_connection.cursor()
-    try:
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA synchronous=NORMAL")
-        # commit 确保 PRAGMA 生效
-        if hasattr(dbapi_connection, "commit"):
-            dbapi_connection.commit()
-    except Exception:
-        pass  # 内存 DB 或不支持 WAL 时静默跳过
-    finally:
-        cursor.close()
 
 
 class DataRepository:
     """数据仓库 — 统一数据访问入口"""
 
     def __init__(self):
-        config = get_config()
-        self.engine = create_engine(
-            get_db_url(config),
-            echo=config.get("database", {}).get("echo", False)
-        )
+        self.engine = get_engine()
 
     # ===== 初始化 =====
 
@@ -72,8 +33,8 @@ class DataRepository:
     # ===== 股票基本信息 =====
 
     def upsert_stock_basic(self, session: Session, code: str, name: str,
-                           market: str, list_date: Optional[date] = None,
-                           industry: Optional[str] = None):
+                           market: str, list_date: date | None = None,
+                           industry: str | None = None):
         """插入或更新股票基本信息"""
         stock = session.query(StockBasic).filter_by(code=code).first()
         if stock:
@@ -90,7 +51,7 @@ class DataRepository:
             )
             session.add(stock)
 
-    def get_stock_list(self, market: Optional[str] = None) -> pd.DataFrame:
+    def get_stock_list(self, market: str | None = None) -> pd.DataFrame:
         """获取股票列表，可选按市场筛选"""
         sql = "SELECT code, name, market, list_date, industry FROM stock_basic"
         params: dict = {}
@@ -122,7 +83,7 @@ class DataRepository:
         df.set_index('trade_date', inplace=True)
         return df
 
-    def get_latest_date(self, code: str) -> Optional[date]:
+    def get_latest_date(self, code: str) -> date | None:
         """获取某只股票的最新数据日期"""
         with self.get_session() as session:
             result = session.query(func.max(DailyPrice.trade_date)) \
@@ -143,7 +104,7 @@ class DataRepository:
             "date_range": {"start": min_date, "end": max_date}
         }
 
-    def batch_insert_daily(self, session: Session, records: List[dict]):
+    def batch_insert_daily(self, session: Session, records: list[dict]):
         """批量插入日线数据（使用 bulk_insert_mappings 提升性能）"""
         if not records:
             return
@@ -190,7 +151,7 @@ class DataRepository:
             )
             session.add(config)
 
-    def get_all_strategies(self) -> List[StrategyConfig]:
+    def get_all_strategies(self) -> list[StrategyConfig]:
         """获取所有已注册策略"""
         with self.get_session() as session:
             return session.query(StrategyConfig).all()
@@ -204,14 +165,14 @@ class DataRepository:
         session.flush()
         return result.id
 
-    def get_backtest_result(self, result_id: int) -> Optional[BacktestResult]:
+    def get_backtest_result(self, result_id: int) -> BacktestResult | None:
         """获取回测结果详情（已 eager load strategy 关系）"""
         with self.get_session() as session:
             return session.query(BacktestResult) \
                 .options(joinedload(BacktestResult.strategy)) \
                 .filter_by(id=result_id).first()
 
-    def get_recent_backtests(self, limit: int = 10) -> List[BacktestResult]:
+    def get_recent_backtests(self, limit: int = 10) -> list[BacktestResult]:
         """获取最近的回测结果（已 eager load strategy 关系）"""
         with self.get_session() as session:
             return session.query(BacktestResult) \
@@ -219,13 +180,78 @@ class DataRepository:
                 .order_by(BacktestResult.created_at.desc()) \
                 .limit(limit).all()
 
-    def get_backtests_by_strategy(self, strategy_name: str) -> List[BacktestResult]:
+    def get_backtests_by_strategy(self, strategy_name: str) -> list[BacktestResult]:
         """获取某策略的所有回测记录"""
         with self.get_session() as session:
             strategy = session.query(StrategyConfig).filter_by(name=strategy_name).first()
             if not strategy:
                 return []
             return session.query(BacktestResult).filter_by(strategy_id=strategy.id).all()
+
+    def get_strategy_by_name(self, name: str) -> "StrategyConfig | None":
+        """PR3.3: 按 name 查策略 — 替代 api.py 中 session.query(StrategyConfig).filter_by(...).first() 模式"""
+        with self.get_session() as session:
+            return session.query(StrategyConfig).filter_by(name=name).first()
+
+    def get_models_summary_for_stock(
+        self, models: list[dict], stock_code: str
+    ) -> list[dict]:
+        """PR3.3: 批量获取多模型在某只股票上的最近回测结果摘要 — 替代 api.py 内联查询
+
+        Args:
+            models: 模型配置列表,每项含 {'name': ..., 'strategy_type': ...}
+            stock_code: 股票代码
+
+        Returns:
+            summary 列表,每项含 strategy_name/strategy_type/total_return/...
+            或 has_data=False 表示无数据
+        """
+        from sqlalchemy import or_
+        with self.get_session() as session:
+            summaries = []
+            for s in models:
+                strategy_record = session.query(StrategyConfig).filter_by(name=s["name"]).first()
+                if not strategy_record:
+                    # 模糊匹配 fallback
+                    strategy_record = session.query(StrategyConfig).filter(
+                        StrategyConfig.name.like(f"%{s['name']}%")
+                    ).first()
+
+                if strategy_record:
+                    result = session.query(BacktestResult).filter(
+                        BacktestResult.strategy_id == strategy_record.id,
+                        BacktestResult.stock_code == stock_code,
+                    ).order_by(BacktestResult.created_at.desc()).first()
+
+                    if result:
+                        summaries.append({
+                            "strategy_name": s["name"],
+                            "strategy_type": s.get("strategy_type", "signal"),
+                            "total_return": result.total_return,
+                            "annual_return": result.annual_return,
+                            "sharpe_ratio": result.sharpe_ratio,
+                            "max_drawdown": result.max_drawdown,
+                            "win_rate": result.win_rate,
+                            "total_trades": result.total_trades,
+                            "excess_return": result.excess_return,
+                            "result_id": result.id,
+                            "created_at": str(result.created_at),
+                        })
+                    else:
+                        summaries.append({
+                            "strategy_name": s["name"],
+                            "strategy_type": s.get("strategy_type", "signal"),
+                            "has_data": False,
+                            "result_id": None,
+                        })
+                else:
+                    summaries.append({
+                        "strategy_name": s["name"],
+                        "strategy_type": s.get("strategy_type", "signal"),
+                        "has_data": False,
+                        "result_id": None,
+                    })
+            return summaries
 
     # ===== 数据源元信息 =====
 
@@ -234,7 +260,7 @@ class DataRepository:
         record = DataSourceMeta(**meta)
         session.add(record)
 
-    def get_download_history(self) -> List[DataSourceMeta]:
+    def get_download_history(self) -> list[DataSourceMeta]:
         """获取下载历史"""
         with self.get_session() as session:
             return session.query(DataSourceMeta) \
@@ -314,7 +340,7 @@ class DataRepository:
 
     # ===== 财务摘要 (finance_summary) =====
 
-    def get_finance_summary(self, code: str) -> Optional[dict]:
+    def get_finance_summary(self, code: str) -> dict | None:
         """获取某只股票的最新财务摘要"""
         with self.get_session() as session:
             result = session.query(FinanceSummary) \
@@ -324,7 +350,7 @@ class DataRepository:
                 return None
             return {c.name: getattr(result, c.name) for c in result.__table__.columns}
 
-    def get_latest_finance_for_codes(self, codes: List[str]) -> pd.DataFrame:
+    def get_latest_finance_for_codes(self, codes: list[str]) -> pd.DataFrame:
         """批量获取多只股票的最新财务摘要
 
         Returns:
@@ -343,7 +369,7 @@ class DataRepository:
         """
         return read_sql(sql, self.engine, {"codes": list(codes)})
 
-    def get_profitable_codes(self) -> List[str]:
+    def get_profitable_codes(self) -> list[str]:
         """获取所有 NPParentCompanyOwnersTTM > 0 的股票代码"""
         with self.get_session() as session:
             results = session.query(FinanceSummary.code) \
@@ -353,7 +379,7 @@ class DataRepository:
 
     # ===== 股票概况 (stock_profile) =====
 
-    def get_stock_profile(self, code: str) -> Optional[dict]:
+    def get_stock_profile(self, code: str) -> dict | None:
         """获取某只股票的概况信息"""
         with self.get_session() as session:
             result = session.query(StockProfile) \

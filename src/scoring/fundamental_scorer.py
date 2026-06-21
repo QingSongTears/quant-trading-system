@@ -31,10 +31,11 @@ v2 设计理念:
     scorer = FundamentalScorer()
     result = scorer.score("000001")
 """
+from __future__ import annotations
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, text
-from typing import Dict, Any, List, Tuple
+from sqlalchemy import text  # PR3.2: create_engine 由 base.py 通过 get_engine 单例提供
+from typing import Any
 
 from ..config import get_config, get_db_url
 from ..db.sql_utils import read_sql
@@ -285,7 +286,7 @@ class FundamentalScorer(BaseScorer):
     # ============================================================
     #  主入口
     # ============================================================
-    def score(self, code: str) -> Dict[str, Any]:
+    def score(self, code: str) -> dict[str, Any]:
         if code not in self.df.index:
             return {
                 "code": code,
@@ -328,7 +329,7 @@ class FundamentalScorer(BaseScorer):
             "error": None,
         }
 
-    def batch_score(self, codes: List[str]) -> pd.DataFrame:
+    def batch_score(self, codes: list[str]) -> pd.DataFrame:
         results = []
         for code in codes:
             r = self.score(code)

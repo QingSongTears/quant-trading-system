@@ -31,12 +31,13 @@ v2.1 设计理念:
     scorer = FundFlowScorer()
     result = scorer.score(code="000001", as_of_date="2025-12-15")
 """
+from __future__ import annotations
 from datetime import date, timedelta
-from typing import Dict, Optional, Any, List, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text  # PR3.2: create_engine 由 base.py 通过 get_engine 单例提供, text
 
 from ..config import get_config, get_db_url
 from ..db.sql_utils import read_sql
@@ -101,8 +102,8 @@ class FundFlowScorer(BaseScorer):
         return np.nan
 
     def _load_bulk_flow_data(
-        self, codes: List[str], as_of_date_str: str, lookback: int = 30
-    ) -> Dict[str, pd.DataFrame]:
+        self, codes: list[str], as_of_date_str: str, lookback: int = 30
+    ) -> dict[str, pd.DataFrame]:
         if not codes:
             return {}
         sql = """
@@ -376,7 +377,7 @@ class FundFlowScorer(BaseScorer):
     # ============================================================
     #  主评分入口
     # ============================================================
-    def score(self, code: str, as_of_date: str) -> Dict[str, Any]:
+    def score(self, code: str, as_of_date: str) -> dict[str, Any]:
         df = self._load_flow_data(code, as_of_date)
 
         if df.empty or len(df) < 5:
@@ -411,9 +412,9 @@ class FundFlowScorer(BaseScorer):
         }
 
     def batch_score(
-        self, codes, as_of_date: Optional[str] = None, verbose: bool = False
+        self, codes, as_of_date: str | None = None, verbose: bool = False
     ) -> pd.DataFrame:
-        # 统一接口适配: 兼容旧版 codes_and_dates: List[Tuple[str, str]]
+        # 统一接口适配: 兼容旧版 codes_and_dates: list[tuple[str, str]]
         if as_of_date is None and isinstance(codes, list) and codes and isinstance(codes[0], (list, tuple)):
             codes_and_dates = codes
         else:

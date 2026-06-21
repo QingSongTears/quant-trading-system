@@ -26,14 +26,13 @@
     scorer = TechnicalScorer()
     result = scorer.score(code="000001", as_of_date="2024-06-15")
 """
+from __future__ import annotations
 from datetime import date, timedelta
-from typing import Dict, Optional, Any, List, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine
 
-from ..config import get_config, get_db_url
 from ..db.sql_utils import read_sql
 from .base import BaseScorer
 
@@ -72,8 +71,8 @@ class TechnicalScorer(BaseScorer):
         return df
 
     def _load_bulk_price_data(
-        self, codes: List[str], as_of_date_str: str, lookback_days: int = 150
-    ) -> Dict[str, pd.DataFrame]:
+        self, codes: list[str], as_of_date_str: str, lookback_days: int = 150
+    ) -> dict[str, pd.DataFrame]:
         if not codes:
             return {}
         sql = """
@@ -532,7 +531,7 @@ class TechnicalScorer(BaseScorer):
     # ============================================================
     #  主评分入口
     # ============================================================
-    def score(self, code: str, as_of_date: str) -> Dict[str, Any]:
+    def score(self, code: str, as_of_date: str) -> dict[str, Any]:
         df = self._load_price_data(code, as_of_date)
 
         if df.empty or len(df) < 60:
@@ -568,9 +567,9 @@ class TechnicalScorer(BaseScorer):
         }
 
     def batch_score(
-        self, codes, as_of_date: Optional[str] = None, verbose: bool = False
+        self, codes, as_of_date: str | None = None, verbose: bool = False
     ) -> pd.DataFrame:
-        # 统一接口适配: 兼容旧版 codes_and_dates: List[Tuple[str, str]]
+        # 统一接口适配: 兼容旧版 codes_and_dates: list[tuple[str, str]]
         if as_of_date is None and isinstance(codes, list) and codes and isinstance(codes[0], (list, tuple)):
             codes_and_dates = codes
         else:
@@ -615,7 +614,7 @@ class TechnicalScorer(BaseScorer):
         start_date: str = "2024-06-01",
         end_date: str = "2026-06-01",
         sample_freq: str = "weekly",
-        stock_codes: Optional[List[str]] = None,
+        stock_codes: list[str] | None = None,
         max_stocks_per_day: int = 200,
     ) -> pd.DataFrame:
         """逐日/逐周采样"""
