@@ -435,3 +435,100 @@ class DataRepository:
         if not df.empty:
             df = df.sort_values("trade_date").reset_index(drop=True)
         return df
+
+    # ===== 数据库元信息 (用于 /api/data/db-status 等监控端点) =====
+
+    # 常用日期列名 — 按概率从高到低排列,首次命中即返回
+    _DATE_COL_CANDIDATES = ("trade_date", "date", "as_of_date", "report_date", "created_at", "end_date", "_date")
+
+    # 业务表的中文描述 — 不在表内的保持空字符串
+    _TABLE_DESCRIPTIONS = {
+        "daily_price": "日K线数据",
+        "stock_basic": "股票基本信息",
+        "tencent_quotes": "腾讯实时行情",
+        "stock_profile": "股票档案",
+        "fund_flow": "资金流向",
+        "fund_flow_data": "资金流向",
+        "technical_indicators": "技术指标",
+        "lhb_institutional": "龙虎榜机构",
+        "margin_trading": "融资融券",
+        "shareholder_count": "股东人数",
+        "finance_summary": "财务摘要",
+        "backtest_result": "回测结果",
+        "strategy_config": "策略配置",
+    }
+
+    def get_table_stats(self, table_name: str) -> dict:
+        """获取单表统计: 行数 + 最早/最新日期
+
+        返回格式 (供 /api/data/db-status 直接使用):
+            {"name": "daily_price", "row_count": 12345,
+             "latest_date": "2026-06-20", "earliest_date": "2018-01-02",
+             "description": "日K线数据"}
+
+        Args:
+            table_name: 表名(已通过 sqlite_master 验证存在)
+
+        Returns:
+            dict 含 row_count / latest_date / earliest_date / description
+        """
+        from sqlalchemy import text, inspect
+        result = {
+            "name": table_name,
+            "row_count": 0,
+            "latest_date": None,
+            "earliest_date": None,
+            "description": self._TABLE_DESCRIPTIONS.get(table_name, ""),
+        }
+        with self.engine.connect() as conn:
+            try:
+                row = conn.execute(text(f'SELECT COUNT(*) FROM "{table_name}"')).fetchone()
+                result["row_count"] = row[0] if row else 0
+            except Exception:
+                return result
+
+            # 探测日期列: 优先查 PRAGMA table_info 拿到列名,再批量 MAX/MIN
+            try:
+                insp = inspect(self.engine)
+                cols = {c["name"].lower() for c in insp.get_columns(table_name)}
+                for cand in self._DATE_COL_CANDIDATES:
+                    if cand not in cols:
+                        continue
+                    r_max = conn.execute(
+                        text(f'SELECT MAX({cand}) FROM "{table_name}"')
+                    ).fetchone()
+                    if r_max and r_max[0]:
+                        result["latest_date"] = str(r_max[0])[:10]
+                        r_min = conn.execute(
+                            text(f'SELECT MIN({cand}) FROM "{table_name}"')
+                        ).fetchone()
+                        if r_min and r_min[0]:
+                            result["earliest_date"] = str(r_min[0])[:10]
+                    break
+            except Exception:
+                # 日期探测失败不阻断,只返回 row_count
+                pass
+
+        return result
+
+    def list_tables(self) -> list:
+        """列出所有业务表名(按字母排序)
+
+        Returns:
+            list[str],如 ["backtest_result", "daily_price", "stock_basic", ...]
+        """
+        from sqlalchemy import text
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            ).fetchall()
+        return [r[0] for r in rows]
+
+    def get_db_status(self) -> dict:
+        """汇总数据库状态 — 供 /api/data/db-status 等端点
+
+        Returns:
+            {"tables": [{"name", "row_count", "latest_date", "earliest_date", "description"}, ...]}
+        """
+        tables = self.list_tables()
+        return {"tables": [self.get_table_stats(t) for t in tables]}
