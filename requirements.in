@@ -1,0 +1,33 @@
+# A股量化交易模型系统 - 顶层依赖清单
+# 这里是松散约束(>=),由 pip-compile 生成精确的 requirements.txt
+# 重新生成: pip-compile requirements.in
+
+# === 数据获取 ===
+akshare>=1.14.0
+# WeStock Data: 实时行情补充数据源，通过 npx CLI 调用（需 Node.js >= 18）
+
+# === 回测引擎 ===
+backtesting>=0.3.3
+
+# === Web 框架 ===
+fastapi>=0.110.0
+uvicorn>=0.27.0
+
+# === 数据库 ===
+sqlalchemy>=2.0
+aiosqlite>=0.20.0
+
+# === 数据处理 ===
+pandas>=2.2.0
+numpy>=1.26.0
+
+# === 配置 ===
+pyyaml>=6.0
+
+# === 模板 ===
+jinja2>=3.1.0
+
+# === 工具 ===
+tqdm>=4.66.0
+httpx>=0.27.0
+loguru>=0.7.0
