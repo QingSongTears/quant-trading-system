@@ -2012,7 +2012,7 @@ def api_strategy_signal(code):
     return jsonify({
         "code": code,
         "pred_month": xgb_result.get("pred_month", ""),
-        "model": "xgb_v2",
+        "model": "xgb_v4",
         "xgb_prediction": {
             "proba": round(pred_proba, 4),
             "signal": pred_signal,
@@ -2397,7 +2397,7 @@ def api_predict(code):
                 "signal": signal,
                 "dim_scores": dim_scores,
                 "auc": 0.95,
-                "model": "xgb_v2",
+                "model": "xgb_v4",
             }
             
             # 保存到数据库
