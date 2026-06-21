@@ -1,0 +1,502 @@
+[
+  {
+    "stock_code": "603629",
+    "stock_name": "利通电子",
+    "strategy": "双均线交叉",
+    "total_return_pct": 386.57,
+    "sharpe": 3.38,
+    "max_drawdown_pct": 32.58,
+    "win_rate_pct": 20.0,
+    "total_trades": 5
+  },
+  {
+    "stock_code": "001309",
+    "stock_name": "德明利",
+    "strategy": "双均线交叉",
+    "total_return_pct": 361.31,
+    "sharpe": 2.6,
+    "max_drawdown_pct": 27.44,
+    "win_rate_pct": 60.0,
+    "total_trades": 5
+  },
+  {
+    "stock_code": "001309",
+    "stock_name": "德明利",
+    "strategy": "双均线交叉",
+    "total_return_pct": 361.31,
+    "sharpe": 2.6,
+    "max_drawdown_pct": 27.44,
+    "win_rate_pct": 60.0,
+    "total_trades": 5
+  },
+  {
+    "stock_code": "001309",
+    "stock_name": "德明利",
+    "strategy": "MACD金叉死叉",
+    "total_return_pct": 271.58,
+    "sharpe": 2.6,
+    "max_drawdown_pct": 21.86,
+    "win_rate_pct": 75.0,
+    "total_trades": 8
+  },
+  {
+    "stock_code": "603986",
+    "stock_name": "兆易创新",
+    "strategy": "双均线交叉",
+    "total_return_pct": 226.26,
+    "sharpe": 2.74,
+    "max_drawdown_pct": 36.76,
+    "win_rate_pct": 40.0,
+    "total_trades": 5
+  },
+  {
+    "stock_code": "603986",
+    "stock_name": "兆易创新",
+    "strategy": "双均线交叉",
+    "total_return_pct": 226.26,
+    "sharpe": 2.74,
+    "max_drawdown_pct": 36.76,
+    "win_rate_pct": 40.0,
+    "total_trades": 5
+  },
+  {
+    "stock_code": "603986",
+    "stock_name": "兆易创新",
+    "strategy": "双均线交叉",
+    "total_return_pct": 226.26,
+    "sharpe": 2.74,
+    "max_drawdown_pct": 36.76,
+    "win_rate_pct": 40.0,
+    "total_trades": 5
+  },
+  {
+    "stock_code": "601138",
+    "stock_name": "工业富联",
+    "strategy": "双均线交叉",
+    "total_return_pct": 216.97,
+    "sharpe": 1.82,
+    "max_drawdown_pct": 34.0,
+    "win_rate_pct": 37.5,
+    "total_trades": 8
+  },
+  {
+    "stock_code": "000007",
+    "stock_name": "全新好",
+    "strategy": "双均线交叉",
+    "total_return_pct": 203.36,
+    "sharpe": 1.38,
+    "max_drawdown_pct": 26.29,
+    "win_rate_pct": 41.7,
+    "total_trades": 12
+  },
+  {
+    "stock_code": "001309",
+    "stock_name": "德明利",
+    "strategy": "海龟交易法则",
+    "total_return_pct": 153.12,
+    "sharpe": 2.6,
+    "max_drawdown_pct": 21.09,
+    "win_rate_pct": 71.4,
+    "total_trades": 7
+  },
+  {
+    "stock_code": "603986",
+    "stock_name": "兆易创新",
+    "strategy": "MACD金叉死叉",
+    "total_return_pct": 138.12,
+    "sharpe": 2.74,
+    "max_drawdown_pct": 24.34,
+    "win_rate_pct": 44.4,
+    "total_trades": 9
+  },
+  {
+    "stock_code": "603986",
+    "stock_name": "兆易创新",
+    "strategy": "海龟交易法则",
+    "total_return_pct": 104.88,
+    "sharpe": 2.74,
+    "max_drawdown_pct": 28.48,
+    "win_rate_pct": 60.0,
+    "total_trades": 5
+  },
+  {
+    "stock_code": "688256",
+    "stock_name": "寒武纪",
+    "strategy": "RSI超买超卖",
+    "total_return_pct": 77.49,
+    "sharpe": 1.46,
+    "max_drawdown_pct": 18.48,
+    "win_rate_pct": 100.0,
+    "total_trades": 3
+  },
+  {
+    "stock_code": "000007",
+    "stock_name": "全新好",
+    "strategy": "MACD金叉死叉",
+    "total_return_pct": 75.57,
+    "sharpe": 1.38,
+    "max_drawdown_pct": 42.37,
+    "win_rate_pct": 37.5,
+    "total_trades": 16
+  },
+  {
+    "stock_code": "600519",
+    "stock_name": "贵州茅台",
+    "strategy": "双均线信号策略",
+    "total_return_pct": 75.51,
+    "sharpe": 1.25,
+    "max_drawdown_pct": -8.5,
+    "win_rate_pct": 0.6,
+    "total_trades": 4
+  },
+  {
+    "stock_code": "603986",
+    "stock_name": "兆易创新",
+    "strategy": "海龟交易法则",
+    "total_return_pct": 73.81,
+    "sharpe": 2.59,
+    "max_drawdown_pct": 11.24,
+    "win_rate_pct": NaN,
+    "total_trades": 0
+  },
+  {
+    "stock_code": "000858",
+    "stock_name": "五粮液",
+    "strategy": "双均线信号策略",
+    "total_return_pct": 69.88,
+    "sharpe": 1.36,
+    "max_drawdown_pct": -10.28,
+    "win_rate_pct": 0.5,
+    "total_trades": 8
+  },
+  {
+    "stock_code": "000519",
+    "stock_name": "中兵红箭",
+    "strategy": "布林带突破",
+    "total_return_pct": 67.74,
+    "sharpe": 0.65,
+    "max_drawdown_pct": 15.59,
+    "win_rate_pct": 88.9,
+    "total_trades": 9
+  },
+  {
+    "stock_code": "603986",
+    "stock_name": "兆易创新",
+    "strategy": "双均线交叉",
+    "total_return_pct": 65.89,
+    "sharpe": 2.59,
+    "max_drawdown_pct": 12.2,
+    "win_rate_pct": 0.0,
+    "total_trades": 1
+  },
+  {
+    "stock_code": "603986",
+    "stock_name": "兆易创新",
+    "strategy": "双均线交叉",
+    "total_return_pct": 65.89,
+    "sharpe": 2.59,
+    "max_drawdown_pct": 12.2,
+    "win_rate_pct": 0.0,
+    "total_trades": 1
+  },
+  {
+    "stock_code": "000420",
+    "stock_name": "吉林化纤",
+    "strategy": "布林带突破",
+    "total_return_pct": 60.71,
+    "sharpe": 0.44,
+    "max_drawdown_pct": 14.37,
+    "win_rate_pct": 100.0,
+    "total_trades": 5
+  },
+  {
+    "stock_code": "000519",
+    "stock_name": "中兵红箭",
+    "strategy": "双均线交叉",
+    "total_return_pct": 60.17,
+    "sharpe": 0.65,
+    "max_drawdown_pct": 21.81,
+    "win_rate_pct": 33.3,
+    "total_trades": 12
+  },
+  {
+    "stock_code": "000008",
+    "stock_name": "神州高铁",
+    "strategy": "布林带突破",
+    "total_return_pct": 60.04,
+    "sharpe": 0.41,
+    "max_drawdown_pct": 13.56,
+    "win_rate_pct": 83.3,
+    "total_trades": 6
+  },
+  {
+    "stock_code": "000010",
+    "stock_name": "*ST美丽",
+    "strategy": "MACD金叉死叉",
+    "total_return_pct": 51.65,
+    "sharpe": 0.45,
+    "max_drawdown_pct": 32.75,
+    "win_rate_pct": 38.9,
+    "total_trades": 18
+  },
+  {
+    "stock_code": "600036",
+    "stock_name": "招商银行",
+    "strategy": "双均线信号策略",
+    "total_return_pct": 49.32,
+    "sharpe": 0.99,
+    "max_drawdown_pct": -8.51,
+    "win_rate_pct": 0.5,
+    "total_trades": 8
+  },
+  {
+    "stock_code": "600519",
+    "stock_name": "贵州茅台",
+    "strategy": "双均线信号策略",
+    "total_return_pct": 48.31,
+    "sharpe": 1.46,
+    "max_drawdown_pct": -7.84,
+    "win_rate_pct": 0.6,
+    "total_trades": 7
+  },
+  {
+    "stock_code": "601318",
+    "stock_name": "中国平安",
+    "strategy": "双均线信号策略",
+    "total_return_pct": 48.28,
+    "sharpe": 1.48,
+    "max_drawdown_pct": -11.72,
+    "win_rate_pct": 0.5,
+    "total_trades": 7
+  },
+  {
+    "stock_code": "603629",
+    "stock_name": "利通电子",
+    "strategy": "RSI超买超卖",
+    "total_return_pct": 47.68,
+    "sharpe": 3.38,
+    "max_drawdown_pct": 5.32,
+    "win_rate_pct": 100.0,
+    "total_trades": 2
+  },
+  {
+    "stock_code": "000030",
+    "stock_name": "富奥股份",
+    "strategy": "布林带突破",
+    "total_return_pct": 47.47,
+    "sharpe": -0.27,
+    "max_drawdown_pct": 12.83,
+    "win_rate_pct": 66.7,
+    "total_trades": 9
+  },
+  {
+    "stock_code": "603986",
+    "stock_name": "兆易创新",
+    "strategy": "MACD金叉死叉",
+    "total_return_pct": 46.9,
+    "sharpe": 2.59,
+    "max_drawdown_pct": 24.57,
+    "win_rate_pct": 33.3,
+    "total_trades": 3
+  },
+  {
+    "stock_code": "000007",
+    "stock_name": "全新好",
+    "strategy": "布林带突破",
+    "total_return_pct": 45.54,
+    "sharpe": 1.38,
+    "max_drawdown_pct": 13.96,
+    "win_rate_pct": 87.5,
+    "total_trades": 8
+  },
+  {
+    "stock_code": "603986",
+    "stock_name": "兆易创新",
+    "strategy": "RSI超买超卖",
+    "total_return_pct": 43.95,
+    "sharpe": 2.74,
+    "max_drawdown_pct": 7.49,
+    "win_rate_pct": 100.0,
+    "total_trades": 3
+  },
+  {
+    "stock_code": "688256",
+    "stock_name": "寒武纪",
+    "strategy": "海龟交易法则",
+    "total_return_pct": 43.24,
+    "sharpe": 1.46,
+    "max_drawdown_pct": 40.05,
+    "win_rate_pct": 50.0,
+    "total_trades": 4
+  },
+  {
+    "stock_code": "000020",
+    "stock_name": "深华发Ａ",
+    "strategy": "MACD金叉死叉",
+    "total_return_pct": 40.42,
+    "sharpe": 0.31,
+    "max_drawdown_pct": 38.12,
+    "win_rate_pct": 53.3,
+    "total_trades": 15
+  },
+  {
+    "stock_code": "000002",
+    "stock_name": "万  科Ａ",
+    "strategy": "海龟交易法则",
+    "total_return_pct": 39.82,
+    "sharpe": -0.57,
+    "max_drawdown_pct": 10.97,
+    "win_rate_pct": 100.0,
+    "total_trades": 2
+  },
+  {
+    "stock_code": "603986",
+    "stock_name": "兆易创新",
+    "strategy": "布林带突破",
+    "total_return_pct": 39.21,
+    "sharpe": 2.74,
+    "max_drawdown_pct": 7.51,
+    "win_rate_pct": 100.0,
+    "total_trades": 2
+  },
+  {
+    "stock_code": "000060",
+    "stock_name": "中金岭南",
+    "strategy": "布林带突破",
+    "total_return_pct": 33.49,
+    "sharpe": 0.88,
+    "max_drawdown_pct": 11.67,
+    "win_rate_pct": 100.0,
+    "total_trades": 8
+  },
+  {
+    "stock_code": "001309",
+    "stock_name": "德明利",
+    "strategy": "布林带突破",
+    "total_return_pct": 33.38,
+    "sharpe": 2.6,
+    "max_drawdown_pct": 3.03,
+    "win_rate_pct": 100.0,
+    "total_trades": 2
+  },
+  {
+    "stock_code": "PORTFOLIO",
+    "stock_name": "短期反转选股",
+    "strategy": "短期反转选股",
+    "total_return_pct": 32.93,
+    "sharpe": 0.91,
+    "max_drawdown_pct": -24.52,
+    "win_rate_pct": 50.6,
+    "total_trades": 13
+  },
+  {
+    "stock_code": "000519",
+    "stock_name": "中兵红箭",
+    "strategy": "MACD金叉死叉",
+    "total_return_pct": 29.75,
+    "sharpe": 0.65,
+    "max_drawdown_pct": 20.74,
+    "win_rate_pct": 31.6,
+    "total_trades": 19
+  },
+  {
+    "stock_code": "603986",
+    "stock_name": "兆易创新",
+    "strategy": "布林带突破",
+    "total_return_pct": 28.49,
+    "sharpe": 2.59,
+    "max_drawdown_pct": 3.14,
+    "win_rate_pct": 100.0,
+    "total_trades": 1
+  },
+  {
+    "stock_code": "689009",
+    "stock_name": "九号公司-WD",
+    "strategy": "布林带突破",
+    "total_return_pct": 25.28,
+    "sharpe": 0.08,
+    "max_drawdown_pct": 28.26,
+    "win_rate_pct": 75.0,
+    "total_trades": 8
+  },
+  {
+    "stock_code": "301218",
+    "stock_name": "华是科技",
+    "strategy": "双均线交叉",
+    "total_return_pct": 24.69,
+    "sharpe": 0.52,
+    "max_drawdown_pct": 40.08,
+    "win_rate_pct": 33.3,
+    "total_trades": 15
+  },
+  {
+    "stock_code": "PORTFOLIO",
+    "stock_name": "低波动选股",
+    "strategy": "低波动选股",
+    "total_return_pct": 23.25,
+    "sharpe": 1.03,
+    "max_drawdown_pct": -16.53,
+    "win_rate_pct": 55.2,
+    "total_trades": 5
+  },
+  {
+    "stock_code": "000010",
+    "stock_name": "*ST美丽",
+    "strategy": "双均线交叉",
+    "total_return_pct": 22.06,
+    "sharpe": 0.45,
+    "max_drawdown_pct": 40.32,
+    "win_rate_pct": 22.2,
+    "total_trades": 18
+  },
+  {
+    "stock_code": "000016",
+    "stock_name": "*ST康佳A",
+    "strategy": "MACD金叉死叉",
+    "total_return_pct": 20.2,
+    "sharpe": 0.37,
+    "max_drawdown_pct": 55.58,
+    "win_rate_pct": 23.5,
+    "total_trades": 17
+  },
+  {
+    "stock_code": "603986",
+    "stock_name": "兆易创新",
+    "strategy": "RSI超买超卖",
+    "total_return_pct": 19.46,
+    "sharpe": 2.59,
+    "max_drawdown_pct": 3.17,
+    "win_rate_pct": 100.0,
+    "total_trades": 1
+  },
+  {
+    "stock_code": "601113",
+    "stock_name": "华鼎股份",
+    "strategy": "RSI超买超卖",
+    "total_return_pct": 19.18,
+    "sharpe": 0.37,
+    "max_drawdown_pct": 21.89,
+    "win_rate_pct": 100.0,
+    "total_trades": 5
+  },
+  {
+    "stock_code": "601113",
+    "stock_name": "华鼎股份",
+    "strategy": "RSI超买超卖",
+    "total_return_pct": 19.18,
+    "sharpe": 0.37,
+    "max_drawdown_pct": 21.89,
+    "win_rate_pct": 100.0,
+    "total_trades": 5
+  },
+  {
+    "stock_code": "601138",
+    "stock_name": "工业富联",
+    "strategy": "布林带突破",
+    "total_return_pct": 18.51,
+    "sharpe": 2.4,
+    "max_drawdown_pct": 17.96,
+    "win_rate_pct": 66.7,
+    "total_trades": 3
+  }
+]

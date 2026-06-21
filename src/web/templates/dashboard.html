@@ -44,7 +44,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 <a href="/" style="position:fixed;top:12px;left:16px;color:#4fc3f7;font-size:0.8rem;text-decoration:none;z-index:999;background:#1a1d27;padding:4px 10px;border-radius:6px;border:1px solid #2a2d3a;">&larr; 首页</a>
 <header>
   <h1>📊 量化系统数据总览</h1>
-  <span style="font-size:0.75rem;color:var(--dim)">11,414条回测 · 5,161只股票 · XGBoost v4</span>
+  <span style="font-size:0.75rem;color:var(--dim)">{{ "{:,}".format(total_records) }} 条日线记录 · {{ "{:,}".format(total_stocks) }} 只股票 · 数据区间 {{ date_range.start or 'N/A' }} ~ {{ date_range.end or 'N/A' }}</span>
   <div class="nav-links"><a href="/">← 返回首页</a></div>
 </header>
 <div class="container">
@@ -85,7 +85,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </tr></thead><tbody id="topBody"></tbody></table></div>
     </div>
   </div>
-  <div class="footer">数据截至 2026-06-21 · 量化回测系统 v4</div>
+  <div class="footer">数据截至 {{ generated_at }} · 量化回测系统 v4</div>
 </div>
 <script>
 async function load() {
@@ -114,7 +114,7 @@ function renderOverview(d) {
     `<div class="stat-card"><div class="stat-val" style="color:var(--red)">${d.strategies.length}</div><div class="stat-label">策略数</div></div>` +
     `<div class="stat-card"><div class="stat-val" style="color:var(--red)">${(best.avg_return||0).toFixed(2)}%</div><div class="stat-label">最佳: ${best.name}</div></div>` +
     `<div class="stat-card"><div class="stat-val">${avgAll.toFixed(2)}%</div><div class="stat-label">策略平均</div></div>` +
-    `<div class="stat-card"><div class="stat-val">5,161</div><div class="stat-label">已回测股票</div></div>`;
+    `<div class="stat-card"><div class="stat-val">{{ total_stocks }}</div><div class="stat-label">已覆盖股票</div></div>`;
 }
 function renderStrategies(d) {
   document.getElementById('strategyBody').innerHTML = d.strategies.map((s, i) => {
@@ -169,12 +169,15 @@ function renderModel(d) {
     '<tr><td style="font-weight:600;color:var(--green)"><0.4 回避</td><td>415只</td><td class="pos">+17.54%</td><td>69%</td><td class="neg">❌ 未命中</td></tr>';
 }
 function renderCoverage(d) {
+  // 动态从 /api/coverage 或页面 ctx 取 (此处使用模板渲染时的总记录数)
+  const totalStocks = {{ total_stocks }};
+  const totalRecords = {{ total_records }};
   document.getElementById('coverGrid').innerHTML =
-    '<div class="stat-card"><div class="stat-val">5,206</div><div class="stat-label">评分数据股票</div></div>' +
-    '<div class="stat-card"><div class="stat-val">5,161</div><div class="stat-label">有K线≥120天</div></div>' +
-    '<div class="stat-card"><div class="stat-val" style="color:var(--red)">5,161</div><div class="stat-label">已回测(100%)</div></div>' +
-    '<div class="stat-card"><div class="stat-val">128,109</div><div class="stat-label">评分记录</div></div>' +
-    '<div class="stat-card"><div class="stat-val">3,017,078</div><div class="stat-label">技术指标</div></div>';
+    `<div class="stat-card"><div class="stat-val">${totalStocks.toLocaleString()}</div><div class="stat-label">已覆盖股票</div></div>` +
+    `<div class="stat-card"><div class="stat-val">${totalRecords.toLocaleString()}</div><div class="stat-label">日线记录</div></div>` +
+    `<div class="stat-card"><div class="stat-val" style="color:var(--dim)">—</div><div class="stat-label" style="font-size:0.62rem">评分记录(模型重训后更新)</div></div>` +
+    `<div class="stat-card"><div class="stat-val" style="color:var(--dim)">—</div><div class="stat-label" style="font-size:0.62rem">技术指标(由 daily_price 派生)</div></div>` +
+    `<div class="stat-card"><div class="stat-val">${totalStocks.toLocaleString()}</div><div class="stat-label">DB 中股票</div></div>`;
 }
 function renderTop(d) {
   const tops = (d.top_by_strategy && d.top_by_strategy['6']) || [];

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>综合信号 · 多维度共振</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:1.1rem;font-weight:600}
+header .sub{color:var(--dim);font-size:0.78rem}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem;margin-left:auto}
+header a:hover{color:var(--accent)}
+.container{max-width:1400px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+.card-title{font-size:0.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
+.metric-card{text-align:center;padding:14px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid var(--border)}
+.metric-value{font-size:1.6rem;font-weight:700}
+.metric-label{font-size:0.7rem;color:var(--dim);margin-top:4px;text-transform:uppercase}
+table{width:100%;border-collapse:collapse;font-size:0.78rem}
+th{text-align:left;padding:8px 10px;color:var(--dim);font-weight:500;font-size:0.68rem;text-transform:uppercase;border-bottom:2px solid var(--border)}
+td{padding:7px 10px;border-bottom:1px solid rgba(42,45,58,0.4)}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.signal-buy{background:rgba(239,83,80,0.25);color:var(--red);padding:2px 10px;border-radius:4px;font-weight:700;font-size:0.72rem}
+.signal-hold{background:rgba(255,167,38,0.2);color:var(--yellow);padding:2px 10px;border-radius:4px;font-weight:700;font-size:0.72rem}
+.signal-sell{background:rgba(76,175,80,0.2);color:var(--green);padding:2px 10px;border-radius:4px;font-weight:700;font-size:0.72rem}
+.signal-table-wrap{max-height:600px;overflow-y:auto}
+.loading{text-align:center;padding:60px;color:var(--dim);font-size:0.9rem}
+.market-bar{display:flex;gap:8px;align-items:center;font-size:0.85rem}
+.market-dot{width:10px;height:10px;border-radius:50%}
+.code{font-family:monospace;color:var(--accent);font-size:0.82rem}
+.score-cell{font-weight:600;font-family:monospace}
+.disclaimer{background:rgba(79,195,247,0.08);border-left:3px solid var(--accent);padding:8px 12px;border-radius:4px;font-size:0.78rem;color:var(--dim);margin-bottom:14px}
+</style>
+</head>
+<body>
+<a href="/" style="position:fixed;top:12px;left:16px;color:#4fc3f7;font-size:0.8rem;text-decoration:none;z-index:999;background:#1a1d27;padding:4px 10px;border-radius:6px;border:1px solid #2a2d3a;">&larr; 首页</a>
+<header>
+  <h1>⚡ 综合信号 · 多维度共振</h1>
+  <span class="sub">8维评分聚合 · 大盘情绪过滤 · 实时选股</span>
+  <a href="/">← 返回首页</a>
+</header>
+<div class="container">
+  <div class="disclaimer">
+    💡 <strong>信号判定:</strong> 综合评分 ≥ 8 红灯买入 · 5~8 黄灯观望 · < 5 绿灯回避 ·
+    <strong>大盘情绪:</strong> 技术面均值 ≥ 8 强势, 5~8 中性, < 5 弱势
+  </div>
+
+  <div id="loading" class="loading">⏳ 加载实时数据...</div>
+  <div id="content" style="display:none">
+    <div class="row" id="metricRow"></div>
+
+    <div class="card">
+      <div class="card-title">📊 全市场情绪 <span id="moodTime" style="font-size:0.7rem;color:var(--dim);"></span></div>
+      <div style="height:200px;position:relative"><canvas id="moodChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        🎯 综合信号 TOP 30
+        <span style="font-size:0.7rem;color:var(--dim);font-weight:400;text-transform:none;">点击行跳转到诊断页</span>
+      </div>
+      <div class="signal-table-wrap"><table>
+        <thead><tr>
+          <th>信号</th><th>代码</th><th>名称</th><th>行业</th>
+          <th>综合</th><th>技术</th><th>资金</th><th>机构</th><th>筹码</th>
+          <th>20日</th><th>60日</th>
+        </tr></thead>
+        <tbody id="signalBody"></tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+<script>
+let moodChart = null;
+
+async function load() {
+  try {
+    const r = await fetch('/api/stock/screener?min_score=0&sort_by=avg_score&limit=500');
+    const d = await r.json();
+    if (!d.stocks) throw new Error('API 返回无效');
+    const stocks = d.stocks;
+
+    // 大盘情绪: 技术面均值
+    const techScores = stocks.map(s => (s.dim_scores || {}).tech_weighted || 0);
+    const techAvg = techScores.length ? techScores.reduce((a, b) => a + b, 0) / techScores.length : 0;
+    const fundScores = stocks.map(s => (s.dim_scores || {}).fund_weighted || 0);
+    const fundAvg = fundScores.length ? fundScores.reduce((a, b) => a + b, 0) / fundScores.length : 0;
+    const instScores = stocks.map(s => (s.dim_scores || {}).institutional_weighted || 0);
+    const instAvg = instScores.length ? instScores.reduce((a, b) => a + b, 0) / instScores.length : 0;
+    const overallAvg = stocks.reduce((a, b) => a + (b.avg_score || 0), 0) / stocks.length;
+
+    // 信号灯
+    let mood, moodColor;
+    if (techAvg >= 8) { mood = '强势'; moodColor = 'var(--red)'; }
+    else if (techAvg >= 5) { mood = '中性'; moodColor = 'var(--yellow)'; }
+    else { mood = '弱势'; moodColor = 'var(--green)'; }
+
+    // 计数
+    const buyCount = stocks.filter(s => s.avg_score >= 8).length;
+    const holdCount = stocks.filter(s => s.avg_score >= 5 && s.avg_score < 8).length;
+    const sellCount = stocks.filter(s => s.avg_score < 5).length;
+
+    document.getElementById('metricRow').innerHTML = `
+      <div class="metric-card">
+        <div class="market-bar" style="justify-content:center"><span class="market-dot" style="background:${moodColor}"></span><span style="color:${moodColor};font-weight:700">${mood}</span></div>
+        <div class="metric-label">大盘情绪</div>
+      </div>
+      <div class="metric-card"><div class="metric-value" style="color:var(--accent)">${stocks.length}</div><div class="metric-label">参与评分的股票</div></div>
+      <div class="metric-card"><div class="metric-value" style="color:var(--red)">${buyCount}</div><div class="metric-label">买入信号(≥8)</div></div>
+      <div class="metric-card"><div class="metric-value" style="color:var(--yellow)">${holdCount}</div><div class="metric-label">观望(5~8)</div></div>
+      <div class="metric-card"><div class="metric-value" style="color:var(--green)">${sellCount}</div><div class="metric-label">回避(&lt;5)</div></div>
+    `;
+
+    document.getElementById('moodTime').textContent = '数据日期: ' + (d.as_of_date || '—');
+
+    // 情绪柱状图: 综合 vs 技术 vs 资金 vs 机构
+    if (moodChart) moodChart.destroy();
+    const ctx = document.getElementById('moodChart').getContext('2d');
+    moodChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['综合', '技术', '资金', '机构'],
+        datasets: [{
+          label: '市场平均评分',
+          data: [overallAvg, techAvg, fundAvg, instAvg],
+          backgroundColor: ['#4fc3f7','#66bb6a','#ffa726','#ab47bc'],
+          borderRadius: 6,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => '均值: ' + c.raw.toFixed(2) } } },
+        scales: {
+          y: { min: 0, max: 15, ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+          x: { ticks: { color: '#aaa', font: { size: 11 } }, grid: { display: false } },
+        },
+      },
+    });
+
+    // TOP 30 信号表
+    const top = stocks.slice(0, 30);
+    document.getElementById('signalBody').innerHTML = top.map(s => {
+      const ds = s.dim_scores || {};
+      let sigClass, sigText;
+      if (s.avg_score >= 8) { sigClass = 'signal-buy'; sigText = '🟢 买入'; }
+      else if (s.avg_score >= 5) { sigClass = 'signal-hold'; sigText = '🟡 观望'; }
+      else { sigClass = 'signal-sell'; sigText = '🔴 回避'; }
+      return `<tr style="cursor:pointer" onclick="window.location.href='/diagnose?code=${s.code}'">
+        <td><span class="${sigClass}">${sigText}</span></td>
+        <td><span class="code">${s.code}</span></td>
+        <td>${escHtml(s.name)}</td>
+        <td style="color:var(--dim);font-size:0.72rem">${escHtml(s.industry || '-')}</td>
+        <td class="score-cell" style="color:${scoreColor(s.avg_score)}">${s.avg_score.toFixed(1)}</td>
+        <td class="score-cell" style="color:${scoreColor(ds.tech_weighted)}">${(ds.tech_weighted||0).toFixed(1)}</td>
+        <td class="score-cell" style="color:${scoreColor(ds.fund_weighted)}">${(ds.fund_weighted||0).toFixed(1)}</td>
+        <td class="score-cell" style="color:${scoreColor(ds.institutional_weighted)}">${(ds.institutional_weighted||0).toFixed(1)}</td>
+        <td class="score-cell" style="color:${scoreColor(ds.chip_weighted)}">${(ds.chip_weighted||0).toFixed(1)}</td>
+        <td style="color:${(s.ret_20d||0)>=0?'var(--red)':'var(--green)'}">${s.ret_20d!=null?(s.ret_20d>=0?'+':'')+s.ret_20d.toFixed(1)+'%':'-'}</td>
+        <td style="color:${(s.ret_60d||0)>=0?'var(--red)':'var(--green)'}">${s.ret_60d!=null?(s.ret_60d>=0?'+':'')+s.ret_60d.toFixed(1)+'%':'-'}</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+  } catch(e) {
+    document.getElementById('loading').innerHTML = '❌ 加载失败: ' + e.message;
+  }
+}
+
+function scoreColor(v) { return v >= 8 ? 'var(--red)' : v >= 5 ? 'var(--yellow)' : 'var(--green)'; }
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+document.addEventListener('DOMContentLoaded', load);
+</script>
+</body>
+</html>

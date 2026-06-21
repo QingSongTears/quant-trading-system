@@ -50,10 +50,16 @@ async def index(request: Request):
                 best_return = max(returns)
             if sharpes:
                 avg_sharpe = round(sum(sharpes) / len(sharpes), 2)
-        
+
         # 计算回测成功率 (正收益比例)
         win_count = sum(1 for r in all_backtests if r.total_return and r.total_return > 0)
         win_rate = round(win_count / len(all_backtests) * 100, 1) if all_backtests else None
+
+        # 总回测数 (从数据库精确读, 用于卡片描述)
+        try:
+            backtest_total = repo.count_backtests()
+        except Exception:
+            backtest_total = len(all_backtests)
         
     except Exception:
         coverage = {"total_stocks": 0, "total_records": 0, "date_range": {"start": None, "end": None}}
@@ -62,6 +68,7 @@ async def index(request: Request):
         best_return = None
         avg_sharpe = None
         win_rate = None
+        backtest_total = 0
 
     # 为首页散点图准备 JS 可直接消费的数据（避免前端从 DOM 爬取）
     recent_js = []
@@ -96,6 +103,7 @@ async def index(request: Request):
         "recent_backtests": recent,
         "recent_backtests_js": recent_js,
         "total_strategies": total_strategies,
+        "backtest_total": backtest_total,
         "best_return": best_return,
         "avg_sharpe": avg_sharpe,
         "win_rate": win_rate,
@@ -108,6 +116,31 @@ async def index(request: Request):
         ]
     })
     return templates.TemplateResponse(request, "index.html", ctx)
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(request: Request):
+    """数据总览 — header 动态化 (硬编码 model/cover 部分保留, 见模板注释)"""
+    from src.models.repository import DataRepository
+    repo = DataRepository()
+    try:
+        coverage = repo.get_data_coverage()
+        total_records = coverage.get("total_records", 0)
+        total_stocks = coverage.get("total_stocks", 0)
+        date_range = coverage.get("date_range", {})
+    except Exception:
+        total_records = 0
+        total_stocks = 0
+        date_range = {"start": None, "end": None}
+
+    ctx = _get_global_context()
+    ctx.update({
+        "total_records": total_records,
+        "total_stocks": total_stocks,
+        "date_range": date_range,
+        "generated_at": date.today().strftime("%Y-%m-%d"),
+    })
+    return templates.TemplateResponse(request, "dashboard.html", ctx)
 
 
 @router.get("/data", response_class=HTMLResponse)
@@ -304,11 +337,14 @@ _STANDALONE_PAGES = {
     "/backtest-lab": "backtest-lab.html",
     "/backtest-view": "backtest-view.html",
     "/strategy-compare": "strategy-compare.html",
-    "/dashboard": "dashboard.html",
+    "/bull-report": "bull-report.html",
+    "/signal": "signal.html",
+    "/verify": "verify.html",
+    "/predict": "predict.html",
+    "/tuning": "tuning.html",
     "/data-monitor": "data-monitor.html",
     "/v5": "v5.html",
     "/v6-compare": "v6-compare.html",
-    "/fund-flow-report": "fund-flow-report.html",
     "/dim-compare": "dim-compare.html",
     "/ic": "ic.html",
 }
@@ -322,4 +358,98 @@ def _register_standalone_routes():
         router.add_api_route(path, _handler, response_class=HTMLResponse, methods=["GET"])
 
 
+@router.get("/fund-flow-report", response_class=HTMLResponse)
+async def fund_flow_report_page(request: Request):
+    """资金面融合回测 — 实时从 database/fund_flow_report_data.json 读"""
+    from pathlib import Path
+    import json
+
+    PROJECT_ROOT = Path(__file__).resolve().parents[3]
+    data_path = PROJECT_ROOT / "database" / "fund_flow_report_data.json"
+
+    ctx = _get_global_context()
+    ctx["data_available"] = False
+    ctx["data"] = {"scenarios": [], "metrics": {}, "period": {}}
+    ctx["baseline"] = {}
+    ctx["best"] = {}
+    ctx["best_name"] = "—"
+    ctx["error"] = None
+
+    if not data_path.exists():
+        ctx["error"] = f"数据文件不存在: {data_path.name}"
+    else:
+        try:
+            with open(data_path, encoding="utf-8") as f:
+                payload = json.load(f)
+            ctx["data_available"] = True
+            ctx["data"] = payload
+            ctx["baseline"] = next(
+                (s for s in payload["scenarios"] if s["id"] == "v6_only"),
+                payload["scenarios"][0] if payload["scenarios"] else {},
+            )
+            ctx["best"] = next(
+                (s for s in payload["scenarios"] if s["id"] == payload.get("best_id")),
+                payload["scenarios"][0] if payload["scenarios"] else {},
+            )
+            ctx["best_name"] = ctx["best"].get("name", "—")
+        except Exception as e:
+            ctx["error"] = f"数据解析失败: {e}"
+
+    return templates.TemplateResponse(request, "fund-flow-report.html", ctx)
+
+
 _register_standalone_routes()
+
+
+# ============================================================
+# 占位页面 (待数据接入) — 避免主页 404, 清晰标注 TODO
+# ============================================================
+_PLACEHOLDER_PAGES = []  # 全部已实时接入
+
+
+def _placeholder_html(title: str, subtitle: str) -> str:
+    """占位页面 HTML — 数据接入中, 临时跳转到 output/ 看历史快照"""
+    safe_title = title.replace("<", "&lt;").replace(">", "&gt;")
+    safe_sub = subtitle.replace("<", "&lt;").replace(">", "&gt;")
+    return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{safe_title} · 数据接入中</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{font-family:'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e0e0e0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}}
+.box{{background:#1a1d27;border:1px solid #2a2d3a;border-radius:12px;padding:32px 36px;max-width:520px;text-align:center}}
+h1{{font-size:1.3rem;margin-bottom:8px;color:#4fc3f7}}
+.sub{{color:#888;font-size:0.9rem;margin-bottom:18px;line-height:1.5}}
+.warn{{background:#1a1d2e;border-left:3px solid #ffa726;padding:12px 14px;border-radius:4px;font-size:0.82rem;color:#ccc;text-align:left;margin-bottom:18px}}
+.btn{{display:inline-block;padding:8px 18px;border-radius:6px;background:#4fc3f7;color:#000;text-decoration:none;font-weight:600;font-size:0.85rem;margin:4px}}
+.btn.gray{{background:#2a2d3a;color:#e0e0e0}}
+a{{color:#4fc3f7}}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>{safe_title}</h1>
+  <p class="sub">{safe_sub}</p>
+  <div class="warn">
+    ⚠️ <strong>实时数据接入中</strong><br>
+    本页面的实时版本正在重构, 数据从 <code>quant.db</code> 实时读取.<br>
+    临时可通过下方按钮查看历史快照 (output/ 下的离线报告).
+  </div>
+  <a class="btn" href="/">← 返回主页</a>
+</div>
+</body>
+</html>"""
+
+
+def _register_placeholder_routes():
+    """注册 5 个死链的占位路由"""
+    for path, title, subtitle in _PLACEHOLDER_PAGES:
+        async def _handler(_p=path, _t=title, _s=subtitle):
+            return HTMLResponse(_placeholder_html(_t, _s))
+        router.add_api_route(path, _handler, response_class=HTMLResponse, methods=["GET"])
+
+
+if _PLACEHOLDER_PAGES:
+    _register_placeholder_routes()

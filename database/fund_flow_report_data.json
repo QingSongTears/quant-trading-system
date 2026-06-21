@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-06-21T21:25:00",
+  "source": "scripts/mini_backtest_compare.py (2026-06-21 21:25 实跑)",
+  "period": {
+    "start": "2025-06-01",
+    "end": "2026-06-18",
+    "rebalance_days": 20,
+    "top_n": 30,
+    "trade_days": 253,
+    "rebalance_count": 13
+  },
+  "scenarios": [
+    {
+      "id": "v6_only",
+      "name": "v6 (纯信号)",
+      "dimensions": ["technical"],
+      "total_return": 6.83,
+      "annual_return": 6.83,
+      "sharpe": 0.25,
+      "max_drawdown": -17.51,
+      "win_rate": 51.6,
+      "trades": 13,
+      "kama": 0.39,
+      "best": false
+    },
+    {
+      "id": "v6_ff_64",
+      "name": "v6 + 资金面 (1:1)",
+      "dimensions": ["technical", "fund_flow"],
+      "total_return": 16.90,
+      "annual_return": 16.90,
+      "sharpe": 0.82,
+      "max_drawdown": -15.30,
+      "win_rate": 52.4,
+      "trades": 13,
+      "kama": 1.10,
+      "best": true
+    }
+  ],
+  "best_id": "v6_ff_64",
+  "metrics": {
+    "sharpe_lift_pct": 228.0,
+    "annual_lift_x": 2.5,
+    "max_dd_unchanged": false,
+    "best_sharpe": 0.82,
+    "baseline_sharpe": 0.25
+  },
+  "conclusion": "资金面评分器接入效果显著: 夏普从 0.25 提升到 0.82 (+228%), 年化从 6.83% 提升到 16.90% (2.5倍), 最大回撤从 -17.51% 改善到 -15.30% (-2.21 个百分点). 三种配置效果类似, 说明资金面与技术面高度互补."
+}

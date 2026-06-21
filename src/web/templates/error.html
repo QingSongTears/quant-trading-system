@@ -3,41 +3,100 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ error_code }} - {{ app_name }}</title>
-    <link href="{{ cdn.bootstrap }}/css/bootstrap.min.css" rel="stylesheet">
-    <link href="{{ cdn.icons }}/font/bootstrap-icons.css" rel="stylesheet">
+    <title>{{ error_code }} · {{ app_name }}</title>
+    <link rel="icon" href="data:,">
     <style>
-        body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-        .error-page { min-height: 80vh; display: flex; align-items: center; justify-content: center; }
-        .error-code { font-size: 6rem; font-weight: 800; color: #6366f1; line-height: 1; }
-        .ai-disclaimer { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 0.75rem 1rem; border-radius: 6px; font-size: 0.85rem; color: #1e40af; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0f1117; color: #e0e0e0; min-height: 100vh;
+            display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        .box {
+            background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 16px;
+            padding: 40px 48px; max-width: 560px; width: 100%; text-align: center;
+        }
+        .code {
+            font-size: 5rem; font-weight: 800; line-height: 1;
+            background: linear-gradient(135deg, #4fc3f7 0%, #7c4dff 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+        }
+        h2 { font-size: 1.2rem; margin-bottom: 8px; color: #e0e0e0; }
+        .sub { color: #888; font-size: 0.9rem; margin-bottom: 18px; line-height: 1.5; }
+        .path {
+            background: #0f1117; border: 1px solid #2a2d3a; border-radius: 6px;
+            padding: 8px 14px; font-family: 'Consolas', monospace; font-size: 0.8rem;
+            color: #4fc3f7; display: inline-block; margin-bottom: 20px;
+            word-break: break-all; max-width: 100%;
+        }
+        .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 22px; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 10px 22px; border-radius: 8px; text-decoration: none;
+            font-weight: 600; font-size: 0.9rem; transition: opacity 0.15s;
+        }
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background: #4fc3f7; color: #000; }
+        .btn-secondary { background: #2a2d3a; color: #e0e0e0; }
+        .ai-disclaimer {
+            background: #1a1d2e; border-left: 3px solid #3b82f6;
+            padding: 10px 14px; border-radius: 4px;
+            font-size: 0.78rem; color: #aab; text-align: left;
+        }
+        .suggestion {
+            background: rgba(79, 195, 247, 0.08); border: 1px solid rgba(79, 195, 247, 0.2);
+            border-radius: 6px; padding: 12px 16px; margin-bottom: 18px;
+            font-size: 0.82rem; text-align: left; color: #ccc;
+        }
+        .suggestion b { color: #4fc3f7; }
+        ul { margin: 6px 0 0 0; padding-left: 20px; }
+        li { margin: 3px 0; }
+        a { color: #4fc3f7; text-decoration: none; }
+        a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
-    <div class="error-page">
-        <div class="text-center">
-            <div class="error-code">{{ error_code }}</div>
-            <h3 class="mt-3 mb-4">{{ error_message }}</h3>
-            <p class="text-muted">
-                {% if error_code == 404 %}
-                您访问的页面不存在或已被移除
-                {% else %}
-                服务器遇到了意外错误，请稍后重试
-                {% endif %}
-            </p>
-            <div class="mt-4">
-                <a href="/" class="btn btn-primary">
-                    <i class="bi bi-house"></i> 返回首页
-                </a>
-                <a href="/workbench" class="btn btn-outline-secondary ms-2">
-                    <i class="bi bi-tools"></i> 工作台
-                </a>
-            </div>
-            <div class="ai-disclaimer mt-4 mx-auto" style="max-width: 500px;">
-                🔵 <strong>{{ ai_disclaimer.text }}</strong> · 所有行情数据来源于可考证的公开数据接口
-            </div>
+    <div class="box">
+        <div class="code">{{ error_code }}</div>
+        <h2>{{ error_message }}</h2>
+
+        {% if request and request.url %}
+        <div class="path">{{ request.method }} {{ request.url.path }}</div>
+        {% endif %}
+
+        <p class="sub">
+            {% if error_code == 404 %}
+            您访问的页面不存在、URL 拼写错误,或该功能正在重构中。
+            {% elif error_code == 500 %}
+            服务器遇到了意外错误,请稍后重试或联系管理员。
+            {% else %}
+            请求未能完成,请重试或返回首页。
+            {% endif %}
+        </p>
+
+        {% if error_code == 404 %}
+        <div class="suggestion">
+            💡 <b>您可能在找这些:</b>
+            <ul>
+                <li><a href="/">/</a> — 主页 (仪表盘 + 最近回测)</li>
+                <li><a href="/diagnose">/diagnose</a> — 个股诊断 (8 维评分)</li>
+                <li><a href="/screener">/screener</a> — 选股工作台</li>
+                <li><a href="/workbench">/workbench</a> — 回测工作台</li>
+                <li><a href="/fund-flow-report">/fund-flow-report</a> — 资金面融合回测</li>
+            </ul>
+        </div>
+        {% endif %}
+
+        <div class="actions">
+            <a class="btn btn-primary" href="/">← 返回主页</a>
+            <a class="btn btn-secondary" href="/workbench">回测工作台</a>
+        </div>
+
+        <div class="ai-disclaimer">
+            🔵 <strong>{{ ai_disclaimer.text }}</strong> · 所有行情数据来源于可考证的公开数据接口 · 不构成投资建议
         </div>
     </div>
-    <script src="{{ cdn.bootstrap }}/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

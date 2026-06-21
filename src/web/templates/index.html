@@ -253,7 +253,7 @@
       <a class="nav-card" href="/strategy-compare">
         <div class="icon">⚔️</div>
         <div class="name">策略对比</div>
-        <div class="desc">7大策略全景·1492次回测·收益夏普胜率</div>
+        <div class="desc">{{ total_strategies }} 大策略 · {{ backtest_total }} 次回测 · 收益夏普胜率</div>
         <div class="tag">/strategy-compare</div>
       </a>
     </div>
@@ -313,7 +313,7 @@
       <a class="nav-card" href="/dashboard">
         <div class="icon">📊</div>
         <div class="name">数据总览</div>
-        <div class="desc">11414条回测·5161只股票·7策略全景·模型精度</div>
+        <div class="desc">{{ backtest_total }} 次回测 · {{ coverage.total_stocks or 0 }} 只股票 · {{ total_strategies }} 策略全景</div>
         <div class="tag">/dashboard</div>
       </a>
       <a class="nav-card" href="/v5">

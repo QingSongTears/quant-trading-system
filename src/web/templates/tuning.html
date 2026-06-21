@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>参数调优 · 8维权重</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:1.1rem;font-weight:600}
+header .sub{color:var(--dim);font-size:0.78rem}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem;margin-left:auto}
+header a:hover{color:var(--accent)}
+.container{max-width:1300px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+.card-title{font-size:0.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+.weight-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:16px}
+.weight-item{background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;padding:12px}
+.weight-item label{display:flex;justify-content:space-between;align-items:center;font-size:0.85rem;color:var(--text);margin-bottom:8px}
+.weight-item .val{font-family:monospace;font-weight:700;color:var(--accent);font-size:0.95rem}
+.weight-item input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+.weight-item .meta{font-size:0.7rem;color:var(--dim);margin-top:4px;display:flex;justify-content:space-between}
+.btn{padding:10px 24px;border:none;border-radius:8px;background:var(--accent);color:#000;font-weight:600;cursor:pointer;font-size:0.9rem}
+.btn:hover{opacity:0.85}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+.btn-gray{padding:8px 18px;border:none;border-radius:6px;background:var(--border);color:var(--text);font-weight:600;cursor:pointer;font-size:0.8rem}
+.preset-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.preset-row button{padding:6px 14px;border:1px solid var(--border);background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:0.78rem}
+.preset-row button:hover{border-color:var(--accent);color:var(--accent)}
+.preset-row button.active{background:var(--accent);color:#000;border-color:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:0.78rem}
+th{text-align:left;padding:8px 10px;color:var(--dim);font-weight:500;font-size:0.68rem;text-transform:uppercase;border-bottom:2px solid var(--border)}
+td{padding:7px 10px;border-bottom:1px solid rgba(42,45,58,0.4)}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.loading{text-align:center;padding:30px;color:var(--dim);font-size:0.85rem}
+.code{font-family:monospace;color:var(--accent);font-size:0.82rem}
+.disclaimer{background:rgba(79,195,247,0.08);border-left:3px solid var(--accent);padding:8px 12px;border-radius:4px;font-size:0.78rem;color:var(--dim);margin-bottom:14px}
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:900px){.chart-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="/" style="position:fixed;top:12px;left:16px;color:#4fc3f7;font-size:0.8rem;text-decoration:none;z-index:999;background:#1a1d27;padding:4px 10px;border-radius:6px;border:1px solid #2a2d3a;">&larr; 首页</a>
+<header>
+  <h1>⚙️ 参数调优 · 8维权重</h1>
+  <span class="sub">实时权重调节 · 综合评分动态重算</span>
+  <a href="/">← 返回首页</a>
+</header>
+<div class="container">
+<div class="disclaimer">
+  💡 拖动滑块调整各维度权重,点击"应用"重新计算全市场综合评分 ·
+  权重和无需为 1,系统会自动归一化
+</div>
+
+<div class="card">
+  <div class="card-title">
+    🎛️ 权重配置
+    <button class="btn-gray" onclick="resetDefault()">重置默认</button>
+  </div>
+  <div class="preset-row">
+    <button onclick="applyPreset('equal')" id="preset-equal">等权</button>
+    <button onclick="applyPreset('tech')" id="preset-tech">技术面优先</button>
+    <button onclick="applyPreset('value')" id="preset-value">价值均衡</button>
+    <button onclick="applyPreset('flow')" id="preset-flow">资金面优先</button>
+  </div>
+  <div class="weight-grid" id="weightGrid"></div>
+  <div style="display:flex;gap:10px;align-items:center;margin-top:6px">
+    <button class="btn" onclick="applyWeights()" id="applyBtn">▶ 应用权重并刷新</button>
+    <span style="font-size:0.78rem;color:var(--dim)" id="status">就绪</span>
+  </div>
+</div>
+
+<div class="chart-row">
+  <div class="card">
+    <div class="card-title">📊 当前权重分布</div>
+    <div style="height:260px;position:relative"><canvas id="weightChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">🎯 TOP 20 (新权重下)</div>
+    <div id="topLoading" class="loading">点击"应用"按钮加载...</div>
+    <table id="topTable" style="display:none">
+      <thead><tr><th>#</th><th>代码</th><th>名称</th><th>新综合</th><th>原综合</th><th>Δ</th></tr></thead>
+      <tbody id="topBody"></tbody>
+    </table>
+  </div>
+</div>
+
+</div>
+<script>
+// 8 维评分器, 默认等权 1
+const dims = [
+  { key: 'tech_weighted', label: '技术面', def: 1.0 },
+  { key: 'fund_weighted', label: '资金面', def: 1.0 },
+  { key: 'institutional_weighted', label: '机构面', def: 1.0 },
+  { key: 'fundam_weighted', label: '基本面', def: 1.0 },
+  { key: 'chip_weighted', label: '筹码面', def: 1.0 },
+  { key: 'sentiment_weighted', label: '情绪面', def: 1.0 },
+  { key: 'lh_institutional_weighted', label: '龙虎榜', def: 1.0 },
+  { key: 'news_event_weighted', label: '新闻面', def: 1.0 },
+];
+
+const presets = {
+  equal: dims.map(d => d.def),
+  tech:  [3, 1, 1, 1, 1, 0.5, 0.5, 0.5],
+  value: [1, 1, 1, 3, 2, 0.5, 0.5, 0.5],
+  flow:  [1, 3, 2, 1, 1, 1, 1, 0.5],
+};
+
+function renderWeights() {
+  const grid = document.getElementById('weightGrid');
+  grid.innerHTML = dims.map((d, i) => `
+    <div class="weight-item">
+      <label>${d.label}<span class="val" id="val-${i}">${d.def.toFixed(1)}</span></label>
+      <input type="range" min="0" max="3" step="0.1" value="${d.def}" oninput="updateVal(${i}, this.value)">
+      <div class="meta"><span>0</span><span>3</span></div>
+    </div>
+  `).join('');
+}
+function updateVal(i, v) {
+  document.getElementById('val-' + i).textContent = parseFloat(v).toFixed(1);
+  drawWeightChart();
+  document.querySelectorAll('.preset-row button').forEach(b => b.classList.remove('active'));
+}
+function applyPreset(name) {
+  const arr = presets[name];
+  arr.forEach((v, i) => {
+    document.getElementById('val-' + i).textContent = v.toFixed(1);
+    document.querySelectorAll('#weightGrid input')[i].value = v;
+  });
+  document.querySelectorAll('.preset-row button').forEach(b => b.classList.remove('active'));
+  document.getElementById('preset-' + name).classList.add('active');
+  drawWeightChart();
+}
+function resetDefault() {
+  applyPreset('equal');
+  document.querySelectorAll('.preset-row button').forEach(b => b.classList.remove('active'));
+  document.getElementById('preset-equal').classList.add('active');
+}
+function getWeights() {
+  return dims.map((_, i) => parseFloat(document.querySelectorAll('#weightGrid input')[i].value));
+}
+
+// 权重分布图
+let weightChart = null;
+function drawWeightChart() {
+  const w = getWeights();
+  if (weightChart) weightChart.destroy();
+  weightChart = new Chart(document.getElementById('weightChart').getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: dims.map(d => d.label),
+      datasets: [{
+        data: w,
+        backgroundColor: ['#4fc3f7','#66bb6a','#ffa726','#ab47bc','#ef5350','#26c6da','#ec407a','#7c4dff'],
+        borderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { color: '#aaa', font: { size: 10 }, boxWidth: 10, padding: 4 } },
+        tooltip: { callbacks: { label: c => c.label + ': ' + c.raw.toFixed(1) } },
+      },
+    },
+  });
+}
+
+// 应用权重并刷新 TOP 20
+async function applyWeights() {
+  const btn = document.getElementById('applyBtn');
+  btn.disabled = true;
+  document.getElementById('status').textContent = '加载全市场评分...';
+  document.getElementById('topLoading').style.display = 'block';
+  document.getElementById('topTable').style.display = 'none';
+
+  try {
+    const r = await fetch('/api/stock/screener?min_score=0&sort_by=avg_score&limit=500');
+    const d = await r.json();
+    const stocks = d.stocks || [];
+    const weights = getWeights();
+    const totalW = weights.reduce((a, b) => a + b, 0) || 1;
+
+    // 重新计算综合分
+    const scored = stocks.map(s => {
+      const ds = s.dim_scores || {};
+      let sum = 0;
+      dims.forEach((d, i) => sum += (ds[d.key] || 0) * weights[i]);
+      const newScore = sum / totalW;
+      return { ...s, new_score: newScore, original: s.avg_score };
+    }).sort((a, b) => b.new_score - a.new_score);
+
+    document.getElementById('topLoading').style.display = 'none';
+    document.getElementById('topTable').style.display = '';
+    document.getElementById('topBody').innerHTML = scored.slice(0, 20).map((s, i) => {
+      const delta = s.new_score - s.original;
+      return `<tr style="cursor:pointer" onclick="window.location.href='/diagnose?code=${s.code}'">
+        <td>#${i+1}</td>
+        <td><span class="code">${s.code}</span></td>
+        <td>${escHtml(s.name)}</td>
+        <td style="font-weight:600;color:${s.new_score >= 8 ? 'var(--red)' : s.new_score >= 5 ? 'var(--yellow)' : 'var(--green)'}">${s.new_score.toFixed(2)}</td>
+        <td style="color:var(--dim)">${s.original.toFixed(2)}</td>
+        <td style="color:${delta >= 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${delta >= 0 ? '+' : ''}${delta.toFixed(2)}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('status').textContent = `✅ 已应用权重, ${scored.length} 只股票重算`;
+  } catch(e) {
+    document.getElementById('status').textContent = '❌ 失败: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+document.addEventListener('DOMContentLoaded', () => {
+  renderWeights();
+  drawWeightChart();
+  document.getElementById('preset-equal').classList.add('active');
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>预测看板 · 上涨概率</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:1.1rem;font-weight:600}
+header .sub{color:var(--dim);font-size:0.78rem}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem;margin-left:auto}
+header a:hover{color:var(--accent)}
+.container{max-width:1300px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+.card-title{font-size:0.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+.search-line{display:flex;gap:10px;margin-bottom:16px}
+.search-line input{flex:1;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.95rem;outline:none}
+.search-line input:focus{border-color:var(--accent)}
+.search-line button{padding:10px 22px;border:none;border-radius:8px;background:var(--accent);color:#000;font-weight:600;cursor:pointer}
+.prob-bar-wrap{position:relative;height:36px;background:#0f1117;border-radius:18px;overflow:hidden;border:1px solid var(--border)}
+.prob-bar{height:100%;background:linear-gradient(90deg,var(--green),var(--yellow) 50%,var(--red));border-radius:18px;transition:width .6s ease}
+.prob-val{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.1rem}
+table{width:100%;border-collapse:collapse;font-size:0.82rem}
+th{text-align:left;padding:9px 10px;color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase;border-bottom:2px solid var(--border)}
+td{padding:8px 10px;border-bottom:1px solid rgba(42,45,58,0.4)}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.prob-cell{font-family:monospace;font-weight:700;font-size:1rem}
+.loading{text-align:center;padding:60px;color:var(--dim);font-size:0.9rem}
+.code{font-family:monospace;color:var(--accent);font-size:0.85rem}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.row{grid-template-columns:1fr}}
+.disclaimer{background:rgba(79,195,247,0.08);border-left:3px solid var(--accent);padding:8px 12px;border-radius:4px;font-size:0.78rem;color:var(--dim);margin-bottom:14px}
+</style>
+</head>
+<body>
+<a href="/" style="position:fixed;top:12px;left:16px;color:#4fc3f7;font-size:0.8rem;text-decoration:none;z-index:999;background:#1a1d27;padding:4px 10px;border-radius:6px;border:1px solid #2a2d3a;">&larr; 首页</a>
+<header>
+  <h1>🔮 预测看板 · 上涨概率</h1>
+  <span class="sub">8维评分聚合预测 · 综合评分 → 上涨概率映射</span>
+  <a href="/">← 返回首页</a>
+</header>
+<div class="container">
+<div class="disclaimer">
+  💡 <strong>概率映射规则:</strong> 综合评分 0~15 → 上涨概率 20%~95% ·
+  <span style="color:var(--red)">≥ 8 强势(>75%)</span> ·
+  <span style="color:var(--yellow)">5~8 中性(45~75%)</span> ·
+  <span style="color:var(--green)">&lt; 5 弱势(&lt;45%)</span>
+</div>
+
+<div class="card">
+  <div class="card-title">🔍 个股预测</div>
+  <div class="search-line">
+    <input id="codeInput" placeholder="输入股票代码(000001 / 平安银行 / 600519)" autocomplete="off">
+    <button onclick="predict()">🔮 预测</button>
+  </div>
+  <div id="predictResult" style="display:none">
+    <div class="row">
+      <div>
+        <div style="font-size:1.1rem;font-weight:600;margin-bottom:10px">
+          <span class="code" id="pCode">—</span>
+          <span id="pName">—</span>
+        </div>
+        <div class="prob-bar-wrap"><div class="prob-bar" id="pBar" style="width:0%"></div><div class="prob-val" id="pVal">—</div></div>
+        <div style="margin-top:14px;font-size:0.85rem" id="pSignal"></div>
+      </div>
+      <div>
+        <div class="card-title" style="margin-bottom:8px">📊 8 维评分明细</div>
+        <table id="dimTable"><thead><tr><th>维度</th><th>评分</th><th>贡献</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">📈 高概率 TOP 30 · 上涨概率 ≥ 70%</div>
+  <div id="loading" class="loading">⏳ 加载全市场评分...</div>
+  <table id="topTable" style="display:none">
+    <thead><tr><th>概率</th><th>代码</th><th>名称</th><th>综合</th><th>技术</th><th>资金</th><th>机构</th><th>基本面</th><th>筹码</th></tr></thead>
+    <tbody id="topBody"></tbody>
+  </table>
+</div>
+</div>
+<script>
+// 综合评分 → 上涨概率 (线性映射: 0→20%, 7.5→50%, 15→95%)
+function scoreToProb(score) {
+  if (score == null) return null;
+  // 用 logistic: 概率 = 1/(1+exp(-k*(s-s0)))
+  const k = 0.55, s0 = 6;
+  const p = 1 / (1 + Math.exp(-k * (score - s0)));
+  return Math.min(95, Math.max(20, Math.round(p * 100)));
+}
+function probClass(p) {
+  if (p >= 75) return 'var(--red)';
+  if (p >= 45) return 'var(--yellow)';
+  return 'var(--green)';
+}
+function probSignal(p) {
+  if (p >= 75) return { text: '🟢 强烈买入', color: 'var(--red)' };
+  if (p >= 60) return { text: '🟢 买入', color: 'var(--red)' };
+  if (p >= 45) return { text: '🟡 观望', color: 'var(--yellow)' };
+  if (p >= 30) return { text: '🔴 回避', color: 'var(--green)' };
+  return { text: '🔴 强烈回避', color: 'var(--green)' };
+}
+
+async function predict() {
+  const code = document.getElementById('codeInput').value.trim();
+  if (!code) return;
+
+  let realCode = code.match(/\d{6}/)?.[0];
+  if (!realCode) {
+    try {
+      const r = await fetch('/api/stock/search?q=' + encodeURIComponent(code));
+      const d = await r.json();
+      if (!d.results || !d.results.length) { alert('未找到股票: ' + code); return; }
+      realCode = d.results[0].code;
+    } catch(e) { alert('搜索失败'); return; }
+  }
+
+  try {
+    const r = await fetch('/api/stock/' + realCode);
+    const d = await r.json();
+    if (d.error) { alert('查询失败: ' + d.error); return; }
+
+    const scores = {};
+    if (d.scores) {
+      Object.entries(d.scores).forEach(([k, v]) => {
+        scores[k] = Array.isArray(v) && v.length > 0 ? v[v.length-1] : 0;
+      });
+    }
+    const dimMap = {
+      '技术面': 'tech_weighted', '资金面': 'fund_weighted', '机构面': 'institutional_weighted',
+      '基本面': 'fundam_weighted', '筹码面': 'chip_weighted', '情绪面': 'sentiment_weighted',
+      '龙虎榜': 'lh_institutional_weighted', '新闻面': 'news_event_weighted',
+    };
+    let combined = 0, n = 0;
+    Object.values(dimMap).forEach(k => {
+      const v = scores[['技术面','资金面','机构面','基本面','筹码面','情绪面','龙虎榜','新闻面'].find(z => dimMap[z] === k)] || 0;
+      combined += v; n++;
+    });
+    const avgScore = n ? combined / n : 0;
+    const prob = scoreToProb(avgScore);
+
+    document.getElementById('predictResult').style.display = 'block';
+    document.getElementById('pCode').textContent = realCode;
+    document.getElementById('pName').textContent = d.code === realCode ? '' : (d.code || '');
+    document.getElementById('pBar').style.width = prob + '%';
+    document.getElementById('pVal').innerHTML = '<span style="color:' + probClass(prob) + '">' + prob + '%</span>';
+    const sig = probSignal(prob);
+    document.getElementById('pSignal').innerHTML = '信号: <strong style="color:' + sig.color + '">' + sig.text + '</strong> · 综合评分 ' + avgScore.toFixed(2);
+
+    // 8 维明细
+    const dimBody = document.querySelector('#dimTable tbody');
+    dimBody.innerHTML = Object.entries(dimMap).map(([label, key]) => {
+      const v = scores[label] || 0;
+      const contrib = scoreToProb(v) - 50;
+      return `<tr><td>${label}</td><td style="font-weight:600;color:${probClass(scoreToProb(v))}">${v.toFixed(1)}</td><td style="color:${contrib>=0?'var(--red)':'var(--green)'}">${contrib>=0?'+':''}${contrib}</td></tr>`;
+    }).join('');
+  } catch(e) {
+    alert('预测失败: ' + e.message);
+  }
+}
+
+document.getElementById('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') predict(); });
+
+// 加载高概率 TOP
+async function loadTop() {
+  try {
+    const r = await fetch('/api/stock/screener?min_score=8&sort_by=avg_score&limit=30');
+    const d = await r.json();
+    const stocks = (d.stocks || []).map(s => ({...s, prob: scoreToProb(s.avg_score)})).filter(s => s.prob >= 70);
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('topTable').style.display = '';
+    document.getElementById('topBody').innerHTML = stocks.map(s => {
+      const ds = s.dim_scores || {};
+      return `<tr style="cursor:pointer" onclick="window.location.href='/diagnose?code=${s.code}'">
+        <td class="prob-cell" style="color:${probClass(s.prob)}">${s.prob}%</td>
+        <td><span class="code">${s.code}</span></td>
+        <td>${escHtml(s.name)}</td>
+        <td style="font-weight:600;color:${probClass(s.prob)}">${s.avg_score.toFixed(1)}</td>
+        <td>${(ds.tech_weighted||0).toFixed(1)}</td>
+        <td>${(ds.fund_weighted||0).toFixed(1)}</td>
+        <td>${(ds.institutional_weighted||0).toFixed(1)}</td>
+        <td>${(ds.fundam_weighted||0).toFixed(1)}</td>
+        <td>${(ds.chip_weighted||0).toFixed(1)}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    document.getElementById('loading').textContent = '❌ 加载失败: ' + e.message;
+  }
+}
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+document.addEventListener('DOMContentLoaded', loadTop);
+</script>
+</body>
+</html>
