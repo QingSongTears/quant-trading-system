@@ -2676,26 +2676,34 @@ if __name__ == "__main__":
     print(f"  ✅ 搜索索引已就绪 ({len(SEARCH_INDEX)} 只)")
     
     # ── 加载 XGBoost 模型 ──
+    # 安全:不再使用 pickle 加载 scaler (P0-3 反序列化 RCE 风险)
+    # 改用 JSON 格式 (src/data/xgb_scaler.py)
     XGB_MODEL = None
     XGB_SCALER = None
     XGB_FEATURES = None
     xgb_model_path = PROJECT_ROOT / "data" / "xgb_model.json"
-    xgb_scaler_path = PROJECT_ROOT / "data" / "xgb_scaler.pkl"
+    xgb_scaler_path = PROJECT_ROOT / "data" / "xgb_scaler.json"
     if xgb_model_path.exists() and xgb_scaler_path.exists():
         try:
-            import pickle
             import xgboost as xgb
+            from src.data.xgb_scaler import load_scaler
             XGB_MODEL = xgb.XGBClassifier()
             XGB_MODEL.load_model(str(xgb_model_path))
-            with open(xgb_scaler_path, 'rb') as f:
-                obj = pickle.load(f)
-                XGB_SCALER = obj['scaler']
-                XGB_FEATURES = obj['feature_names']
+            obj = load_scaler(xgb_scaler_path)
+            XGB_SCALER = obj['scaler']
+            XGB_FEATURES = obj['feature_names']
             print(f"✅ XGBoost模型已加载: AUC={XGB_MODEL.get_booster().attributes().get('auc', 'N/A')}")
             print(f"   特征数: {len(XGB_FEATURES)}")
         except Exception as e:
             print(f"⚠️ XGBoost加载失败: {e}")
+            print(f"   提示: 若已训练过模型,请运行 python scripts/migrate_xgb_scaler.py 迁移 .pkl→.json")
     else:
-        print("⚠️ XGBoost模型未找到，使用旧逻辑回归模型")
+        print("⚠️ XGBoost模型未找到,使用旧逻辑回归模型")
+        # 兼容旧部署:若只有 .pkl 没有 .json,明确报错而不是默默加载 (避免 RCE)
+        legacy_pkl = PROJECT_ROOT / "data" / "xgb_scaler.pkl"
+        if legacy_pkl.exists():
+            print(f"   发现遗留 .pkl:{legacy_pkl}")
+            print(f"   请运行 python scripts/migrate_xgb_scaler.py 迁移为 .json")
+            print(f"   (出于安全考虑,本版本不再自动加载 pickle)")
     
     app.run(host="0.0.0.0", port=8081, debug=False, threaded=True)
