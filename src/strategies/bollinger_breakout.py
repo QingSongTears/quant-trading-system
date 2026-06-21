@@ -8,6 +8,7 @@
 
 来源: Bollinger, J. (2001). Bollinger on Bollinger Bands. McGraw-Hill.
 """
+from __future__ import annotations
 from ..backtest.base_strategy import BaseStrategy
 
 

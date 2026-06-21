@@ -7,29 +7,28 @@ import sys, json, time, urllib.request
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT))
 
-import sqlite3
+from src.db.engine import get_engine
+from src.db.sql_utils import read_sql
 
 BASE = "http://localhost:8081"
 
 # 1. 从DB取牛股共振策略回测表现最佳的100只股票
 print("📊 从DB加载牛股共振策略回测结果...")
-db = PROJECT_ROOT / "database" / "quant.db"
-conn = sqlite3.connect(str(db))
-conn.row_factory = sqlite3.Row
 
 # 取所有牛股共振策略的回测记录
-rows = conn.execute("""
-    SELECT r.stock_code, r.total_return, r.sharpe_ratio, r.win_rate, 
+df = read_sql("""
+    SELECT r.stock_code, r.total_return, r.sharpe_ratio, r.win_rate,
            r.max_drawdown, r.total_trades, r.benchmark_return, r.excess_return,
            r.start_date, r.end_date
     FROM backtest_result r
     LEFT JOIN strategy_config s ON r.strategy_id = s.id
     WHERE s.name = '七维共振牛股' AND r.total_return IS NOT NULL
     ORDER BY r.total_return DESC
-""").fetchall()
-conn.close()
+""", get_engine())
+
+rows = df.to_dict('records')
 
 print(f"   牛股共振策略: {len(rows)} 条回测记录")
 

@@ -17,7 +17,8 @@ A股特殊性: 散户追涨杀跌导致短期超调，反转效应极强。
 来源: Jegadeesh (1990). Evidence of Predictable Behavior of Security Returns.
       De Bondt & Thaler (1985). Does the Stock Market Overreact?
 """
-from typing import List
+from __future__ import annotations
+
 
 import pandas as pd
 
@@ -39,7 +40,7 @@ class ReversalStrategy(BaseSelectionStrategy):
     exclude_st: bool = True
     min_return: float = -30.0      # 最低跌幅门槛(%)，跌幅低于此值不选 (排雷)
 
-    def select(self, rebalance_date, universe_df: pd.DataFrame) -> List[str]:
+    def select(self, rebalance_date, universe_df: pd.DataFrame) -> list[str]:
         """
         选股逻辑: 按近期收益率升序 → 取跌幅最大的 n_stocks 只
 

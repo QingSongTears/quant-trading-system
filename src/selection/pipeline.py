@@ -24,14 +24,16 @@
     df = pipe.run_to_dataframe("2026-06-15", top_n=30)
 """
 
-from typing import List, Dict, Optional, Any
+from __future__ import annotations
+from typing import Any
 from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
-from ..config import get_config, get_db_url
+from ..config import get_config
+from ..db.engine import get_engine
 from ..db.sql_utils import read_sql
 from ..scoring import ScorerRegistry
 # PR2.5: 委托给 scoring.combiner 单一实现
@@ -47,7 +49,7 @@ class FilterConfig:
     exclude_st: bool = True            # 排除ST
     exclude_new_listed: bool = True    # 排除上市不满60日
     exclude_pe_negative: bool = True   # 排除PE为负
-    exclude_sectors: List[str] = field(default_factory=list)  # 排除板块关键词
+    exclude_sectors: list[str] = field(default_factory=list)  # 排除板块关键词
 
 
 @dataclass
@@ -78,10 +80,10 @@ class SelectionPipeline:
 
     def __init__(
         self,
-        dimensions: Optional[List[str]] = None,
-        weights: Optional[Dict[str, float]] = None,
-        weight_preset: Optional[str] = None,
-        filters: Optional[FilterConfig] = None,
+        dimensions: list[str] | None = None,
+        weights: dict[str, float] | None = None,
+        weight_preset: str | None = None,
+        filters: FilterConfig | None = None,
         engine=None,
         verbose: bool = True,
     ):
@@ -95,9 +97,7 @@ class SelectionPipeline:
             verbose: 是否打印进度
         """
         if engine is None:
-            config = get_config()
-            db_url = get_db_url(config)
-            self.engine = create_engine(db_url, echo=False)
+            self.engine = get_engine()
         else:
             self.engine = engine
 
@@ -117,7 +117,7 @@ class SelectionPipeline:
         self.weights = {k: v for k, v in self.weights.items() if k in self.dimensions}
 
         # 评分器实例 (延迟加载)
-        self._scorers: Dict[str, Any] = {}
+        self._scorers: dict[str, Any] = {}
 
     # ================================================================
     #  主入口
@@ -226,7 +226,7 @@ class SelectionPipeline:
 
         return df
 
-    def _score_all(self, codes: List[str], as_of_date: str) -> pd.DataFrame:
+    def _score_all(self, codes: list[str], as_of_date: str) -> pd.DataFrame:
         """对所有候选股票运行启用的评分器"""
         self._load_scorers()
 

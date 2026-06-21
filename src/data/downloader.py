@@ -9,10 +9,11 @@
 
 所有下载的数据均为交易所公开行情数据，未经任何修改或模拟。
 """
+from __future__ import annotations
 import time
 import logging
 from datetime import date, datetime
-from typing import List, Optional, Callable
+from typing import Callable
 
 import akshare as ak
 import pandas as pd
@@ -48,7 +49,7 @@ class DataDownloader:
         self.max_retries = config["data"]["download"]["max_retries"]
         self.timeout = config["data"]["download"]["timeout"]
         self.markets = config["data"]["markets"]
-        self.progress_callback: Optional[Callable] = None
+        self.progress_callback: Callable | None = None
 
     # ===== 股票列表获取 =====
 
@@ -82,7 +83,7 @@ class DataDownloader:
 
     # ===== 全量下载 =====
 
-    def download_full(self, progress_callback: Optional[Callable] = None) -> dict:
+    def download_full(self, progress_callback: Callable | None = None) -> dict:
         """
         全量下载全市场历史日线数据
         
@@ -185,7 +186,7 @@ class DataDownloader:
 
     # ===== 增量更新 =====
 
-    def download_incremental(self, progress_callback: Optional[Callable] = None) -> dict:
+    def download_incremental(self, progress_callback: Callable | None = None) -> dict:
         """
         增量更新: 仅下载每只股票缺失的最新交易日数据
         """
@@ -255,7 +256,7 @@ class DataDownloader:
 
     # ===== 内部方法 =====
 
-    def _download_stock_history(self, code: str, start: str, end: str) -> List[dict]:
+    def _download_stock_history(self, code: str, start: str, end: str) -> list[dict]:
         """
         下载单只股票历史日线数据
         数据来源: AKShare stock_zh_a_hist(symbol, period, start_date, end_date, adjust)
@@ -299,7 +300,7 @@ class DataDownloader:
 
         return []
 
-    def _batch_write_daily(self, session: Session, records: List[dict]):
+    def _batch_write_daily(self, session: Session, records: list[dict]):
         """批量写入日线数据（使用 OR 忽略重复）"""
         if not records:
             return

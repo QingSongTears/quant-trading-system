@@ -20,8 +20,9 @@ Step 4: 三组合并，等权持有，最多300只
 - 反转因子: Jegadeesh (1990)
 - 低波动因子: Baker, Bradley & Wurgler (2011)
 """
+from __future__ import annotations
 from datetime import timedelta
-from typing import List
+
 
 import pandas as pd
 
@@ -88,7 +89,7 @@ class ThreeFactorStrategy(BaseSelectionStrategy):
 
         return df
 
-    def select(self, rebalance_date, universe_df: pd.DataFrame) -> List[str]:
+    def select(self, rebalance_date, universe_df: pd.DataFrame) -> list[str]:
         """
         三因子选股: 小市值100 + 反转100 + 低波动100 → 合并去重
 

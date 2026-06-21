@@ -17,9 +17,10 @@ XGBoost 特征缩放器 — JSON 持久化
 - 加载后返回的 JsonScaler 与 sklearn StandardScaler 共享
   核心接口: .transform(X) = (X - mean) / scale
 """
+from __future__ import annotations
 import json
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Union
 
 import numpy as np
 
@@ -33,10 +34,10 @@ class JsonScaler:
 
     def __init__(
         self,
-        mean: Union[List[float], np.ndarray],
-        scale: Union[List[float], np.ndarray],
+        mean: Union[list[float], np.ndarray],
+        scale: Union[list[float], np.ndarray],
         n_features: int,
-        feature_names: Optional[List[str]] = None,
+        feature_names: list[str] | None = None,
     ):
         self.mean_ = np.asarray(mean, dtype=float)
         self.scale_ = np.asarray(scale, dtype=float)
@@ -70,7 +71,7 @@ class JsonScaler:
         }
 
 
-def save_scaler(scaler, feature_names: List[str], path: Union[str, Path]) -> Path:
+def save_scaler(scaler, feature_names: list[str], path: Union[str, Path]) -> Path:
     """把 scaler 对象 + feature_names 写入 JSON
 
     Args:

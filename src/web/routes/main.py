@@ -1,9 +1,10 @@
 """
 页面路由 (Jinja2 模板渲染)
 """
+from __future__ import annotations
 import json
 from datetime import date, timedelta
-from typing import Optional
+
 
 from fastapi import APIRouter, Request, Query
 from fastapi.responses import HTMLResponse
@@ -287,7 +288,7 @@ async def strategies_page(request: Request):
 @router.get("/compare", response_class=HTMLResponse)
 async def compare_page(
     request: Request,
-    ids: Optional[str] = Query(None, description="逗号分隔的回测ID")
+    ids: str | None = Query(None, description="逗号分隔的回测ID")
 ):
     """多模型对比页"""
     repo = DataRepository()

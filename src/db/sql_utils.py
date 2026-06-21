@@ -19,7 +19,7 @@ SQL 安全工具 — 统一参数化查询入口
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pandas as pd
 from sqlalchemy import bindparam, text
@@ -28,15 +28,15 @@ from sqlalchemy.sql import Executable
 
 
 def _split_params(
-    params: Optional[Dict[str, Any]],
-) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    params: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     将 params 拆为:
       - expanding: list/tuple/set 类型的值（用于 IN 子句）
       - scalar:    标量值
     """
-    expanding: Dict[str, Any] = {}
-    scalar: Dict[str, Any] = {}
+    expanding: dict[str, Any] = {}
+    scalar: dict[str, Any] = {}
     if not params:
         return expanding, scalar
     for k, v in params.items():
@@ -50,7 +50,7 @@ def _split_params(
 def read_sql(
     sql: str,
     engine: Engine,
-    params: Optional[Dict[str, Any]] = None,
+    params: dict[str, Any] | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """
@@ -89,11 +89,11 @@ def read_sql(
     # Pass the dict (including expanding values) to pd.read_sql.
     # pd.read_sql forwards `params` to `con.execute(sql, params)` which
     # triggers SQLAlchemy's expanding bindparam substitution.
-    merged: Dict[str, Any] = {**scalar, **expanding}
+    merged: dict[str, Any] = {**scalar, **expanding}
     return pd.read_sql(stmt, engine, params=merged if merged else None, **kwargs)
 
 
-def text_only(sql: str, params: Optional[Dict[str, Any]] = None) -> Executable:
+def text_only(sql: str, params: dict[str, Any] | None = None) -> Executable:
     """
     直接返回 SQLAlchemy `text()` 表达式（带绑定参数），供
     `session.execute(...)` 或 `connection.execute(...)` 使用。

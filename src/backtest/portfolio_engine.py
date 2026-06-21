@@ -12,9 +12,10 @@
 4. 考虑交易成本 (佣金+印花税)
 5. 生成净值曲线和统计指标，复用 BacktestReport 格式
 """
+from __future__ import annotations
 import logging
 from datetime import date, timedelta
-from typing import Dict, List, Optional, Set
+
 
 import numpy as np
 import pandas as pd
@@ -161,7 +162,7 @@ class PortfolioBacktestEngine:
 
         return df
 
-    def _get_rebalance_dates(self, data: pd.DataFrame, rebalance_days: int) -> List[pd.Timestamp]:
+    def _get_rebalance_dates(self, data: pd.DataFrame, rebalance_days: int) -> list[pd.Timestamp]:
         """获取调仓日列表 (每 rebalance_days 个交易日)"""
         all_dates = sorted(data["trade_date"].unique())
         return all_dates[::rebalance_days]
@@ -259,7 +260,7 @@ class PortfolioBacktestEngine:
     def _simulate_portfolio(self,
                            strategy: BaseSelectionStrategy,
                            all_data: pd.DataFrame,
-                           rebalance_dates: List[pd.Timestamp],
+                           rebalance_dates: list[pd.Timestamp],
                            initial_capital: float,
                            start_date: date,
                            end_date: date,
@@ -288,9 +289,9 @@ class PortfolioBacktestEngine:
         # === Pass 1: 决定每日持仓 (T+1 语义) ===
         # holdings_today = 在"当前"调仓日应当为下一个交易日选定的股票
         # holdings_history[i] = 在 Day i 实际持有的股票 (= Day i-1 调出的结果)
-        holdings_today: List[str] = []
-        holdings_history: List[List[str]] = []  # 与 all_dates 等长
-        rebalance_details: List[Dict] = []
+        holdings_today: list[str] = []
+        holdings_history: list[list[str]] = []  # 与 all_dates 等长
+        rebalance_details: list[Dict] = []
         rebalance_set = set(rebalance_dates)
 
         for dt in all_dates:
@@ -455,7 +456,7 @@ class PortfolioBacktestEngine:
     def _build_report(self,
                       strategy: BaseSelectionStrategy,
                       equity_series: pd.Series,
-                      rebalance_details: List[Dict],
+                      rebalance_details: list[Dict],
                       start_date: date,
                       end_date: date,
                       initial_capital: float,
@@ -546,7 +547,7 @@ class PortfolioBacktestEngine:
         except Exception:
             return 0
 
-    def _calc_monthly_returns(self, equity_series: pd.Series) -> Dict[str, float]:
+    def _calc_monthly_returns(self, equity_series: pd.Series) -> dict[str, float]:
         """计算月度收益率"""
         if equity_series.empty:
             return {}

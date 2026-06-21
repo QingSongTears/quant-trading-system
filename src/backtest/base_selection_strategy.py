@@ -12,7 +12,8 @@
 
 策略来源文献标注在策略类的 docstring 中，确保可考证。
 """
-from typing import List, Optional
+from __future__ import annotations
+
 
 import pandas as pd
 
@@ -22,7 +23,7 @@ class BaseSelectionStrategy:
     选股策略基类 — 从股票池中选股，等权组合，定期调仓
 
     子类只需实现:
-    - select(date, universe_df) → List[str]
+    - select(date, universe_df) → list[str]
 
     策略元信息 (必须覆盖):
     - name: str        策略名称
@@ -49,7 +50,7 @@ class BaseSelectionStrategy:
     min_amount_wan: float = 3000.0   # 日均成交额门槛(万元)
     exclude_st: bool = True
 
-    def select(self, rebalance_date, universe_df: pd.DataFrame) -> List[str]:
+    def select(self, rebalance_date, universe_df: pd.DataFrame) -> list[str]:
         """
         选股方法 — 子类必须实现
 

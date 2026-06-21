@@ -13,15 +13,17 @@ V6 超卖反转选股策略 — 新架构桥接版
 策略来源:
   v3_reversal 实证优化 → v6: 连续阳线确认 + ATR波动率自适应 + 量价背离过滤
 """
-from typing import List, Optional
+from __future__ import annotations
+
 from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 from ..backtest.base_selection_strategy import BaseSelectionStrategy
-from ..config import get_config, get_db_url
+from ..config import get_config
+from ..db.engine import get_engine
 from ..db.sql_utils import read_sql
 from ..models.repository import DataRepository
 
@@ -91,9 +93,7 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
                     break
 
         # 初始化数据库连接
-        config = get_config()
-        db_url = get_db_url(config)
-        self.engine = create_engine(db_url, echo=False)
+        self.engine = get_engine()
 
         # 指标缓存: {date_str: DataFrame(index=code)}
         # 类级别共享，多策略实例仅预计算一次
@@ -205,7 +205,7 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
 
         return df
 
-    def select(self, rebalance_date, universe_df: pd.DataFrame) -> List[str]:
+    def select(self, rebalance_date, universe_df: pd.DataFrame) -> list[str]:
         """执行v6选股（优先使用预计算缓存）"""
         if universe_df.empty:
             return []
@@ -239,7 +239,7 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
     #  技术指标计算
     # ================================================================
 
-    def _compute_indicators(self, codes: List[str], as_of_date: str) -> pd.DataFrame:
+    def _compute_indicators(self, codes: list[str], as_of_date: str) -> pd.DataFrame:
         """
         从 quant.db 加载价格数据并计算v6所需的所有技术指标
 
@@ -346,7 +346,7 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
     # ================================================================
 
     def _detect_signals(self, indicators: pd.DataFrame,
-                        universe: pd.DataFrame) -> List[dict]:
+                        universe: pd.DataFrame) -> list[dict]:
         """应用v6信号逻辑筛选候选股"""
         candidates = []
 

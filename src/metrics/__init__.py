@@ -14,6 +14,7 @@ src.metrics — 金融指标单一实现
 模块:
 - performance: sharpe_ratio, max_drawdown, annual_return, volatility, calmar_ratio
 """
+from __future__ import annotations
 from .performance import (
     sharpe_ratio,
     max_drawdown,

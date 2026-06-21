@@ -5,6 +5,7 @@
 2. 修复特征 NaN 处理
 3. 直接输出完整结果
 """
+from __future__ import annotations
 
 import json, math, warnings
 warnings.filterwarnings("ignore")
@@ -17,16 +18,18 @@ from sklearn.metrics import roc_auc_score, accuracy_score
 from sklearn.model_selection import cross_val_score
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DB_PATH = PROJECT_ROOT / "database" / "quant.db"
+import sys; sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.db.engine import get_engine
 
 
 def load_and_build_features():
-    conn = __import__("sqlite3").connect(str(DB_PATH))
+    engine = get_engine()
     df = pd.read_sql(
         "SELECT code, trade_date, open, high, low, close, volume, pct_change "
         "FROM daily_price WHERE pct_change IS NOT NULL "
         "ORDER BY code, trade_date",
-        conn, parse_dates=["trade_date"],
+        engine, parse_dates=["trade_date"],
     )
     conn.close()
     print(f"加载 daily_price: {len(df):,} 条")

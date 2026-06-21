@@ -9,6 +9,7 @@
 来源: 基于移动平均线交叉概念，广泛应用于技术分析。
 参考文献: Murphy, J. J. (1999). Technical Analysis of the Financial Markets.
 """
+from __future__ import annotations
 from ..backtest.base_strategy import BaseStrategy
 
 

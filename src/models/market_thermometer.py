@@ -15,9 +15,10 @@
   thermo = MarketThermometer()
   regime = thermo.judge(as_of_date)  # → "bull" / "neutral" / "bear"
 """
+from __future__ import annotations
 import logging
 from datetime import date, timedelta
-from typing import Dict, Literal
+from typing import Literal
 
 import pandas as pd
 
@@ -88,7 +89,7 @@ class MarketThermometer:
             logger.warning(f"温度计判断失败 ({as_of_date}): {e}")
             return "neutral"
 
-    def get_allocation(self, regime: Regime) -> Dict[str, float]:
+    def get_allocation(self, regime: Regime) -> dict[str, float]:
         """
         根据市场状态返回 盾:矛 配比
 

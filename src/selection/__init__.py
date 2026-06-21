@@ -15,6 +15,7 @@
     )
     df = pipe.run("2026-06-15", top_n=30)
 """
+from __future__ import annotations
 from .pipeline import SelectionPipeline, FilterConfig
 
 __all__ = ["SelectionPipeline", "FilterConfig"]

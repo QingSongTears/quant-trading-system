@@ -14,7 +14,8 @@ v2.2 改进 (2026-06-19):
   - 表缺失时优雅降级到可用维度
   - 融合权重可调, 适配维度增减
 """
-from typing import List, Optional
+from __future__ import annotations
+
 from datetime import date
 
 import numpy as np
@@ -46,7 +47,7 @@ class V6PipelineHybridStrategy(V6ReversalSelectionStrategy):
     PIPELINE_WEIGHT: float = 0.4
 
     # 启用的评分维度: 资金面+筹码面 (表缺失时优雅降级)
-    scoring_dims: List[str] = ["technical", "fund_flow", "chip"]
+    scoring_dims: list[str] = ["technical", "fund_flow", "chip"]
 
     # 表存在性缓存: 避免每次 select 都查 SQLite
     _available_tables_cache: dict = {}
@@ -72,7 +73,7 @@ class V6PipelineHybridStrategy(V6ReversalSelectionStrategy):
         # 检测和缓存可用表对应的评分维度 (graceful fallback)
         self._available_dims = self._detect_available_dims()
 
-    def _detect_available_dims(self) -> List[str]:
+    def _detect_available_dims(self) -> list[str]:
         """
         检测当前数据库中真实存在的评分维度对应表。
         缓存到类属性中, 多策略实例不需重复查询。
@@ -139,7 +140,7 @@ class V6PipelineHybridStrategy(V6ReversalSelectionStrategy):
             except Exception as e:
                 print(f"  [WARN] 评分器 {dim} 加载失败: {e}")
 
-    def _financial_filter(self, candidates: List[dict]) -> List[dict]:
+    def _financial_filter(self, candidates: list[dict]) -> list[dict]:
         """
         财务质量过滤: 排除净利润为负或PE极端异常的股票
         使用 finance_summary 表（替代已删除的 finance_snapshot_v2）
@@ -186,7 +187,7 @@ class V6PipelineHybridStrategy(V6ReversalSelectionStrategy):
         except Exception:
             return candidates  # DB查询失败：不过滤
 
-    def select(self, rebalance_date, universe_df: pd.DataFrame) -> List[str]:
+    def select(self, rebalance_date, universe_df: pd.DataFrame) -> list[str]:
         """
         v6信号 + 多维评分融合选股
         """

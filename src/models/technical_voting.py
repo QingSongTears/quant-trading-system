@@ -27,9 +27,10 @@
 
 数据依赖: ✅ 已有 (daily_price 日线数据)
 """
+from __future__ import annotations
 import logging
 from datetime import date, timedelta
-from typing import Dict, List, Optional, Tuple
+
 
 import numpy as np
 import pandas as pd
@@ -95,7 +96,7 @@ class TechnicalVotingModel:
         self.portfolio_stop = -0.15    # 组合止损 -15%
 
     def run(self,
-            stock_pool: List[str],
+            stock_pool: list[str],
             start_date: date,
             end_date: date,
             initial_capital: float = 1000000,
@@ -144,7 +145,7 @@ class TechnicalVotingModel:
 
     # ─── 数据加载 ─────────────────────────────────────────
 
-    def _load_pool_data(self, stock_pool: List[str],
+    def _load_pool_data(self, stock_pool: list[str],
                         start: date, end: date) -> pd.DataFrame:
         """加载股票池的日线数据"""
         # 需要稍微提前开始以计算指标 (加 120 个交易日)
@@ -314,7 +315,7 @@ class TechnicalVotingModel:
                           initial_capital: float,
                           start_date: date,
                           end_date: date,
-                          ) -> Tuple[pd.Series, List[Dict]]:
+                          ) -> tuple[pd.Series, list[Dict]]:
         """
         基于投票信号模拟多股票组合交易
 
@@ -322,7 +323,7 @@ class TechnicalVotingModel:
             (equity_series, trades_list)
         """
         cash = initial_capital
-        positions: Dict[str, Dict] = {}  # code → {shares, avg_cost, entry_date}
+        positions: dict[str, Dict] = {}  # code → {shares, avg_cost, entry_date}
         equity_history = {}
         trades = []
 
@@ -545,7 +546,7 @@ class TechnicalVotingModel:
 
     def _build_report(self,
                       equity_series: pd.Series,
-                      trades: List[Dict],
+                      trades: list[Dict],
                       initial_capital: float,
                       start_date: date,
                       end_date: date,

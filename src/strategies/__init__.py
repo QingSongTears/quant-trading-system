@@ -7,3 +7,4 @@
 
 所有策略标注了学术来源，确保可考证性。
 """
+from __future__ import annotations

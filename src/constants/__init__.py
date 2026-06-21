@@ -15,6 +15,7 @@ src.constants — 全局常量单一来源
 - market:   市场参数(年化天数、无风险利率、市值下限)
 - fees:     交易成本(手续费、印花税、滑点)
 """
+from __future__ import annotations
 from .risk import (
     STOP_LOSS_DEFAULT,
     STOP_LOSS_AGGRESSIVE,

@@ -16,12 +16,13 @@ WeStock Data 集成模块
 本模块所有外部调用均通过 subprocess.run(..., shell=False, ...) 的 argv 列表形式,
 不拼接 shell 字符串。每个公共函数对入参做白名单正则校验,避免命令注入。
 """
+from __future__ import annotations
 import json
 import logging
 import re
 import subprocess
 from datetime import date, datetime
-from typing import Optional
+
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ def _err(msg: str) -> dict:
     return {"error": msg}
 
 
-def _check(value: str, pattern: re.Pattern, name: str) -> Optional[dict]:
+def _check(value: str, pattern: re.Pattern, name: str) -> dict | None:
     """检查 value 是否匹配 pattern,失败返回 error dict,成功返回 None"""
     if not isinstance(value, str) or not pattern.match(value):
         return _err(f"invalid {name}: {value!r}")
@@ -113,7 +114,7 @@ def get_kline(symbols: str, period: str = "day", limit: int = 60, fq: str = "qfq
 
 
 def get_technical(symbols: str, group: str = "all",
-                  start: Optional[str] = None, end: Optional[str] = None) -> dict:
+                  start: str | None = None, end: str | None = None) -> dict:
     """
     获取技术指标
 

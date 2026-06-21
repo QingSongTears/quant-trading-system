@@ -13,6 +13,7 @@ FastAPI Web 应用
 - openapi_url 关掉避免接口被枚举
 - class_path 走白名单 (auth.safe_import_strategy)
 """
+from __future__ import annotations
 import logging
 from pathlib import Path
 
