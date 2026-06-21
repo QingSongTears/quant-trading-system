@@ -31,7 +31,11 @@ header .nav{margin-left:auto;display:flex;gap:12px}
 .result-bar span{color:var(--dim)}
 .result-bar strong{color:var(--accent)}
 table{width:100%;border-collapse:collapse;font-size:0.8rem}
-th{text-align:left;padding:7px 8px;color:var(--dim);font-weight:600;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);font-size:0.72rem}
+th{text-align:left;padding:7px 8px;color:var(--dim);font-weight:600;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);font-size:0.72rem;cursor:pointer;user-select:none;white-space:nowrap}
+th:hover{color:var(--accent)}
+th.sortable::after{content:'⇅';margin-left:4px;opacity:0.4;font-size:0.7rem}
+th.sort-asc::after{content:'↑';opacity:1;color:var(--accent)}
+th.sort-desc::after{content:'↓';opacity:1;color:var(--accent)}
 td{padding:6px 8px;border-bottom:1px solid rgba(42,45,58,0.3)}
 tr:hover td{background:rgba(255,255,255,0.02)}
 tr.clickable{cursor:pointer}
@@ -106,7 +110,11 @@ tr.clickable{cursor:pointer}
     <div class="result-bar"><span>共 <strong id="resultCount">0</strong> 只股票符合条件</span><span id="resultHint" style="font-size:0.75rem;"></span></div>
     <div class="table-wrap"><table>
       <thead><tr>
-        <th>代码</th><th>名称</th><th>行业</th><th>综合</th><th>技术</th><th>基本面</th><th>资金</th><th>机构</th><th>龙虎榜</th><th>情绪</th><th>筹码</th><th>20日</th><th>60日</th>
+        <th data-sort="code">代码</th><th data-sort="name">名称</th><th data-sort="industry">行业</th>
+        <th data-sort="avg_score">综合</th><th data-sort="tech_weighted">技术</th><th data-sort="fundam_weighted">基本面</th>
+        <th data-sort="fund_weighted">资金</th><th data-sort="institutional_weighted">机构</th>
+        <th data-sort="lh_institutional_weighted">龙虎榜</th><th data-sort="sentiment_weighted">情绪</th>
+        <th data-sort="chip_weighted">筹码</th><th data-sort="ret_20d">20日</th><th data-sort="ret_60d">60日</th>
       </tr></thead>
       <tbody id="resultBody"></tbody>
     </table></div>
@@ -141,7 +149,25 @@ function goToStock() {
 }
 document.addEventListener('click', e => { if (!e.target.closest('#stockSearchInput')) document.getElementById('sugBox').style.display = 'none'; });
 
+// ====== 表头排序 ======
+let currentSort = { key: null, dir: 'desc' };
+let lastResult = [];  // 缓存上次 API 返回, 排序复用避免重新请求
+
 document.addEventListener('DOMContentLoaded', async () => {
+  // 给表头加 sort indicator 类
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    th.classList.add('sortable');
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      if (currentSort.key === key) {
+        currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        currentSort.key = key;
+        currentSort.dir = 'desc';
+      }
+      renderTable();
+    });
+  });
   await loadIndustries();
   search();
 });
@@ -175,33 +201,65 @@ async function search() {
   try {
     const r = await fetch('/api/stock/screener?' + params.toString());
     const d = await r.json();
-    const stocks = d.stocks || [];
-    document.getElementById('resultCount').textContent = stocks.length;
-    if (!stocks.length) {
+    lastResult = d.stocks || [];
+    document.getElementById('resultCount').textContent = lastResult.length;
+    if (!lastResult.length) {
       document.getElementById('resultBody').innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--dim);padding:20px;">无匹配结果，请放宽筛选条件</td></tr>';
       return;
     }
-    document.getElementById('resultBody').innerHTML = stocks.map(s => {
-      const ds = s.dim_scores || {};
-      return `<tr class="clickable" onclick="window.open('/diagnose','_blank').focus()">
-        <td style="font-family:monospace;color:var(--accent)">${s.code}</td>
-        <td>${escHtml(s.name)}</td>
-        <td style="color:var(--dim);font-size:0.75rem">${escHtml(s.industry)}</td>
-        <td style="font-weight:700;color:${colorScore(s.avg_score)}">${s.avg_score.toFixed(1)}</td>
-        <td style="color:${colorScore(ds.tech_weighted)}">${(ds.tech_weighted||0).toFixed(1)}</td>
-        <td style="color:${colorScore(ds.fundam_weighted)}">${(ds.fundam_weighted||0).toFixed(1)}</td>
-        <td style="color:${colorScore(ds.fund_weighted)}">${(ds.fund_weighted||0).toFixed(1)}</td>
-        <td style="color:${colorScore(ds.institutional_weighted)}">${(ds.institutional_weighted||0).toFixed(1)}</td>
-        <td style="color:${colorScore(ds.lh_institutional_weighted)}">${(ds.lh_institutional_weighted||0).toFixed(1)}</td>
-        <td style="color:${colorScore(ds.sentiment_weighted)}">${(ds.sentiment_weighted||0).toFixed(1)}</td>
-        <td style="color:${colorScore(ds.chip_weighted)}">${(ds.chip_weighted||0).toFixed(1)}</td>
-        <td style="color:${(s.ret_20d||0)>=0?'var(--red)':'var(--green)'}">${s.ret_20d!=null?(s.ret_20d>=0?'+':'')+s.ret_20d.toFixed(1)+'%':'-'}</td>
-        <td style="color:${(s.ret_60d||0)>=0?'var(--red)':'var(--green)'}">${s.ret_60d!=null?(s.ret_60d>=0?'+':'')+s.ret_60d.toFixed(1)+'%':'-'}</td>
-      </tr>`;
-    }).join('');
+    renderTable();
   } catch(e) {
     document.getElementById('resultBody').innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--red);padding:20px;">请求失败: ' + e.message + '</td></tr>';
   }
+}
+
+function renderTable() {
+  if (!lastResult.length) return;
+  let rows = [...lastResult];
+  // 排序
+  if (currentSort.key) {
+    const k = currentSort.key;
+    const dir = currentSort.dir === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+      let va, vb;
+      if (k === 'name' || k === 'industry' || k === 'code') {
+        va = (a[k] || '').toString();
+        vb = (b[k] || '').toString();
+        return va.localeCompare(vb, 'zh') * dir;
+      } else if (k === 'avg_score') {
+        va = a.avg_score || 0; vb = b.avg_score || 0;
+      } else {
+        const ds = a.dim_scores || {}; const ds2 = b.dim_scores || {};
+        va = ds[k] || 0; vb = ds2[k] || 0;
+      }
+      return (va - vb) * dir;
+    });
+  }
+  // 更新表头样式
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.dataset.sort === currentSort.key) {
+      th.classList.add(currentSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+  });
+  document.getElementById('resultBody').innerHTML = rows.map(s => {
+    const ds = s.dim_scores || {};
+    return `<tr class="clickable" onclick="window.open('/diagnose?code=${s.code}','_blank').focus()">
+      <td style="font-family:monospace;color:var(--accent)">${s.code}</td>
+      <td>${escHtml(s.name)}</td>
+      <td style="color:var(--dim);font-size:0.75rem">${escHtml(s.industry)}</td>
+      <td style="font-weight:700;color:${colorScore(s.avg_score)}">${s.avg_score.toFixed(1)}</td>
+      <td style="color:${colorScore(ds.tech_weighted)}">${(ds.tech_weighted||0).toFixed(1)}</td>
+      <td style="color:${colorScore(ds.fundam_weighted)}">${(ds.fundam_weighted||0).toFixed(1)}</td>
+      <td style="color:${colorScore(ds.fund_weighted)}">${(ds.fund_weighted||0).toFixed(1)}</td>
+      <td style="color:${colorScore(ds.institutional_weighted)}">${(ds.institutional_weighted||0).toFixed(1)}</td>
+      <td style="color:${colorScore(ds.lh_institutional_weighted)}">${(ds.lh_institutional_weighted||0).toFixed(1)}</td>
+      <td style="color:${colorScore(ds.sentiment_weighted)}">${(ds.sentiment_weighted||0).toFixed(1)}</td>
+      <td style="color:${colorScore(ds.chip_weighted)}">${(ds.chip_weighted||0).toFixed(1)}</td>
+      <td style="color:${(s.ret_20d||0)>=0?'var(--red)':'var(--green)'}">${s.ret_20d!=null?(s.ret_20d>=0?'+':'')+s.ret_20d.toFixed(1)+'%':'-'}</td>
+      <td style="color:${(s.ret_60d||0)>=0?'var(--red)':'var(--green)'}">${s.ret_60d!=null?(s.ret_60d>=0?'+':'')+s.ret_60d.toFixed(1)+'%':'-'}</td>
+    </tr>`;
+  }).join('');
 }
 
 function colorScore(v) {

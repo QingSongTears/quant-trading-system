@@ -1,15 +1,17 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>资金面融合回测 · v6对比</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 header h1{font-size:1.1rem;font-weight:600}
+header .sub{color:var(--dim);font-size:0.75rem}
 header a{color:var(--dim);text-decoration:none;font-size:0.8rem;margin-left:auto}
 header a:hover{color:var(--accent)}
 .container{max-width:1100px;margin:0 auto;padding:20px}
@@ -27,81 +29,102 @@ th{color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase}
 .metric-value{font-size:1.8rem;font-weight:700}
 .metric-label{font-size:0.75rem;color:var(--dim);margin-top:4px}
 .footer{text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border);margin-top:20px}
+.regen-note{background:#1a1d2e;border-left:3px solid var(--yellow);padding:10px 14px;border-radius:4px;font-size:0.78rem;color:var(--dim);margin-bottom:14px}
 </style>
 </head>
 <body>
 <a href="/" style="position:fixed;top:12px;left:16px;color:#4fc3f7;font-size:0.8rem;text-decoration:none;z-index:999;background:#1a1d27;padding:4px 10px;border-radius:6px;border:1px solid #2a2d3a;">&larr; 首页</a>
-<header><h1>🧪 资金面融合回测</h1><span style="font-size:0.75rem;color:var(--dim)">v6 + fund_flow评分器 · 2024-06~2025-06</span><a href="/">← 返回首页</a></header>
+<header>
+  <h1>🧪 资金面融合回测</h1>
+  <span class="sub">{{ data.period.start }} ~ {{ data.period.end }} · {{ data.period.rebalance_count }} 期调仓 · 持仓 {{ data.period.top_n }} 只</span>
+  <a href="/">← 返回首页</a>
+</header>
 <div class="container">
 
+{% if not data_available %}
+<div class="card" style="border-color:var(--yellow);">
+  <div class="card-title" style="color:var(--yellow)">⚠️ 数据不可用</div>
+  <p>{{ error or "fund_flow_report_data.json 缺失, 请运行: python scripts/gen_fund_flow_report_data.py" }}</p>
+</div>
+{% else %}
+
+<div class="regen-note">
+  💾 数据来源: <code>{{ data.source }}</code> ·
+  生成时间: <code>{{ data.generated_at }}</code> ·
+  <a href="javascript:location.reload()" style="color:var(--accent)">🔄 刷新</a>
+</div>
+
 <div class="row">
-<div class="card metric-card"><div class="metric-value" style="color:var(--accent)">+67%</div><div class="metric-label">夏普提升</div></div>
-<div class="card metric-card"><div class="metric-value" style="color:var(--green)">0.15</div><div class="metric-label">最优夏普 (v6+资金面)</div></div>
-<div class="card metric-card"><div class="metric-value" style="color:var(--green)">+1.96%</div><div class="metric-label">年化收益</div></div>
-<div class="card metric-card"><div class="metric-value" style="color:var(--red)">-28.88%</div><div class="metric-label">最大回撤</div></div></div>
+  <div class="card metric-card">
+    <div class="metric-value" style="color:var(--accent)">+{{ "%.0f"|format(data.metrics.sharpe_lift_pct) }}%</div>
+    <div class="metric-label">夏普提升</div>
+  </div>
+  <div class="card metric-card">
+    <div class="metric-value" style="color:var(--green)">{{ "%.2f"|format(data.metrics.best_sharpe) }}</div>
+    <div class="metric-label">最优夏普 ({{ best_name }})</div>
+  </div>
+  <div class="card metric-card">
+    <div class="metric-value" style="color:var(--green)">{{ "+%.2f"|format(best.annual_return) }}%</div>
+    <div class="metric-label">最优年化收益</div>
+  </div>
+  <div class="card metric-card">
+    <div class="metric-value" style="color:var(--red)">{{ "%.2f"|format(best.max_drawdown) }}%</div>
+    <div class="metric-label">最大回撤</div>
+  </div>
+</div>
 
 <div class="card">
-<div class="card-title">🏆 对比结果 <span style="color:var(--green)">(绿色高亮=最优)</span></div>
-<table><thead><tr><th>策略</th><th>总收益</th><th>年化</th><th>夏普</th><th>回撤</th><th>胜率</th><th>交易</th><th>卡玛</th></tr></thead><tbody><tr><td style="text-align:left">v6 (纯信号)</td>
-<td class="pos">+0.29%</td>
-<td class="pos">+0.27%</td>
-<td class="pos">+0.09</td>
-<td class="neg">-28.88%</td>
-<td>21.2%</td>
-<td>30</td>
-<td class="pos">+0.01</td></tr>
-<tr class="best-row"><td style="text-align:left">v6+资金面(6:4)</td>
-<td class="pos">+2.05%</td>
-<td class="pos">+1.96%</td>
-<td class="pos">+0.15</td>
-<td class="neg">-28.88%</td>
-<td>21.5%</td>
-<td>30</td>
-<td class="pos">+0.07</td></tr>
-<tr class="best-row"><td style="text-align:left">v6+资金面(5:5)</td>
-<td class="pos">+2.05%</td>
-<td class="pos">+1.96%</td>
-<td class="pos">+0.15</td>
-<td class="neg">-28.88%</td>
-<td>21.5%</td>
-<td>30</td>
-<td class="pos">+0.07</td></tr>
-<tr class="best-row"><td style="text-align:left">v6+技术+资金(4:3:3)</td>
-<td class="pos">+2.05%</td>
-<td class="pos">+1.96%</td>
-<td class="pos">+0.15</td>
-<td class="neg">-28.88%</td>
-<td>21.5%</td>
-<td>30</td>
-<td class="pos">+0.07</td></tr>
-</tbody></table></div>
+  <div class="card-title">🏆 对比结果 <span style="color:var(--green)">(绿色高亮=最优)</span></div>
+  <table>
+    <thead><tr><th>策略</th><th>总收益</th><th>年化</th><th>夏普</th><th>回撤</th><th>胜率</th><th>调仓</th><th>卡玛</th></tr></thead>
+    <tbody>
+      {% for s in data.scenarios %}
+      <tr {% if s.id == data.best_id %}class="best-row"{% endif %}>
+        <td style="text-align:left">{{ s.name }}</td>
+        <td class="{{ 'pos' if s.total_return >= 0 else 'neg' }}">{{ "+%.2f"|format(s.total_return) }}%</td>
+        <td class="{{ 'pos' if s.annual_return >= 0 else 'neg' }}">{{ "+%.2f"|format(s.annual_return) }}%</td>
+        <td class="{{ 'pos' if s.sharpe >= 0 else 'neg' }}">{{ "%+.2f"|format(s.sharpe) }}</td>
+        <td class="neg">{{ "%.2f"|format(s.max_drawdown) }}%</td>
+        <td>{{ "%.1f"|format(s.win_rate) }}%</td>
+        <td>{{ s.trades }}</td>
+        <td class="{{ 'pos' if s.kama >= 0 else 'neg' }}">{{ "%+.2f"|format(s.kama) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 
 <div class="row">
-<div class="card"><div class="card-title">📈 夏普对比</div><div class="chart-wrap"><canvas id="sharpeChart"></canvas></div></div>
-<div class="card"><div class="card-title">📈 年化收益对比</div><div class="chart-wrap"><canvas id="retChart"></canvas></div></div>
+  <div class="card"><div class="card-title">📈 夏普对比</div><div class="chart-wrap"><canvas id="sharpeChart"></canvas></div></div>
+  <div class="card"><div class="card-title">📈 年化收益对比</div><div class="chart-wrap"><canvas id="retChart"></canvas></div></div>
 </div>
 
-<div class="card"><div class="card-title">💡 结论</div>
-<div style="background:#1a1d2e;border-left:3px solid var(--green);padding:14px 18px;border-radius:4px;font-size:0.85rem;line-height:1.7">
-<p><strong>资金面评分器接入效果显著：</strong></p>
-<p>✅ 夏普从 <span style="color:var(--green)">0.09</span> 提升到 <span style="color:var(--red)">0.15</span>（<strong>+67%</strong>）</p>
-<p>✅ 年化从 <span style="color:var(--green)">+0.27%</span> 提升到 <span style="color:var(--red)">+1.96%</span>（<strong>7倍</strong>）</p>
-<p>✅ 回撤不变（-28.88%），风险未增加</p>
-<p>✅ 交易次数不变（30笔），信号筛选未变</p>
-<br>
-<p><strong>三种资金面配置效果相同</strong>，说明资金面评分器与v6信号高度互补，权重比例影响不大。</p>
-<p><span style="color:var(--dim)">但整体夏普仍偏低（0.15），主因是新引擎无止损止盈机制。旧引擎+资金面有望冲击夏普0.54→0.74。</span></p>
-</div></div>
-<div class="footer">A股量化回测系统 · 资金面融合v6回测 · 基于FundFlowScorer v2.1</div>
+<div class="card">
+  <div class="card-title">💡 结论</div>
+  <div style="background:#1a1d2e;border-left:3px solid var(--green);padding:14px 18px;border-radius:4px;font-size:0.85rem;line-height:1.7">
+    <p><strong>资金面评分器接入效果显著:</strong></p>
+    <p>✅ 夏普从 <span style="color:var(--green)">{{ "%.2f"|format(data.metrics.baseline_sharpe) }}</span>
+       提升到 <span style="color:var(--red)">{{ "%.2f"|format(data.metrics.best_sharpe) }}</span>
+       (<strong>+{{ "%.0f"|format(data.metrics.sharpe_lift_pct) }}%</strong>)</p>
+    <p>✅ 年化从 <span style="color:var(--green)">{{ "+%.2f"|format(baseline.annual_return) }}%</span>
+       提升到 <span style="color:var(--red)">{{ "+%.2f"|format(best.annual_return) }}%</span>
+       (<strong>{{ "%.1f"|format(data.metrics.annual_lift_x) }}倍</strong>)</p>
+    <p>{% if data.metrics.max_dd_unchanged %}✅ 回撤不变, 风险未增加{% else %}✅ 回撤从 <span style="color:var(--green)">{{ "%.2f"|format(baseline.max_drawdown) }}%</span> 改善到 <span style="color:var(--red)">{{ "%.2f"|format(best.max_drawdown) }}%</span>{% endif %}</p>
+    <br>
+    <p>{{ data.conclusion }}</p>
+  </div>
 </div>
+
+<div class="footer">A股量化回测系统 · 资金面融合 v6 回测 · 数据: <code>database/fund_flow_report_data.json</code></div>
+
 <script>
-const DATA = [{"name": "v6 (纯信号)", "sharpe": 0.09, "annual_return": 0.27}, {"name": "v6+资金面(6:4)", "sharpe": 0.15, "annual_return": 1.96}, {"name": "v6+资金面(5:5)", "sharpe": 0.15, "annual_return": 1.96}, {"name": "v6+技术+资金(4:3:3)", "sharpe": 0.15, "annual_return": 1.96}];
+const DATA = {{ data.scenarios | tojson }};
 
 new Chart(document.getElementById('sharpeChart'), {
   type:'bar',
   data:{labels:DATA.map(d=>d.name),datasets:[{label:'夏普',data:DATA.map(d=>d.sharpe),
     backgroundColor:DATA.map(d=>d.sharpe>=0?'rgba(239,83,80,0.7':'rgba(76,175,80,0.7'),
-    borderColor:DATA.map(d=>d.sharpe>=0?'#4caf50':'#ef5350'),borderWidth:1}]},
+    borderColor:DATA.map(d=>d.sharpe>=0?'#ef5350':'#4caf50'),borderWidth:1}]},
   options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
     scales:{y:{grid:{color:'#2a2d3a'},ticks:{color:'#888'}},x:{grid:{display:false},ticks:{color:'#ccc'}}}}});
 
@@ -109,7 +132,12 @@ new Chart(document.getElementById('retChart'), {
   type:'bar',
   data:{labels:DATA.map(d=>d.name),datasets:[{label:'年化%',data:DATA.map(d=>d.annual_return),
     backgroundColor:DATA.map(d=>d.annual_return>=0?'rgba(239,83,80,0.7':'rgba(76,175,80,0.7'),
-    borderColor:DATA.map(d=>d.annual_return>=0?'#4caf50':'#ef5350'),borderWidth:1}]},
+    borderColor:DATA.map(d=>d.annual_return>=0?'#ef5350':'#4caf50'),borderWidth:1}]},
   options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
     scales:{y:{grid:{color:'#2a2d3a'},ticks:{color:'#888',callback:v=>v+'%'}},x:{grid:{display:false},ticks:{color:'#ccc'}}}}});
-</script></body></html>
+</script>
+{% endif %}
+
+</div>
+</body>
+</html>

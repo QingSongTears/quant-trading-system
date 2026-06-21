@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>牛市选股报告 · 回测 TOP 榜</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:1.1rem;font-weight:600}
+header .sub{color:var(--dim);font-size:0.78rem}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem;margin-left:auto}
+header a:hover{color:var(--accent)}
+.container{max-width:1200px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+.card-title{font-size:0.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
+.metric-card{text-align:center;padding:14px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid var(--border)}
+.metric-value{font-size:1.6rem;font-weight:700}
+.metric-label{font-size:0.7rem;color:var(--dim);margin-top:4px;text-transform:uppercase}
+table{width:100%;border-collapse:collapse;font-size:0.82rem}
+th{text-align:left;padding:9px 10px;color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase;border-bottom:2px solid var(--border)}
+td{padding:8px 10px;border-bottom:1px solid rgba(42,45,58,0.4)}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.rank{background:rgba(79,195,247,0.15);color:var(--accent);padding:2px 8px;border-radius:4px;font-weight:700;font-family:monospace;font-size:0.78rem}
+.rank-1{background:rgba(239,83,80,0.2);color:var(--red)}
+.rank-2{background:rgba(255,167,38,0.2);color:var(--yellow)}
+.rank-3{background:rgba(79,195,247,0.2);color:var(--accent)}
+.pos{color:var(--red);font-weight:600}
+.neg{color:var(--green);font-weight:600}
+.loading{text-align:center;padding:60px;color:var(--dim);font-size:0.9rem}
+.footer{text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border);margin-top:20px}
+.code{font-family:monospace;color:var(--accent);font-size:0.85rem}
+</style>
+</head>
+<body>
+<a href="/" style="position:fixed;top:12px;left:16px;color:#4fc3f7;font-size:0.8rem;text-decoration:none;z-index:999;background:#1a1d27;padding:4px 10px;border-radius:6px;border:1px solid #2a2d3a;">&larr; 首页</a>
+<header>
+  <h1>🐂 牛市选股报告</h1>
+  <span class="sub" id="subInfo">从 backtest_result 取夏普 Top 10 · 实时数据</span>
+  <a href="/">← 返回首页</a>
+</header>
+<div class="container">
+  <div id="loading" class="loading">⏳ 加载回测数据...</div>
+  <div id="content" style="display:none">
+    <div class="row" id="metricRow"></div>
+    <div class="card">
+      <div class="card-title">🏆 夏普 TOP 10 牛股回测</div>
+      <table>
+        <thead><tr><th>#</th><th>代码</th><th>名称</th><th>策略</th><th>总收益</th><th>夏普</th><th>回撤</th><th>胜率</th><th>交易</th><th>回测时间</th></tr></thead>
+        <tbody id="topBody"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">📊 策略收益分布</div>
+      <div style="height:280px;position:relative"><canvas id="strategyChart"></canvas></div>
+    </div>
+  </div>
+  <div class="footer">数据来源: <code>backtest_result</code> 表 · <span id="footerTime"></span></div>
+</div>
+<script>
+async function load() {
+  try {
+    const r = await fetch('/api/backtest/results?limit=500');
+    const d = await r.json();
+    if (!d.success) throw new Error('API 返回失败');
+    const all = d.data || [];
+
+    // 按夏普排序
+    const top = all
+      .filter(b => b.sharpe_ratio != null && b.total_return != null)
+      .sort((a, b) => (b.sharpe_ratio || 0) - (a.sharpe_ratio || 0))
+      .slice(0, 10);
+
+    // 总览
+    const totalReturnAvg = all.reduce((s, b) => s + (b.total_return || 0), 0) / (all.length || 1);
+    const sharpeAvg = all.reduce((s, b) => s + (b.sharpe_ratio || 0), 0) / (all.length || 1);
+    const winCount = all.filter(b => (b.total_return || 0) > 0).length;
+    const winRate = (winCount / (all.length || 1) * 100);
+
+    document.getElementById('metricRow').innerHTML = `
+      <div class="metric-card"><div class="metric-value" style="color:var(--accent)">${all.length}</div><div class="metric-label">总回测数</div></div>
+      <div class="metric-card"><div class="metric-value" style="color:${totalReturnAvg>=0?'var(--red)':'var(--green)'}">${totalReturnAvg.toFixed(2)}%</div><div class="metric-label">平均收益</div></div>
+      <div class="metric-card"><div class="metric-value" style="color:var(--yellow)">${sharpeAvg.toFixed(2)}</div><div class="metric-label">平均夏普</div></div>
+      <div class="metric-card"><div class="metric-value" style="color:var(--green)">${winRate.toFixed(1)}%</div><div class="metric-label">正收益占比</div></div>
+      <div class="metric-card"><div class="metric-value" style="color:var(--red)">${top.length > 0 ? top[0].sharpe_ratio.toFixed(2) : '-'}</div><div class="metric-label">最高夏普</div></div>
+    `;
+
+    // 表格
+    document.getElementById('topBody').innerHTML = top.map((b, i) => `
+      <tr>
+        <td><span class="rank rank-${i < 3 ? i + 1 : ''}">#${i + 1}</span></td>
+        <td><span class="code">${b.stock_code}</span></td>
+        <td>${escHtml(b.stock_name || '-')}</td>
+        <td style="font-size:0.78rem">${escHtml(b.strategy_name || '-')}</td>
+        <td class="${(b.total_return||0) >= 0 ? 'pos' : 'neg'}">${(b.total_return||0) >= 0 ? '+' : ''}${(b.total_return||0).toFixed(2)}%</td>
+        <td style="font-weight:600;color:${(b.sharpe_ratio||0) >= 1 ? 'var(--red)' : (b.sharpe_ratio||0) >= 0 ? 'var(--yellow)' : 'var(--green)'}">${(b.sharpe_ratio||0).toFixed(2)}</td>
+        <td class="neg">${(b.max_drawdown||0).toFixed(2)}%</td>
+        <td>${(b.win_rate||0).toFixed(1)}%</td>
+        <td>${b.total_trades || 0}</td>
+        <td style="font-size:0.72rem;color:var(--dim);font-family:monospace">${(b.created_at||'').slice(0,16)}</td>
+      </tr>
+    `).join('');
+
+    // 策略分组柱状图
+    const stratMap = {};
+    all.forEach(b => {
+      const k = b.strategy_name || '未知';
+      if (!stratMap[k]) stratMap[k] = { sum: 0, n: 0 };
+      stratMap[k].sum += (b.total_return || 0);
+      stratMap[k].n += 1;
+    });
+    const stratArr = Object.entries(stratMap)
+      .map(([k, v]) => ({ name: k, avg: v.sum / v.n, n: v.n }))
+      .sort((a, b) => b.avg - a.avg);
+
+    new Chart(document.getElementById('strategyChart').getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: stratArr.map(s => `${s.name} (${s.n})`),
+        datasets: [{
+          label: '平均收益',
+          data: stratArr.map(s => s.avg),
+          backgroundColor: stratArr.map(s => s.avg >= 0 ? 'rgba(239,83,80,0.7)' : 'rgba(76,175,80,0.7)'),
+          borderColor: stratArr.map(s => s.avg >= 0 ? '#ef5350' : '#4caf50'),
+          borderWidth: 1,
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => '平均收益: ' + (ctx.raw >= 0 ? '+' : '') + ctx.raw.toFixed(2) + '%' } },
+        },
+        scales: {
+          x: { ticks: { color: '#888', callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+          y: { ticks: { color: '#aaa', font: { size: 10 } }, grid: { display: false } },
+        },
+      },
+    });
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+    document.getElementById('footerTime').textContent = '生成于 ' + new Date().toLocaleString('zh-CN');
+  } catch(e) {
+    document.getElementById('loading').innerHTML = '❌ 加载失败: ' + e.message;
+  }
+}
+
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+document.addEventListener('DOMContentLoaded', load);
+</script>
+</body>
+</html>

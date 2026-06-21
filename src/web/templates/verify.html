@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>预测验证 · 命中率统计</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:1.1rem;font-weight:600}
+header .sub{color:var(--dim);font-size:0.78rem}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem;margin-left:auto}
+header a:hover{color:var(--accent)}
+.container{max-width:1200px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+.card-title{font-size:0.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+.metric-card{text-align:center;padding:14px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid var(--border)}
+.metric-value{font-size:1.6rem;font-weight:700}
+.metric-label{font-size:0.7rem;color:var(--dim);margin-top:4px;text-transform:uppercase}
+table{width:100%;border-collapse:collapse;font-size:0.82rem}
+th{text-align:left;padding:9px 12px;color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase;border-bottom:2px solid var(--border)}
+td{padding:9px 12px;border-bottom:1px solid rgba(42,45,58,0.4);text-align:center}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.pos{color:var(--red);font-weight:600}
+.neg{color:var(--green);font-weight:600}
+.good-row{background:rgba(239,83,80,0.08)}
+.loading{text-align:center;padding:60px;color:var(--dim);font-size:0.9rem}
+.chart-wrap{height:260px;position:relative}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.chart-grid{grid-template-columns:1fr}}
+.disclaimer{background:rgba(79,195,247,0.08);border-left:3px solid var(--accent);padding:8px 12px;border-radius:4px;font-size:0.78rem;color:var(--dim);margin-bottom:14px}
+.code{font-family:monospace;color:var(--accent)}
+.footer{text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border);margin-top:20px}
+</style>
+</head>
+<body>
+<a href="/" style="position:fixed;top:12px;left:16px;color:#4fc3f7;font-size:0.8rem;text-decoration:none;z-index:999;background:#1a1d27;padding:4px 10px;border-radius:6px;border:1px solid #2a2d3a;">&larr; 首页</a>
+<header>
+  <h1>✅ 预测验证 · 命中率统计</h1>
+  <span class="sub">按夏普区间分组 · 实时回测数据</span>
+  <a href="/">← 返回首页</a>
+</header>
+<div class="container">
+
+<div class="disclaimer">
+  💡 <strong>判定标准:</strong> 夏普 ≥ 1 视为"命中" · 夏普 0~1 "中性" · 夏普 &lt; 0 "未命中"
+</div>
+
+<div id="loading" class="loading">⏳ 加载回测数据...</div>
+<div id="content" style="display:none">
+  <div class="row" id="metricRow"></div>
+
+  <div class="card">
+    <div class="card-title">🏆 命中率分布</div>
+    <table>
+      <thead><tr><th>分组</th><th>数量</th><th>占比</th><th>平均收益</th><th>平均夏普</th><th>平均回撤</th><th>平均胜率</th><th>判定</th></tr></thead>
+      <tbody id="groupBody"></tbody>
+    </table>
+  </div>
+
+  <div class="chart-grid">
+    <div class="card">
+      <div class="card-title">📊 各分组收益对比</div>
+      <div class="chart-wrap"><canvas id="returnChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🎯 各分组夏普对比</div>
+      <div class="chart-wrap"><canvas id="sharpeChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📈 策略命中率(按平均夏普排序)</div>
+    <table>
+      <thead><tr><th>策略</th><th>回测数</th><th>命中率</th><th>平均收益</th><th>平均夏普</th></tr></thead>
+      <tbody id="strategyBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="footer">数据来源: <code>backtest_result</code> 表</div>
+</div>
+
+<script>
+async function load() {
+  try {
+    const r = await fetch('/api/backtest/results?limit=1000');
+    const d = await r.json();
+    if (!d.success) throw new Error('API 返回失败');
+    const all = d.data || [];
+    if (!all.length) {
+      document.getElementById('loading').textContent = '暂无回测数据';
+      return;
+    }
+
+    // 按夏普分组
+    const groups = [
+      { name: '命中 (≥1)', min: 1, max: Infinity, color: 'var(--red)' },
+      { name: '中性 (0~1)', min: 0, max: 1, color: 'var(--yellow)' },
+      { name: '弱 (<0)', min: -Infinity, max: 0, color: 'var(--green)' },
+    ];
+    groups.forEach(g => {
+      g.items = all.filter(b => (b.sharpe_ratio||0) >= g.min && (b.sharpe_ratio||0) < g.max);
+      g.count = g.items.length;
+      g.pct = (g.count / all.length * 100).toFixed(1);
+      g.avgReturn = g.items.length ? g.items.reduce((s,b) => s + (b.total_return||0), 0) / g.items.length : 0;
+      g.avgSharpe = g.items.length ? g.items.reduce((s,b) => s + (b.sharpe_ratio||0), 0) / g.items.length : 0;
+      g.avgDD = g.items.length ? g.items.reduce((s,b) => s + (b.max_drawdown||0), 0) / g.items.length : 0;
+      g.avgWin = g.items.length ? g.items.reduce((s,b) => s + (b.win_rate||0), 0) / g.items.length : 0;
+    });
+
+    const hitRate = (groups[0].count / all.length * 100).toFixed(1);
+
+    document.getElementById('metricRow').innerHTML = `
+      <div class="metric-card"><div class="metric-value" style="color:var(--accent)">${all.length}</div><div class="metric-label">总回测数</div></div>
+      <div class="metric-card"><div class="metric-value" style="color:var(--red)">${hitRate}%</div><div class="metric-label">总命中率</div></div>
+      <div class="metric-card"><div class="metric-value" style="color:var(--red)">${groups[0].count}</div><div class="metric-label">命中(≥1)</div></div>
+      <div class="metric-card"><div class="metric-value" style="color:var(--yellow)">${groups[1].count}</div><div class="metric-label">中性(0~1)</div></div>
+      <div class="metric-card"><div class="metric-value" style="color:var(--green)">${groups[2].count}</div><div class="metric-label">弱(&lt;0)</div></div>
+    `;
+
+    document.getElementById('groupBody').innerHTML = groups.map((g, i) => `
+      <tr class="${i === 0 ? 'good-row' : ''}">
+        <td style="text-align:left;color:${g.color};font-weight:600">${g.name}</td>
+        <td>${g.count}</td>
+        <td>${g.pct}%</td>
+        <td class="${g.avgReturn >= 0 ? 'pos' : 'neg'}">${g.avgReturn >= 0 ? '+' : ''}${g.avgReturn.toFixed(2)}%</td>
+        <td style="font-weight:600;color:${g.color}">${g.avgSharpe.toFixed(2)}</td>
+        <td class="neg">${g.avgDD.toFixed(2)}%</td>
+        <td>${g.avgWin.toFixed(1)}%</td>
+        <td><span class="${i === 0 ? 'pos' : i === 2 ? 'neg' : ''}">${i === 0 ? '✅ 命中' : i === 1 ? '— 中性' : '❌ 未命中'}</span></td>
+      </tr>
+    `).join('');
+
+    // 图表
+    new Chart(document.getElementById('returnChart').getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: groups.map(g => g.name),
+        datasets: [{ label: '平均收益', data: groups.map(g => g.avgReturn),
+          backgroundColor: groups.map(g => g.color.replace('var(', 'rgba(').replace(')', ', 0.6)').replace('--red','239,83,80').replace('--yellow','255,167,38').replace('--green','76,175,80')),
+          borderRadius: 6 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => (c.raw >= 0 ? '+' : '') + c.raw.toFixed(2) + '%' } } },
+        scales: { y: { ticks: { color: '#888', callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.05)' } }, x: { ticks: { color: '#aaa' }, grid: { display: false } } },
+      },
+    });
+    new Chart(document.getElementById('sharpeChart').getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: groups.map(g => g.name),
+        datasets: [{ label: '平均夏普', data: groups.map(g => g.avgSharpe),
+          backgroundColor: groups.map(g => g.color.replace('var(', 'rgba(').replace(')', ', 0.6)').replace('--red','239,83,80').replace('--yellow','255,167,38').replace('--green','76,175,80')),
+          borderRadius: 6 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.raw.toFixed(2) } } },
+        scales: { y: { ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.05)' } }, x: { ticks: { color: '#aaa' }, grid: { display: false } } },
+      },
+    });
+
+    // 按策略统计命中率
+    const stratMap = {};
+    all.forEach(b => {
+      const k = b.strategy_name || '未知';
+      if (!stratMap[k]) stratMap[k] = { items: [] };
+      stratMap[k].items.push(b);
+    });
+    const stratArr = Object.entries(stratMap)
+      .map(([k, v]) => ({
+        name: k,
+        n: v.items.length,
+        hitCount: v.items.filter(b => (b.sharpe_ratio||0) >= 1).length,
+        avgRet: v.items.reduce((s, b) => s + (b.total_return||0), 0) / v.items.length,
+        avgSharpe: v.items.reduce((s, b) => s + (b.sharpe_ratio||0), 0) / v.items.length,
+        hitRate: v.items.filter(b => (b.sharpe_ratio||0) >= 1).length / v.items.length * 100,
+      }))
+      .sort((a, b) => b.avgSharpe - a.avgSharpe);
+
+    document.getElementById('strategyBody').innerHTML = stratArr.map(s => `
+      <tr>
+        <td style="text-align:left;font-weight:600">${escHtml(s.name)}</td>
+        <td>${s.n}</td>
+        <td style="color:${s.hitRate >= 50 ? 'var(--red)' : s.hitRate >= 30 ? 'var(--yellow)' : 'var(--green)'};font-weight:600">${s.hitRate.toFixed(1)}%</td>
+        <td class="${s.avgRet >= 0 ? 'pos' : 'neg'}">${s.avgRet >= 0 ? '+' : ''}${s.avgRet.toFixed(2)}%</td>
+        <td style="color:${s.avgSharpe >= 1 ? 'var(--red)' : s.avgSharpe >= 0 ? 'var(--yellow)' : 'var(--green)'};font-weight:600">${s.avgSharpe.toFixed(2)}</td>
+      </tr>
+    `).join('');
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+  } catch(e) {
+    document.getElementById('loading').innerHTML = '❌ 加载失败: ' + e.message;
+  }
+}
+
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+document.addEventListener('DOMContentLoaded', load);
+</script>
+</body>
+</html>
