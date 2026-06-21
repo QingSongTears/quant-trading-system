@@ -22,6 +22,7 @@ from backtesting import Backtest
 
 from ..config import get_config
 from ..models.repository import DataRepository
+from ..metrics import sharpe_ratio as _sharpe_ratio, max_drawdown as _max_drawdown, volatility as _volatility, annual_return as _annual_return
 from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
@@ -214,7 +215,7 @@ class BacktestEngine:
         trading_days = len(df)
         annual_return = self._calc_annual_return(total_return, trading_days)
         sharpe = self._calc_sharpe(df, initial_capital, stats["Equity Final [$]"], trading_days)
-        max_dd = stats.get("Max. Drawdown [%]", 0) * -1 if stats.get("Max. Drawdown [%]", 0) < 0 else 0
+        max_dd = -abs(stats.get("Max. Drawdown [%]", 0))  # PR2.2: 统一为负数,与 metrics.performance.max_drawdown 一致
         win_rate = stats.get("Win Rate [%]", 0)
         total_trades = stats.get("# Trades", 0)
         profit_factor = stats.get("Profit Factor", 0)
@@ -690,22 +691,20 @@ class BacktestEngine:
         return ((total_return_ratio ** (1 / years)) - 1) * 100 if years > 0 else 0
 
     def _calc_sharpe(self, df: pd.DataFrame, initial: float, final: float, days: int) -> float:
-        """计算夏普比率"""
+        """计算夏普比率 — PR2.2: delegate to metrics.performance.sharpe_ratio"""
         if days <= 1:
             return 0
         daily_returns = df["Close"].pct_change().dropna()
         if len(daily_returns) == 0:
             return 0
-        excess = daily_returns.mean() * 250 - self.risk_free_rate
-        vol = daily_returns.std() * np.sqrt(250)
-        return excess / vol if vol > 0 else 0
+        return _sharpe_ratio(daily_returns.values, risk_free=self.risk_free_rate)
 
     def _calc_annual_volatility(self, df: pd.DataFrame) -> float:
-        """计算年化波动率"""
+        """计算年化波动率 — PR2.2: delegate to metrics.performance.volatility"""
         daily_returns = df["Close"].pct_change().dropna()
         if len(daily_returns) == 0:
             return 0
-        return daily_returns.std() * np.sqrt(250) * 100
+        return _volatility(daily_returns.values)
 
     def _calc_benchmark_return(self, start: date, end: date) -> float:
         """计算基准（沪深300）同期收益率"""

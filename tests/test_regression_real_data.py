@@ -95,11 +95,11 @@ def _assert_reasonable_report(report, strategy_name: str, stock_code: str):
     assert -3 <= report.sharpe_ratio <= 5, \
         f"{strategy_name} x {stock_code}: 夏普 {report.sharpe_ratio:.2f} 超出 [-3, 5] 区间"
 
-    # max_drawdown: 0 ~ 80 (引擎输出正值)
+    # max_drawdown: PR2.2 起约定为负数(单位 %,如 -10.02 表示回撤 10.02%)
     assert _is_valid_number(report.max_drawdown), \
         f"{strategy_name} x {stock_code}: max_drawdown={report.max_drawdown}"
-    assert 0 <= report.max_drawdown <= 80, \
-        f"{strategy_name} x {stock_code}: 回撤 {report.max_drawdown:.2f}% 超出 [0, 80] 区间"
+    assert -80 <= report.max_drawdown <= 0, \
+        f"{strategy_name} x {stock_code}: 回撤 {report.max_drawdown:.2f}% 超出 [-80, 0] 区间"
 
     # total_trades: >= 0 (允许 0 — 1 年内可能不触发)
     assert report.total_trades >= 0, \
