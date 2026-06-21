@@ -12,6 +12,13 @@ import pytest
 import pandas as pd
 import numpy as np
 
+# ============================================================
+# 测试环境: 设置 API key (必须在 import src.web.auth 之前)
+# ============================================================
+# 让 src.web.auth 的 _api_key_cache 第一次调用 get_api_key() 时读到 "ci-test-key"
+# 测试代码用这个 key 作 Bearer token
+os.environ.setdefault("QUANT_API_KEY", "ci-test-key")
+
 # 确保项目根目录在 sys.path 中
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
@@ -20,6 +27,79 @@ if str(_PROJECT_ROOT) not in sys.path:
 from src.models.database import Base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+
+# 测试用 Bearer token
+TEST_API_KEY = "ci-test-key"
+TEST_AUTH_HEADER = {"Authorization": f"Bearer {TEST_API_KEY}"}
+
+
+class AuthedTestClient:
+    """TestClient 包装 — 自动注入 Bearer token
+
+    用法: AuthedTestClient(app) 替代裸 TestClient(app)
+    透传 get/post/put/delete/delete + 所有 starlette.TestClient 属性
+    """
+    def __init__(self, app, **kwargs):
+        from fastapi.testclient import TestClient
+        self._client = TestClient(app, **kwargs)
+
+    def get(self, url, **kwargs):
+        self._inject_header(kwargs)
+        return self._client.get(url, **kwargs)
+
+    def post(self, url, **kwargs):
+        self._inject_header(kwargs)
+        return self._client.post(url, **kwargs)
+
+    def put(self, url, **kwargs):
+        self._inject_header(kwargs)
+        return self._client.put(url, **kwargs)
+
+    def delete(self, url, **kwargs):
+        self._inject_header(kwargs)
+        return self._client.delete(url, **kwargs)
+
+    def _inject_header(self, kwargs):
+        hdrs = kwargs.setdefault("headers", {})
+        if isinstance(hdrs, dict):
+            hdrs.update(TEST_AUTH_HEADER)
+        else:
+            # httpx Headers 对象 — 转为 dict 处理
+            for k, v in TEST_AUTH_HEADER.items():
+                hdrs[k] = v
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+
+__all__ = ["TEST_API_KEY", "TEST_AUTH_HEADER", "AuthedTestClient", "_ensure_test_api_key"]
+
+
+@pytest.fixture(autouse=True)
+def _ensure_test_api_key():
+    """
+    Function-scoped autouse: 每个 test 前重置 src.web.auth._api_key_cache
+    防止 test_e2e 等修改 env 后污染后续测试
+    """
+    os.environ["QUANT_API_KEY"] = TEST_API_KEY
+    try:
+        import src.web.auth as auth_mod
+        auth_mod._api_key_cache = TEST_API_KEY
+    except ImportError:
+        pass
+    yield
+
+
+@pytest.fixture
+def auth_header():
+    """给 Web 测试用的 Authorization header"""
+    return TEST_AUTH_HEADER
+
+
+@pytest.fixture
+def authed_test_client(test_app):
+    """带 Bearer 认证的 TestClient, 替代裸 TestClient"""
+    return AuthedTestClient(test_app)
 
 
 # ============================================================

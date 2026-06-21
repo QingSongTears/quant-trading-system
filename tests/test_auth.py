@@ -50,10 +50,15 @@ class TestCheckBearerToken:
 
     def test_wrong_token_rejected(self, monkeypatch):
         monkeypatch.setenv("QUANT_API_KEY", "right-key")
+        # 重置 cache 让 get_api_key 重新读 env
+        import src.web.auth as auth_mod
+        auth_mod._api_key_cache = None
         assert check_bearer_token("Bearer wrong-key") is False
 
     def test_correct_token_accepted(self, monkeypatch):
         monkeypatch.setenv("QUANT_API_KEY", "right-key")
+        import src.web.auth as auth_mod
+        auth_mod._api_key_cache = None
         assert check_bearer_token("Bearer right-key") is True
 
     def test_case_insensitive_scheme(self, monkeypatch):
