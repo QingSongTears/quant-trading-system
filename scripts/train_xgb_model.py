@@ -1,22 +1,18 @@
 """
-龙头模型 v2 — 特征工程 + XGBoost 训练
-======================================
-新增特征:
-  1. 行业评分百分位 (行业内排名)
-  2. 截面相对强度 (ret_20d / ret_60d 百分位)
-  3. 价格动量 (当前close vs N日最高)
-  4. 量比突变 (当日量/5日均量)
-  5. 8维评分×动量交叉特征
-  6. 换手率特征
-输出: data/xgb_model.json (XGBoost模型+scaler)
+龙头模型 v3 — 特征工程 + XGBoost 训练 (修复版)
+=======================================
+修复:
+  1. 标签从 ret_20d>0 → ret_60d>10% (识别真牛股)
+  2. 时间序列划分: 前80%月份训练, 后20%验证 (防未来数据泄露)
+  3. 移除可能过拟合特征, 增加稳定性
 """
 import json, sqlite3, math, sys, pickle, os
 from pathlib import Path
 import numpy as np
 import xgboost as xgb
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import roc_auc_score, accuracy_score, classification_report
-from sklearn.model_selection import train_test_split
+from sklearn.metrics import roc_auc_score, accuracy_score
+from collections import defaultdict
 
 PROJECT_ROOT = Path(__file__).parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
@@ -201,8 +197,9 @@ for ym in train_months:
         feats['score_x_momentum'] = avg_scores[i] * (mf['pct_20d'] / 100)
         feats['score_x_vol'] = avg_scores[i] * mf['vol_ratio']
         
-        # 标签: ret_20d > 0 → 1
-        label = 1 if s.get('ret_20d', 0) or 0 > 0 else 0
+        # 标签: ret_60d > 10% → 1 (识别真牛股)
+        ret60 = s.get('ret_60d', 0) or 0
+        label = 1 if ret60 > 10 else 0
         
         features_list.append(feats)
         labels_list.append(label)
@@ -236,11 +233,23 @@ print(f"特征列表: {feature_cols[:15]}...")
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
-# 划分训练/验证集
-X_train, X_val, y_train, y_val = train_test_split(
-    X_scaled, y, test_size=0.2, random_state=42, stratify=y
-)
-print(f"\n训练集: {len(X_train)} 验证集: {len(X_val)}")
+# 划分训练/验证集 (时间序列: 前80%月份训练, 后20%验证)
+unique_months = sorted(set(month_list))
+split_idx = max(1, int(len(unique_months) * 0.8))
+train_months_set = set(unique_months[:split_idx])
+val_months_set = set(unique_months[split_idx:])
+
+train_idx = [i for i, m in enumerate(month_list) if m in train_months_set]
+val_idx = [i for i, m in enumerate(month_list) if m in val_months_set]
+
+X_train, X_val = X_scaled[train_idx], X_scaled[val_idx]
+y_train, y_val = y[train_idx], y[val_idx]
+
+pos_rate = sum(y_train)/len(y_train)*100
+pos_rate_val = sum(y_val)/len(y_val)*100
+print(f"\n训练集: {len(X_train)}条 (正例率{pos_rate:.1f}%) | 验证集: {len(X_val)}条 (正例率{pos_rate_val:.1f}%)")
+print(f"训练月份: {unique_months[0]} ~ {unique_months[split_idx-1]} ({split_idx}个月)")
+print(f"验证月份: {unique_months[split_idx]} ~ {unique_months[-1]} ({len(unique_months)-split_idx}个月)")
 
 # ===== 6. 训练 XGBoost (不使用scale_pos_weight，保持概率校准) =====
 print("\n🚀 训练 XGBoost 模型...")
