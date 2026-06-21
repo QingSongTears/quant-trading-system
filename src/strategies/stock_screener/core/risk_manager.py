@@ -7,7 +7,7 @@ from typing import Dict, List
 from ..config import (
     STOP_LOSS_PCT, QUANT_TAKE_PROFIT_PCT, NORMAL_TAKE_PROFIT_PCT,
     MAX_POSITIONS, MAX_SINGLE_POSITION_PCT, MAX_TOTAL_POSITION_PCT,
-    NORMAL_BREAK_EMA_EXIT,
+    NORMAL_BREAK_EMA_EXIT, QUANT_MAX_HOLD_DAYS,
 )
 
 
@@ -80,7 +80,7 @@ class RiskManager:
             }
 
         # 量化票持仓超时
-        if is_quant and hold_days >= 5:
+        if is_quant and hold_days >= QUANT_MAX_HOLD_DAYS:
             return {
                 "should_exit": True,
                 "reason": f"⏰ 量化票持仓满{hold_days}日，到期离场",

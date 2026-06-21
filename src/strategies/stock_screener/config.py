@@ -85,10 +85,26 @@ PULLBACK_MA_SLOW = 60
 HISTORY_LOOKBACK_TIMES = 3
 MA_ZONE_MIN = 0.98
 MA_ZONE_MAX = 1.05
+# 买点评分表 — key 必须与 buy_point.py 中的 category 严格一致
+# 评分语义: final_score = min(5, base_score + bonus), buy_ready = final_score >= 2
+# 浅回踩 + 缩量企稳 = 最佳买点; 深回踩无反弹 = 风险高(仅靠加分勉强过线)
 PULLBACK_SCORE_CONFIG = {
-    "deep_pullback_bonus": 0.3,
-    "ma_support_bonus": 0.2,
-    "volume_dry_up_bonus": 0.15,
+    "no_pullback": {
+        "score": 0,
+        "desc": "未出现回踩 — 价格在均线上方，等待回调",
+    },
+    "shallow_pullback_decay": {
+        "score": 4,
+        "desc": "浅回踩 + 缩量企稳 — 最佳买点",
+    },
+    "mid_pullback_recovery": {
+        "score": 3,
+        "desc": "中等回踩 + 缩量企稳 — 良好买点",
+    },
+    "deep_pullback_no_recovery": {
+        "score": 1,
+        "desc": "深回踩无反弹 — 风险偏高",
+    },
 }
 
 # ============================================================
