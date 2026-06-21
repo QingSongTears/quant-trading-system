@@ -128,7 +128,8 @@ class BacktestEngine:
         costs = config["backtest"]["costs"]
         self.commission = costs["commission_rate"]
         self.stamp_duty = costs["stamp_duty_rate"]
-        self.slippage = costs["slippage"]
+        self.slippage = costs.get("slippage", 0.0001)  # 0.0001 (万分之一)
+        self.min_commission = costs.get("min_commission", 5.0)  # ¥5 最低佣金
 
         # 基准指数
         self.benchmark_code = config["backtest"]["benchmark"]
