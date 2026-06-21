@@ -1904,6 +1904,110 @@ def api_backtest_detail(result_id):
     return jsonify(r)
 
 
+@app.route("/api/dashboard/stats")
+@app.route("/api/dashboard_stats")
+def api_dashboard_stats():
+    """返回仪表盘页面所需的所有数据"""
+    import sqlite3
+    from collections import defaultdict
+    db = PROJECT_ROOT / "database" / "quant.db"
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    
+    # 1. 总回测记录数
+    total = conn.execute("SELECT COUNT(*) as n FROM backtest_result WHERE total_return IS NOT NULL").fetchone()["n"] 
+    
+    # 2. 7大策略统计
+    strategies = []
+    rows = conn.execute("""
+        SELECT s.id as strategy_id, s.name,
+               COUNT(r.id) as cnt,
+               ROUND(AVG(r.total_return), 2) as avg_return,
+               ROUND(AVG(r.sharpe_ratio), 2) as avg_sharpe,
+               ROUND(AVG(r.win_rate), 2) as avg_win_rate,
+               MAX(r.total_return) as best_return,
+               MIN(r.total_return) as worst_return,
+               SUM(CASE WHEN r.total_return > 0 THEN 1 ELSE 0 END) as win_count,
+               SUM(CASE WHEN r.total_return IS NULL THEN 1 ELSE 0 END) as flat_count,
+               AVG(r.total_trades) as avg_trades
+        FROM strategy_config s 
+        LEFT JOIN backtest_result r ON s.id = r.strategy_id 
+        WHERE r.total_return IS NOT NULL 
+        GROUP BY s.id 
+        ORDER BY avg_return DESC 
+    """).fetchall()
+    for r in rows:
+        strategies.append(dict(r)) 
+    
+    # 3. TOP 20 按策略
+    top_by_strategy = {}
+    for s in strategies:
+        sid = s['strategy_id']
+        rows2 = conn.execute("""
+            SELECT stock_code, stock_name, total_return, sharpe_ratio, win_rate, total_trades,
+                   start_date, end_date, benchmark_return, excess_return 
+            FROM backtest_result 
+            WHERE strategy_id=? AND total_return IS NOT NULL 
+            ORDER BY total_return DESC LIMIT 20 
+        """, (sid,)).fetchall()
+        top_by_strategy[str(sid)] = [dict(r) for r in rows2] 
+    
+    # 4. 模型精度（从prediction_record验证）
+    model_accuracy = {}
+    pred_rows = conn.execute("""
+        SELECT  
+            COUNT(*) as total, 
+            AVG(CASE WHEN pred_proba >= 0.55 THEN actual_return_60d END) as buy_avg_return, 
+            AVG(CASE WHEN pred_proba < 0.4 THEN actual_return_60d END) as avoid_avg_return 
+        FROM prediction_record 
+        WHERE verified = 1 AND actual_return_60d IS NOT NULL 
+    """).fetchone()
+    if pred_rows and pred_rows['total'] > 0:
+        buy_ret = pred_rows['buy_avg_return'] or 0
+        avoid_ret = pred_rows['avoid_avg_return'] or 0 
+        model_accuracy = { 
+            'total': pred_rows['total'], 
+            'buy_avg_return': round(buy_ret, 2), 
+            'avoid_avg_return': round(avoid_ret, 2), 
+            'spread': round(buy_ret - avoid_ret, 2), 
+        } 
+        # 分组统计
+        bins = conn.execute("""
+            SELECT  
+                CASE  
+                    WHEN pred_proba >= 0.55 THEN '买入' 
+                    WHEN pred_proba >= 0.4 THEN '中性' 
+                    ELSE '回避' 
+                END as label, 
+                COUNT(*) as count, 
+                AVG(actual_return_60d) as avg_return, 
+                AVG(CASE WHEN actual_return_60d > 0 THEN 1 ELSE 0 END) * 100 as win_rate 
+            FROM prediction_record 
+            WHERE verified = 1 AND actual_return_60d IS NOT NULL 
+            GROUP BY label 
+        """).fetchall()
+        model_accuracy['bins'] = [dict(r) for r in bins] 
+    
+    # 5. 覆盖率统计
+    coverage = {}
+    score_rows = conn.execute("SELECT COUNT(DISTINCT code) as n FROM stock_score").fetchone()
+    coverage['score_stocks'] = score_rows['n'] if score_rows else 0 
+    kline_rows = conn.execute("SELECT COUNT(DISTINCT code) as n FROM daily_price WHERE close IS NOT NULL").fetchone()
+    coverage['kline_stocks'] = kline_rows['n'] if kline_rows else 0 
+    coverage['backtest_done'] = strategies[0]['cnt'] if strategies else 0 
+    coverage['score_records'] = conn.execute("SELECT COUNT(*) as n FROM stock_score").fetchone()['n'] 
+    coverage['tech_indicators'] = conn.execute("SELECT COUNT(DISTINCT code) as n FROM technical_indicators").fetchone()['n'] 
+    
+    conn.close() 
+    
+    return jsonify({
+        "total_records": total, 
+        "strategies": strategies, 
+        "top_by_strategy": top_by_strategy, 
+        "model_accuracy": model_accuracy, 
+        "coverage": coverage 
+    }) 
+
 @app.route("/api/strategy/compare")
 def api_strategy_compare():
     """策略对比统计"""
