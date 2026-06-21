@@ -291,3 +291,35 @@ async def workbench_page(request: Request):
         "default_end": date.today().strftime("%Y-%m-%d"),
     })
     return templates.TemplateResponse(request, "workbench.html", ctx)
+
+
+# ============================================================
+# 独立页面 (output/ 移植, 暗色主题, 不继承 base.html)
+# ============================================================
+_STANDALONE_PAGES = {
+    "/diagnose": "diagnose.html",
+    "/sector": "sector.html",
+    "/screener": "screener.html",
+    "/portfolio": "portfolio.html",
+    "/backtest-lab": "backtest-lab.html",
+    "/backtest-view": "backtest-view.html",
+    "/strategy-compare": "strategy-compare.html",
+    "/dashboard": "dashboard.html",
+    "/data-monitor": "data-monitor.html",
+    "/v5": "v5.html",
+    "/v6-compare": "v6-compare.html",
+    "/fund-flow-report": "fund-flow-report.html",
+    "/dim-compare": "dim-compare.html",
+    "/ic": "ic.html",
+}
+
+
+def _register_standalone_routes():
+    """批量注册独立页面路由 (避免闭包变量捕获问题)"""
+    for path, tmpl in _STANDALONE_PAGES.items():
+        async def _handler(request: Request, _t=tmpl):
+            return templates.TemplateResponse(request, _t, _get_global_context())
+        router.add_api_route(path, _handler, response_class=HTMLResponse, methods=["GET"])
+
+
+_register_standalone_routes()

@@ -77,10 +77,12 @@ def create_app() -> FastAPI:
 
     # TrustedHost 白名单 — 默认仅本地访问
     # 生产部署时通过 QUANT_ALLOWED_HOSTS 环境变量覆盖(逗号分隔)
+    # testserver: Starlette TestClient 默认 Host 头,本地测试用
     import os
     allowed_hosts = os.environ.get(
         "QUANT_ALLOWED_HOSTS",
-        ",".join(web_config.get("allowed_hosts", ["localhost", "127.0.0.1", "0.0.0.0"]))
+        ",".join(web_config.get("allowed_hosts",
+            ["localhost", "127.0.0.1", "0.0.0.0", "testserver"]))
     ).split(",")
 
     app = FastAPI(
