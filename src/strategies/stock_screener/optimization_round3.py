@@ -9,12 +9,10 @@
 测试变体:
   A. v3基线 (参考基准)
   B. v3 + breadth SMA5(40%)
-  C. v3 + breadth SMA5(45%)  
+  C. v3 + breadth SMA5(45%)
   D. v3 + breadth SMA5(50%)
   E. v5_1of3 (趋势确认仅需1/3)
   F. v5_1of3 + breadth SMA5(45%)
-  G. v3_dynamic (动态止盈)
-  H. v3_dynamic + breadth SMA5(45%)
 
 输出: output/combined/optimization_round3.csv + 各策略详细trades
 """
@@ -32,7 +30,6 @@ from core.data_loader import load_kline, load_quotes, load_finance, build_exclus
 from core.indicators import precompute_indicators
 from backtest.engine import BacktestEngine, BacktestResult
 from strategies.v3_reversal import V3ReversalStrategy
-from strategies.v3_reversal_dynamic import V3ReversalDynamicStrategy
 from strategies.v5_hybrid import V5HybridStrategy
 
 OUTPUT_COMBINED_DIR.mkdir(parents=True, exist_ok=True)
@@ -162,20 +159,6 @@ variants.append(run_one(
 print("\n[F] v5_1of3 + breadth SMA5(45%)...")
 variants.append(run_one(
     "F_v5_1of3+广度SMA45", V5HybridStrategy, {"trend_checks_min": 1},
-    use_breadth=True, breadth_threshold=0.45, use_smoothed=True
-))
-
-# G: v3_dynamic (动态止盈)
-print("\n[G] v3_dynamic (动态止盈)...")
-variants.append(run_one(
-    "G_v3_动态止盈", V3ReversalDynamicStrategy, {},
-    use_breadth=False
-))
-
-# H: v3_dynamic + breadth SMA5(45%)
-print("\n[H] v3_dynamic + breadth SMA5(45%)...")
-variants.append(run_one(
-    "H_v3动态+广度SMA45", V3ReversalDynamicStrategy, {},
     use_breadth=True, breadth_threshold=0.45, use_smoothed=True
 ))
 

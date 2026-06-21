@@ -32,8 +32,15 @@ Thumbs.db
 # 数据缓存
 data/*.csv
 data/*.parquet
+data/*.pkl
+data/*.json
 data/raw/
 data/quant.db
 data/all_7d_scores.json
+data/xgb_*.json
+data/xgb_scaler.pkl
+A股全市场数据/**/*.csv
 A股全市场数据/imported/
 .workbuddy/
+.tmp_*.json
+*.tmp
