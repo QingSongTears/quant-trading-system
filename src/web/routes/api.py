@@ -185,13 +185,16 @@ async def trigger_download(mode: str = "incremental"):
 
     def _run():
         try:
-            # 优先使用 westock-data 下载器 (批量快速, 不限流)
-            # 仅在 westock 不可用时回退到 AKShare
+            # 下载器选择:WestockDownloader 是桩模块(2026-06-21 PR1.1),
+            # 会抛 NotImplementedError;捕获后回退到 DataDownloader (AKShare)。
+            # 之前的 fallback 逻辑因 WestockDownloader 不抛错而永远不触发,
+            # 导致"全量下载"按钮静默无效 — 现在显式检测。
             try:
+                from src.data.westock_downloader import WestockDownloaderNotImplemented
                 downloader = WestockDownloader()
                 source_name = "WeStock-Data (腾讯自选股)"
-            except Exception as init_err:
-                logger.warning(f"westock 初始化失败, 回退 AKShare: {init_err}")
+            except (WestockDownloaderNotImplemented, Exception) as init_err:
+                logger.info(f"westock 不可用, 使用 AKShare (DataDownloader): {init_err}")
                 downloader = DataDownloader()
                 source_name = "AKShare"
 
