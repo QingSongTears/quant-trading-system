@@ -34,6 +34,8 @@ from sqlalchemy import create_engine, text
 from ..config import get_config, get_db_url
 from ..db.sql_utils import read_sql
 from ..scoring import ScorerRegistry
+# PR2.5: 委托给 scoring.combiner 单一实现
+from ..scoring.combiner import combine as _combine_scores
 
 
 @dataclass
@@ -277,13 +279,16 @@ class SelectionPipeline:
             combined[f"score_{dim_name}"] = series
             combined[f"score_{dim_name}"] = combined[f"score_{dim_name}"].fillna(0)
 
-        # 加权
-        combined["combined_score"] = 0.0
-        total_weight = sum(self.weights.values())
-        for dim_name, weight in self.weights.items():
-            col = f"score_{dim_name}"
-            if col in combined.columns:
-                combined["combined_score"] += combined[col] * weight / total_weight
+        # PR2.5: 加权综合 — 委托给 scoring.combiner (与 regenerate_combined_scores 一致)
+        combined["combined_score"] = combined.apply(
+            lambda row: _combine_scores(
+                {dim: float(row[f"score_{dim}"]) for dim in self.weights
+                 if f"score_{dim}" in combined.columns and pd.notna(row[f"score_{dim}"])},
+                weights=self.weights,
+                method="weighted_mean",
+            ),
+            axis=1,
+        )
 
         combined = combined.reset_index().rename(columns={"index": "code"})
         return combined[["code", "combined_score"] +
