@@ -3,6 +3,7 @@
 对应 Issue #42 [B-02] / 验收清单 TC-F5-001 ~ TC-F5-009
 """
 import pytest
+pytest.importorskip("httpx")
 import json
 from datetime import date
 from unittest.mock import patch, MagicMock, PropertyMock

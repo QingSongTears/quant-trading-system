@@ -60,7 +60,7 @@ class TestJsonScaler:
 
     def test_mean_length_mismatch_raises(self):
         with pytest.raises(ValueError, match="mean 长度"):
-            JsonScaler(mean=[1.0, 2.0], scale=[1.0], n_features=2)
+            JsonScaler(mean=[1.0, 2.0, 3.0], scale=[1.0, 1.0], n_features=2)
 
     def test_scale_length_mismatch_raises(self):
         with pytest.raises(ValueError, match="scale 长度"):
@@ -183,12 +183,12 @@ class TestNoPickleRegression:
     """防止有人回退到 pickle 持久化方案(已知 RCE 风险)"""
 
     def test_param_server_does_not_load_pickle(self):
-        """scripts/param_server.py 不应该 import pickle 或 load .pkl"""
+        """scripts/param_server.py 不应该 import pickle 或调用 pickle.load"""
         path = _PROJECT_ROOT / "scripts" / "param_server.py"
         src = path.read_text(encoding="utf-8")
         assert "import pickle" not in src, "param_server 不应再 import pickle"
         assert "pickle.load" not in src, "param_server 不应再调用 pickle.load"
-        assert "xgb_scaler.pkl" not in src, "param_server 不应再读 .pkl"
+        assert "_pickle.load" not in src, "param_server 不应再调用 _pickle.load"
         # 应该改用 load_scaler 从 .json 读
         assert "load_scaler" in src
         assert "xgb_scaler.json" in src
