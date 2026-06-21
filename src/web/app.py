@@ -97,7 +97,12 @@ def create_app() -> FastAPI:
     # 全局异常处理器
     @app.exception_handler(404)
     async def not_found_handler(request: Request, exc):
-        """自定义 404 页面"""
+        """自定义 404: API 返回 JSON,页面返回 HTML 错误页"""
+        if request.url.path.startswith("/api"):
+            return JSONResponse(
+                {"success": False, "error": "not found", "path": request.url.path},
+                status_code=404,
+            )
         tmpl = get_templates()
         ctx = {
             "request": request,

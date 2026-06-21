@@ -147,7 +147,7 @@
       {% for bt in recent_backtests[:8] %}
         <a class="recent-card" href="/backtest/{{ bt.id }}">
           <div class="row1">
-            <span class="name">{{ bt.strategy_name }}</span>
+            <span class="name">{{ bt.strategy.name if bt.strategy else '未知策略' }}</span>
             <span class="time">{{ bt.created_at.strftime('%m-%d %H:%M') if bt.created_at else '-' }}</span>
           </div>
           <div class="row2">

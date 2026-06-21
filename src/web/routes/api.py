@@ -799,11 +799,24 @@ async def get_stock_pool(
         codes = codes[:max_stocks]
         names = names[:max_stocks]
 
+    # 安全序列化:NaN/None 一律转 "" (NaN 不可 JSON)
+    def _safe_str(v):
+        if v is None:
+            return ""
+        try:
+            import math
+            if isinstance(v, float) and math.isnan(v):
+                return ""
+        except (TypeError, ValueError):
+            pass
+        return str(v)
+
     return {
         "success": True,
         "total": len(codes),
         "data": [
-            {"code": c, "name": n, "industry": industries[i] if industries else ""}
+            {"code": _safe_str(c), "name": _safe_str(n),
+             "industry": _safe_str(industries[i]) if industries else ""}
             for i, (c, n) in enumerate(zip(codes, names))
         ],
     }
