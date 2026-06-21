@@ -141,13 +141,17 @@ async def data_page(request: Request):
 
 
 @router.get("/backtest", response_class=HTMLResponse)
-async def backtest_page_redirect(request: Request):
-    """回测执行页 — 已合并到 /workbench, 旧链接保留向后重定向"""
-    from fastapi.responses import RedirectResponse
-    # 透传 URL 参数 (data.html 的"对该股回测"用 ?code=xxx&name=yyy 跳转)
-    qs = request.url.query
-    target = f"/workbench{qs}" if qs else "/workbench"
-    return RedirectResponse(url=target, status_code=301)
+async def backtest_page_list(request: Request):
+    """回测记录列表页 (首页 /backtest 卡片跳转目标)"""
+    repo = DataRepository()
+    try:
+        all_backtests = repo.get_recent_backtests(limit=50)
+    except Exception:
+        all_backtests = []
+
+    ctx = _get_global_context()
+    ctx.update({"all_backtests": all_backtests})
+    return templates.TemplateResponse(request, "backtest_list.html", ctx)
 
 
 @router.get("/backtest/{result_id}", response_class=HTMLResponse)
