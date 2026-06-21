@@ -87,6 +87,10 @@ class FundFlowScorer(BaseScorer):
         })
         if df.empty:
             return df
+        # 数据源(东方财富)对停牌/无成交股票返回 '-',需转 NaN
+        for col in ["main_net", "super_large_net", "large_net", "medium_net", "small_net"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
         df = df.sort_values("trade_date").reset_index(drop=True)
         return df
 
@@ -115,6 +119,11 @@ class FundFlowScorer(BaseScorer):
         })
         if df.empty:
             return {}
+
+        # 数据源对停牌股返回 '-',需转 NaN
+        for col in ["main_net", "super_large_net", "large_net", "medium_net", "small_net"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
 
         result = {}
         for code, group in df.groupby("code"):

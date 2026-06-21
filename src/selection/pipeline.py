@@ -204,9 +204,14 @@ class SelectionPipeline:
                     "SELECT code FROM finance_summary WHERE NPParentCompanyOwnersTTM > 0",
                     self.engine,
                 )
-                pe_data["code"] = pe_data["code"].astype(str).str.zfill(6)
-                df = df[df["code"].isin(pe_data["code"])]
-            except:
+                if pe_data.empty:
+                    # finance_summary 表为空时(尚未导入),跳过 PE 过滤避免误杀所有股票
+                    if self.verbose:
+                        print("[Pipeline] finance_summary 表为空,跳过 PE 负过滤")
+                else:
+                    pe_data["code"] = pe_data["code"].astype(str).str.zfill(6)
+                    df = df[df["code"].isin(pe_data["code"])]
+            except Exception:
                 pass
 
         # 板块排除
