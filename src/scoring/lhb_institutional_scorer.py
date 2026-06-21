@@ -12,12 +12,13 @@
 
 数据源: quant.db :: lhb_institutional
 """
-from typing import Any, Dict, Optional
+from __future__ import annotations
+from typing import Any
 
 import pandas as pd
-from sqlalchemy import create_engine
 
 from ..config import get_config, get_db_url
+# PR3.2: create_engine 由 base.py 通过 get_engine 单例提供
 from ..db.sql_utils import read_sql
 from .base import BaseScorer
 
@@ -38,7 +39,7 @@ class LhbInstitutionalScorer(BaseScorer):
 
     def __init__(self, engine=None):
         super().__init__(engine=engine)
-        self._cache: Optional[pd.DataFrame] = None
+        self._cache: pd.DataFrame | None = None
 
     def _load_data(self) -> pd.DataFrame:
         if self._cache is not None:
@@ -46,8 +47,8 @@ class LhbInstitutionalScorer(BaseScorer):
         self._cache = read_sql("SELECT * FROM lhb_institutional", self.engine)
         return self._cache
 
-    def score(self, code: str, as_of_date: Optional[str] = None,
-              lookback_days: int = 60) -> Dict[str, Any]:
+    def score(self, code: str, as_of_date: str | None = None,
+              lookback_days: int = 60) -> dict[str, Any]:
         """
         对单只股票计算龙虎榜机构评分
 

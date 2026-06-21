@@ -25,7 +25,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 __all__ = ["BaseScorer", "ScorerRegistry"]
 
@@ -34,10 +34,10 @@ class ScorerRegistry:
     """评分器注册中心 — 工厂 + 注册表 + 缓存"""
 
     # name -> {"class", "label", "weight", "max_raw"}
-    _registry: Dict[str, Dict[str, Any]] = {}
+    _registry: dict[str, dict[str, Any]] = {}
 
     # 单例缓存: name -> 实例
-    _instances: Dict[str, Any] = {}
+    _instances: dict[str, Any] = {}
 
     @classmethod
     def register(cls, scorer_cls: type) -> type:
@@ -76,15 +76,15 @@ class ScorerRegistry:
     @classmethod
     def get_enabled(
         cls,
-        dimensions: List[str],
+        dimensions: list[str],
         engine=None,
         use_cache: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """批量获取评分器"""
         return {name: cls.get(name, engine=engine, use_cache=use_cache) for name in dimensions}
 
     @classmethod
-    def list_all(cls) -> List[Dict[str, Any]]:
+    def list_all(cls) -> list[dict[str, Any]]:
         """列出所有已注册的评分器"""
         return [
             {"name": name, "label": info["label"], "weight": info["weight"]}

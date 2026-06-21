@@ -29,11 +29,9 @@ BaseScorer — 所有评分器的统一基类
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
-from sqlalchemy import create_engine
-
-from ..config import get_config, get_db_url
+from ..db.engine import get_engine as _get_engine
 
 
 class BaseScorer:
@@ -50,12 +48,9 @@ class BaseScorer:
     max_raw: int = 21            # 子分汇总上限 (用于 weighted = total/max_raw*max_score)
 
     def __init__(self, engine=None):
-        if engine is not None:
-            self.engine = engine
-        else:
-            config = get_config()
-            db_url = get_db_url(config)
-            self.engine = create_engine(db_url, echo=False)
+        # PR3.2: 默认用 src.db.engine.get_engine() 单例 (消除 8 个 scorer 各建 1 个 engine)
+        # 显式传入 engine 时优先使用 (测试/DI 友好)
+        self.engine = engine if engine is not None else _get_engine()
 
     def __init_subclass__(cls, **kwargs):
         """子类化时自动注册到 ScorerRegistry"""
@@ -74,7 +69,7 @@ class BaseScorer:
             # 已注册（同一进程内子类重复导入），静默忽略
             pass
 
-    def score(self, code: str, as_of_date: Optional[str] = None) -> Dict[str, Any]:
+    def score(self, code: str, as_of_date: str | None = None) -> dict[str, Any]:
         """
         单只股票评分，返回标准 dict 至少包含:
             code, as_of_date, total, weighted, sub_scores, error

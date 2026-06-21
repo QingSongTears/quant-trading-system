@@ -5,12 +5,13 @@ API 路由 (JSON 响应)
 所有 /api/* 端点需要 Bearer token 认证 (HTTPBearer)
 策略 class_path 走白名单加载 (auth.safe_import_strategy)
 """
+from __future__ import annotations
 import json
 import logging
 import threading
 import traceback
 from datetime import date, datetime
-from typing import Optional, List
+
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -86,14 +87,14 @@ class BacktestRequest(BaseModel):
     start_date: str          # YYYY-MM-DD
     end_date: str
     initial_capital: float = 100000
-    commission: Optional[float] = None
-    stamp_duty: Optional[float] = None
-    slippage: Optional[float] = None
+    commission: float | None = None
+    stamp_duty: float | None = None
+    slippage: float | None = None
 
 
 class BatchBacktestRequest(BaseModel):
-    strategy_names: List[str]
-    stock_codes: List[str]
+    strategy_names: list[str]
+    stock_codes: list[str]
     start_date: str
     end_date: str
     initial_capital: float = 100000
@@ -124,7 +125,8 @@ async def get_data_coverage():
     try:
         return {"success": True, "data": repo.get_data_coverage()}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        logger.error("data/coverage 失败: %s\n%s", e, traceback.format_exc())
+        return {"success": False, "error": "数据服务异常"}
 
 
 @router.get("/data/search")
@@ -151,7 +153,8 @@ async def search_stocks(q: str = Query(..., min_length=1)):
                     r[k] = None
         return {"success": True, "data": results}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        logger.error("data/search 失败: %s\n%s", e, traceback.format_exc())
+        return {"success": False, "error": "搜索服务异常"}
 
 
 # ===== 下载 API =====
@@ -216,8 +219,9 @@ async def trigger_download(mode: str = "incremental"):
             _download_status["running"] = False
             _download_status["result"] = result
         except Exception as e:
+            logger.error("data/download 失败: %s\n%s", e, traceback.format_exc())
             _download_status["running"] = False
-            _download_status["error"] = str(e)
+            _download_status["error"] = "下载失败，详查日志"
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
@@ -286,10 +290,9 @@ async def run_backtest(req: BacktestRequest):
             slippage=req.slippage,
         )
 
-        # 持久化
+        # 持久化 (PR3.3: 简化 session 生命周期,用 repo 封装方法替代直 ORM query)
         repo = DataRepository()
-        session = repo.get_session()
-        try:
+        with repo.get_session() as session:
             # 先保存策略配置
             for s in strategies_config.get("strategies", []):
                 if s["name"] == req.strategy_name:
@@ -301,20 +304,14 @@ async def run_backtest(req: BacktestRequest):
                     )
                     break
 
-            # 查找策略ID
-            from ...models.database import StrategyConfig
-            strategy_record = session.query(StrategyConfig).filter_by(name=req.strategy_name).first()
+            # 查找策略ID (PR3.3: 用 repo 封装,不再直 query)
+            strategy_record = repo.get_strategy_by_name(req.strategy_name)
             strategy_id = strategy_record.id if strategy_record else None
 
             result_dict = report.to_db_dict(strategy_id)
             result_dict["stock_name"] = report.stock_name
             result_id = repo.save_backtest_result(session, result_dict)
-            session.commit()
-        except Exception as e:
-            session.rollback()
-            raise e
-        finally:
-            session.close()
+        # session 自动 commit + close
 
         return {
             "success": True,
@@ -345,7 +342,7 @@ async def run_backtest(req: BacktestRequest):
 
     except Exception as e:
         logger.error("backtest/run 失败: %s\n%s", e, traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="回测服务异常")
 
 
 # ===== 组合回测 API (选股策略) =====
@@ -384,10 +381,9 @@ async def run_portfolio_backtest(req: PortfolioBacktestRequest):
             initial_capital=req.initial_capital,
         )
 
-        # 持久化
+        # 持久化 (PR3.3)
         repo = DataRepository()
-        session = repo.get_session()
-        try:
+        with repo.get_session() as session:
             for s in strategies_config.get("strategies", []):
                 if s["name"] == req.strategy_name:
                     repo.save_strategy_config(
@@ -398,19 +394,13 @@ async def run_portfolio_backtest(req: PortfolioBacktestRequest):
                     )
                     break
 
-            from ...models.database import StrategyConfig
-            strategy_record = session.query(StrategyConfig).filter_by(name=req.strategy_name).first()
+            strategy_record = repo.get_strategy_by_name(req.strategy_name)
             strategy_id = strategy_record.id if strategy_record else None
 
             result_dict = report.to_db_dict(strategy_id)
             result_dict["stock_name"] = report.stock_name
             result_id = repo.save_backtest_result(session, result_dict)
-            session.commit()
-        except Exception as e:
-            session.rollback()
-            raise e
-        finally:
-            session.close()
+        # session 自动 commit + close
 
         return {
             "success": True,
@@ -441,7 +431,7 @@ async def run_portfolio_backtest(req: PortfolioBacktestRequest):
 
     except Exception as e:
         logger.error("backtest/portfolio/run 失败: %s\n%s", e, traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="回测服务异常")
 
 
 # ===== 投票模型回测 API (技术投票模型) =====
@@ -473,9 +463,8 @@ async def run_voting_backtest(req: VotingBacktestRequest):
             initial_capital=req.initial_capital,
         )
 
-        # 持久化
-        session = repo.get_session()
-        try:
+        # 持久化 (PR3.3)
+        with repo.get_session() as session:
             repo.save_strategy_config(
                 session, "技术指标投票模型",
                 "src.models.technical_voting.TechnicalVotingModel",
@@ -484,21 +473,13 @@ async def run_voting_backtest(req: VotingBacktestRequest):
                 "综合投票模型"
             )
 
-            from ...models.database import StrategyConfig
-            strategy_record = session.query(StrategyConfig).filter_by(
-                name="技术指标投票模型"
-            ).first()
+            strategy_record = repo.get_strategy_by_name("技术指标投票模型")
             strategy_id = strategy_record.id if strategy_record else None
 
             result_dict = report.to_db_dict(strategy_id)
             result_dict["stock_name"] = report.stock_name
             result_id = repo.save_backtest_result(session, result_dict)
-            session.commit()
-        except Exception as e:
-            session.rollback()
-            raise e
-        finally:
-            session.close()
+        # session 自动 commit + close
 
         return {
             "success": True,
@@ -529,7 +510,7 @@ async def run_voting_backtest(req: VotingBacktestRequest):
 
     except Exception as e:
         logger.error("backtest/voting/run 失败: %s\n%s", e, traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="回测服务异常")
 
 
 # ===== 策略 API =====
@@ -559,58 +540,9 @@ async def get_models_summary(
     models = strategies_config.get("strategies", [])
 
     repo = DataRepository()
-    session = repo.get_session()
-    try:
-        from ...models.database import BacktestResult, StrategyConfig
-        summaries = []
-        for s in models:
-            strategy_record = session.query(StrategyConfig).filter_by(
-                name=s["name"]
-            ).first()
-            if not strategy_record:
-                # 尝试直接用名称模糊匹配
-                strategy_record = session.query(StrategyConfig).filter(
-                    StrategyConfig.name.like(f"%{s['name']}%")
-                ).first()
-
-            if strategy_record:
-                result = session.query(BacktestResult).filter(
-                    BacktestResult.strategy_id == strategy_record.id,
-                    BacktestResult.stock_code == stock_code,
-                ).order_by(BacktestResult.created_at.desc()).first()
-
-                if result:
-                    summaries.append({
-                        "strategy_name": s["name"],
-                        "strategy_type": s.get("strategy_type", "signal"),
-                        "total_return": result.total_return,
-                        "annual_return": result.annual_return,
-                        "sharpe_ratio": result.sharpe_ratio,
-                        "max_drawdown": result.max_drawdown,
-                        "win_rate": result.win_rate,
-                        "total_trades": result.total_trades,
-                        "excess_return": result.excess_return,
-                        "result_id": result.id,
-                        "created_at": str(result.created_at),
-                    })
-                else:
-                    summaries.append({
-                        "strategy_name": s["name"],
-                        "strategy_type": s.get("strategy_type", "signal"),
-                        "has_data": False,
-                        "result_id": None,
-                    })
-            else:
-                summaries.append({
-                    "strategy_name": s["name"],
-                    "strategy_type": s.get("strategy_type", "signal"),
-                    "has_data": False,
-                    "result_id": None,
-                })
-
-        return {"success": True, "data": summaries}
-    finally:
-        session.close()
+    # PR3.3: 用 repo 封装方法替代直 ORM 查询
+    summaries = repo.get_models_summary_for_stock(models, stock_code)
+    return {"success": True, "data": summaries}
 
 
 # ===== 回测结果 API =====
@@ -672,7 +604,8 @@ async def run_batch_backtest(req: BatchBacktestRequest):
         return {"success": True, "total": len(ranked), "data": ranked}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("批量回测失败: %s\n%s", e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail="批量回测服务异常")
 
 
 # ===== 参数搜索 API =====
@@ -764,7 +697,8 @@ async def run_param_search(req: ParamSearchRequest):
         return {"success": True, "total": len(results), "data": results}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("参数搜索失败: %s\n%s", e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail="参数搜索服务异常")
 
 
 
@@ -773,10 +707,10 @@ async def run_param_search(req: ParamSearchRequest):
 @router.get("/stockpool/list")
 async def get_stock_pool(
     exclude_st: bool = Query(True),
-    industry: Optional[str] = Query(None),
-    min_mcap: Optional[float] = Query(None),
-    max_mcap: Optional[float] = Query(None),
-    max_stocks: Optional[int] = Query(None),
+    industry: str | None = Query(None),
+    min_mcap: float | None = Query(None),
+    max_mcap: float | None = Query(None),
+    max_stocks: int | None = Query(None),
 ):
     """获取符合条件的股票池"""
     repo = DataRepository()
