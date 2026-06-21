@@ -1,0 +1,58 @@
+# Dependabot 配置 — 自动依赖更新
+# https://docs.github.com/en/code-security/dependabot
+
+version: 2
+
+updates:
+  # Python 依赖 — 跟踪 requirements.in
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    # 每周一早上 9 点 (北京时间) 检查更新
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # PR 数量限制,避免 PR 洪水
+    open-pull-requests-limit: 5
+    # 哪些依赖要更新
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+    # 哪些不要自动更新(高风险,需人工 review)
+    ignore:
+      - dependency-name: "pandas"
+        # pandas 大版本变更经常破坏 API (e.g. 2.x → 3.x)
+        versions: ["[3.0,)"]
+      - dependency-name: "numpy"
+        versions: ["[2.0,)"]
+      - dependency-name: "sqlalchemy"
+        # SQLAlchemy 2.0 删除 legacy API,需要测试
+        versions: ["[2.1,)"]
+    # 自动 rebase 冲突 PR
+    rebase-strategy: "auto"
+    # 自动 squash 提交
+    squash: true
+    # PR 标签
+    labels:
+      - "dependencies"
+      - "automated"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    commit-message:
+      prefix: "ci"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
+      - "automated"
