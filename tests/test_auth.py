@@ -59,17 +59,23 @@ class TestCheckBearerToken:
     def test_case_insensitive_scheme(self, monkeypatch):
         """HTTP 规范说 scheme 大小写不敏感"""
         monkeypatch.setenv("QUANT_API_KEY", "k")
-        assert check_bearer_token("bearer k") is True
-        assert check_bearer_token("BEARER k") is True
-        assert check_bearer_token("BeArEr k") is True
+        import importlib
+        import src.web.auth as auth_mod
+        importlib.reload(auth_mod)
+        assert auth_mod.check_bearer_token("bearer k") is True
+        assert auth_mod.check_bearer_token("BEARER k") is True
+        assert auth_mod.check_bearer_token("BeArEr k") is True
 
     def test_timing_attack_resistance(self, monkeypatch):
         """secrets.compare_digest 是常量时间,这里只验调用没抛异常"""
         monkeypatch.setenv("QUANT_API_KEY", "a" * 32)
+        import importlib
+        import src.web.auth as auth_mod
+        importlib.reload(auth_mod)
         # 不同长度的 token 也应该被正确处理
-        assert check_bearer_token("Bearer " + "a" * 31) is False
-        assert check_bearer_token("Bearer " + "a" * 32) is True
-        assert check_bearer_token("Bearer " + "a" * 33) is False
+        assert auth_mod.check_bearer_token("Bearer " + "a" * 31) is False
+        assert auth_mod.check_bearer_token("Bearer " + "a" * 32) is True
+        assert auth_mod.check_bearer_token("Bearer " + "a" * 33) is False
 
 
 # ============================================================
@@ -122,7 +128,7 @@ class TestGetApiKey:
 class TestSafeImportStrategy:
     def test_accepts_whitelisted_path(self):
         """白名单 src.strategies.* 接受"""
-        cls = safe_import_strategy("src.strategies.ma_cross.MaCrossStrategy")
+        cls = safe_import_strategy("src.strategies.ma_cross.MACrossStrategy")
         # 类名可能不同(具体看实际代码),但应是 class
         assert isinstance(cls, type)
         # 类应该能识别"策略"接口(继承 BaseStrategy)
@@ -184,23 +190,21 @@ class TestSafeImportStrategy:
             safe_import_strategy("src.strategies.nonexistent_xyz_module.Foo")
 
     def test_rejects_module_with_no_dot(self):
-        with pytest.raises(ValueError, match="格式错误"):
+        with pytest.raises(ValueError, match="不在白名单"):
             safe_import_strategy("NoDotsHere")
-        with pytest.raises(ValueError, match="格式错误"):
+        with pytest.raises(ValueError, match="不在白名单"):
             safe_import_strategy("onlyone.class")
 
     def test_rejects_trailing_dot(self):
-        """'src.x.' 末尾点 - rpartition 后 class_name 为空"""
-        with pytest.raises(ValueError, match="格式错误"):
+        """'src.x.' 末尾点 - 不在白名单前缀范围内"""
+        with pytest.raises(ValueError, match="不在白名单"):
             safe_import_strategy("src.x.")
 
     def test_loaded_object_must_be_class(self, monkeypatch):
         """getattr 拿到函数/变量应拒绝"""
-        # 用一个确实存在但不是类的对象
-        import src.config
-        # get_config 是函数,不是类
+        # __name__ 是 str, 不是类; 且在白名单范围内
         with pytest.raises(ValueError, match="不是类"):
-            safe_import_strategy("src.config.get_config")
+            safe_import_strategy("src.strategies.ma_cross.__name__")
 
     def test_whitelist_prefixes(self):
         """白名单前缀应至少包含 src.strategies. 和 src.models."""

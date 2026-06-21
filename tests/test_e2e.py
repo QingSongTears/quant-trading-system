@@ -22,6 +22,7 @@ from datetime import date, datetime, timedelta
 from unittest.mock import patch, MagicMock, PropertyMock
 
 import pytest
+pytest.importorskip("httpx")
 import pandas as pd
 import numpy as np
 from fastapi.testclient import TestClient

@@ -155,6 +155,8 @@ def test_equity_curve_shape_matches(synthetic_market):
     engine = PortfolioBacktestEngine.__new__(PortfolioBacktestEngine)
     engine.commission = 0.001
     engine.stamp_duty = 0.0005
+    engine.min_commission = 0
+    engine.slippage = 0
     strategy = ConstantSelectStrategy()
 
     equity_new, rebalance_new = engine._simulate_portfolio(
@@ -214,6 +216,8 @@ def test_no_rebalance_yields_market_return(synthetic_market):
     engine = PortfolioBacktestEngine.__new__(PortfolioBacktestEngine)
     engine.commission = 0.001
     engine.stamp_duty = 0.0005
+    engine.min_commission = 0
+    engine.slippage = 0
 
     equity, rebalance = engine._simulate_portfolio(
         strategy=EmptyStrategy(),
@@ -233,6 +237,8 @@ def test_rebalance_details_have_required_fields(synthetic_market):
     engine = PortfolioBacktestEngine.__new__(PortfolioBacktestEngine)
     engine.commission = 0.001
     engine.stamp_duty = 0.0005
+    engine.min_commission = 0
+    engine.slippage = 0
     strategy = ConstantSelectStrategy()
 
     equity, rebalance = engine._simulate_portfolio(
@@ -261,6 +267,8 @@ def test_performance_speedup(synthetic_market):
     engine = PortfolioBacktestEngine.__new__(PortfolioBacktestEngine)
     engine.commission = 0.001
     engine.stamp_duty = 0.0005
+    engine.min_commission = 0
+    engine.slippage = 0
     strategy = ConstantSelectStrategy()
 
     # 用 1000 天 / 50 只股票的压力场景

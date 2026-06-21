@@ -2220,9 +2220,6 @@ def _compute_industry_ics(scores, combo_name):
 
 
 
-# ── XGBoost 预测 ──
-import pickle as _pickle
-
 def _predict_with_xgb(code, date_param=""):
     """使用XGBoost模型预测，返回(proba, signal, dim_scores)"""
     code = str(code).zfill(6)

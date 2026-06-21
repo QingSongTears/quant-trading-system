@@ -6,6 +6,7 @@ addopts = [
     "-ra",                  # 显示所有非 pass 结果摘要
     "--strict-markers",     # 拼错的 marker 直接报错,避免静默
     "--showlocals",         # 失败时显示局部变量(便于排查)
+    "--basetemp=.pytest_tmp",  # 避免 Windows Temp 目录权限问题
 ]
 markers = [
     "slow: 跑得慢的测试(>5s)",

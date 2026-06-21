@@ -60,6 +60,8 @@ def sample_ohlcv_data() -> pd.DataFrame:
     np.random.seed(42)
     n = 250
     dates = pd.date_range(end=date.today(), periods=n, freq="B")
+    # 当 end 落在非交易日时，pandas 可能返回少于 periods 个日期
+    n = len(dates)
 
     # 模拟价格：带趋势的随机游走
     base = 10.0
