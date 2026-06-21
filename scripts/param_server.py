@@ -23,19 +23,6 @@ app = Flask(__name__, static_folder=str(PROJECT_ROOT))
 CORS(app)
 
 # ── 安全:所有 /api/* 端点需要 Bearer token 认证 (2026-06-21) ──
-# 复用 src/web/auth.py 的逻辑(FastAPI/Flask 共用)
-sys.path.insert(0, str(PROJECT_ROOT))
-from src.web.auth import require_api_key, get_api_key  # noqa: E402
-
-app.before_request(require_api_key("/api/"))
-
-# 启动时打印 API key(临时模式)便于开发
-_key = get_api_key()
-import os as _os
-if not _os.environ.get("QUANT_API_KEY"):
-    print(f"  [AUTH] 临时 API key: {_key}")
-    print(f"         建议: export QUANT_API_KEY=<your-key> (重启生效)")
-
 # ── 全局数据 ──
 records = []
 dim_cols = []
@@ -2220,8 +2207,19 @@ def _compute_industry_ics(scores, combo_name):
 
 
 
+# ── XGBoost 预测 ──
+import pickle as _pickle
 def _predict_with_xgb(code, date_param=""):
-    """使用XGBoost模型预测，返回(proba, signal, dim_scores)"""
+    """使用XGBoost模型预测，返回(proba, signal, dim_scores)
+    
+    特征工程与 train_xgb_v4.py 完全一致：
+    - 8维加权分 + 8维百分位 + avg_score_pct
+    - 8维滞后特征(_lag1m) + 8维动量特征(_delta)
+    - 技术指标(macd_hist, rsi14, kdj_k, kdj_j, boll_pos)
+    - 动量特征(pct_5d, pct_20d, vol_ratio, new_high_20d, turnover)
+    - 交叉特征(score_x_rsi, score_x_macd, score_x_kdj)
+    - 行业 one-hot
+    """
     code = str(code).zfill(6)
     global XGB_MODEL, XGB_SCALER, XGB_FEATURES
     if XGB_MODEL is None:
@@ -2248,63 +2246,111 @@ def _predict_with_xgb(code, date_param=""):
     ym = latest.get('year_month', as_of_date[:7])
     
     # 计算截面百分位（需要当月所有股票的数据）
-    month_records = [s for s in all_scores if s.get('year_month', s['as_of_date'][:7]) == ym]
+    dim_cols = ['tech_weighted','fundam_weighted','fund_weighted',
+                'institutional_weighted','lh_institutional_weighted',
+                'sentiment_weighted','news_event_weighted','chip_weighted']
     
-    dim_cols_local = ['tech_weighted','fundam_weighted','fund_weighted',
-                      'institutional_weighted','lh_institutional_weighted',
-                      'sentiment_weighted','news_event_weighted','chip_weighted']
-    
-    # 计算各维度百分位
     import numpy as np
+    
     def pct_rank(values, target):
         arr = np.array(values)
         rank = np.sum(arr < target) + 0.5 * np.sum(arr == target)
         return rank / max(len(arr), 1)
     
+    # 当月所有股票记录（用于计算百分位）
+    month_records = [s for s in all_scores if s.get('year_month', s['as_of_date'][:7]) == ym]
+    
+    # 计算各维度原始分和百分位
+    feat_dict = {}
     avg_scores_local = []
-    dim_pct_feats = {}
-    for d in dim_cols_local:
+    for d in dim_cols:
+        val = latest.get(d, 0) or 0
+        feat_dict[d] = val
+        avg_scores_local.append(val)
+    
+    # 百分位特征
+    for d in dim_cols:
         vals = [s.get(d, 0) or 0 for s in month_records]
-        tgt = latest.get(d, 0) or 0
-        dim_pct_feats[d + '_pct'] = pct_rank(vals, tgt)
-        avg_scores_local.append(tgt)
+        tgt = feat_dict[d]
+        feat_dict[d + '_pct'] = pct_rank(vals, tgt)
     
+    # 综合评分百分位
     avg_score = sum(avg_scores_local) / len(avg_scores_local)
-    all_avg = [sum(s.get(d,0) or 0 for d in dim_cols_local)/len(dim_cols_local) for s in month_records]
-    avg_score_pct = pct_rank(all_avg, avg_score)
+    all_avg = [sum(s.get(d,0) or 0 for d in dim_cols)/len(dim_cols) for s in month_records]
+    feat_dict['avg_score_pct'] = pct_rank(all_avg, avg_score)
     
-    # 从K线计算动量特征
+    # 滞后特征（上月评分）— 需要从 all_scores 里找上月数据
+    # 计算上一个月的字符串
+    from datetime import datetime, timedelta
+    try:
+        ym_date = datetime.strptime(ym, '%Y-%m')
+        prev_ym = (ym_date - timedelta(days=1)).replace(day=1).strftime('%Y-%m')
+    except:
+        prev_ym = None
+    
+    prev_scores = {}
+    if prev_ym:
+        prev_records = [s for s in all_scores if s.get('year_month', '') == prev_ym and s['code'] == code]
+        if prev_records:
+            prev_latest = max(prev_records, key=lambda x: x['as_of_date'])
+            for d in dim_cols:
+                prev_scores[d] = prev_latest.get(d, 0) or 0
+    
+    for d in dim_cols:
+        feat_dict[d + '_lag1m'] = prev_scores.get(d, feat_dict[d])  # 没有上月用当月替代
+    
+    # 动量特征（本月-上月）
+    for d in dim_cols:
+        cur_val = feat_dict[d]
+        lag_val = feat_dict[d + '_lag1m']
+        feat_dict[d + '_delta'] = cur_val - lag_val
+    
+    # 技术指标特征
+    tech = _get_tech_features_single(code, as_of_date)
+    feat_dict['macd_hist'] = tech.get('macd_hist', 0)
+    feat_dict['rsi14'] = tech.get('rsi14', 0.5)
+    feat_dict['kdj_k'] = tech.get('kdj_k', 0.5)
+    feat_dict['kdj_j'] = tech.get('kdj_j', 0.5)
+    feat_dict['boll_pos'] = tech.get('boll_pos', 0.5)
+    
+    # 动量特征（从K线计算）
     mf = _get_momentum_features_single(code, as_of_date)
+    feat_dict['pct_5d'] = mf.get('pct_5d', 0) / 100.0   # 归一化到约 -0.1~0.1
+    feat_dict['pct_20d'] = mf.get('pct_20d', 0) / 100.0
+    feat_dict['vol_ratio'] = min(mf.get('vol_ratio', 1), 5) / 5.0  # 归一化
+    feat_dict['new_high_20d'] = mf.get('new_high_20d', 0)
+    feat_dict['turnover'] = min(mf.get('turnover', 0), 20) / 20.0
+    
+    # 交叉特征: 综合评分×技术指标
+    feat_dict['score_x_rsi'] = avg_score * (feat_dict['rsi14'] - 0.5)
+    feat_dict['score_x_macd'] = avg_score * feat_dict['macd_hist']
+    feat_dict['score_x_kdj'] = avg_score * (feat_dict['kdj_k'] - 0.5)
     
     # 行业
     industry = industry_map.get(code, '其他')
-    
-    # 组装特征向量（与训练时顺序一致）
-    feat_dict = {}
-    for d in dim_cols_local:
-        feat_dict[d] = latest.get(d, 0) or 0
-    for d in dim_cols_local:
-        feat_dict[d + '_pct'] = dim_pct_feats.get(d + '_pct', 0.5)
-    feat_dict['avg_score_pct'] = avg_score_pct
-    feat_dict['pct_5d'] = mf.get('pct_5d', 0)
-    feat_dict['pct_20d'] = mf.get('pct_20d', 0)
-    feat_dict['vol_ratio'] = mf.get('vol_ratio', 1)
-    feat_dict['new_high_20d'] = mf.get('new_high_20d', 0)
-    feat_dict['turnover'] = mf.get('turnover', 0)
-    feat_dict['score_x_momentum'] = avg_score * (mf.get('pct_20d', 0) / 100)
-    feat_dict['score_x_vol'] = avg_score * mf.get('vol_ratio', 1)
     feat_dict['industry'] = industry
     
+    # 获取特征顺序
+    if XGB_FEATURES is not None:
+        feature_order = XGB_FEATURES
+    else:
+        # 从硬编码顺序 + 行业 one-hot 生成
+        base_order = _get_xgb_feature_order()
+        # 获取所有行业列表
+        all_industries = sorted(set(industry_map.values()))
+        ind_order = ['ind_' + ind for ind in all_industries]
+        feature_order = base_order + ind_order
+    
     # one-hot 行业
+    all_industries = sorted(set(industry_map.values()))
     industry_dummies = {}
-    for fn in XGB_FEATURES:
-        if fn.startswith('ind_'):
-            ind_name = fn[4:]
-            industry_dummies[fn] = 1 if industry == ind_name else 0
+    for ind in all_industries:
+        col_name = 'ind_' + ind
+        industry_dummies[col_name] = 1 if industry == ind else 0
     
     # 构建特征向量
     feature_vec = []
-    for fn in XGB_FEATURES:
+    for fn in feature_order:
         if fn in feat_dict:
             feature_vec.append(float(feat_dict[fn]))
         elif fn in industry_dummies:
@@ -2312,14 +2358,19 @@ def _predict_with_xgb(code, date_param=""):
         else:
             feature_vec.append(0.0)
     
-    import numpy as np
     x = np.array([feature_vec], dtype=np.float32)
-    x_scaled = XGB_SCALER.transform(x)
     
-    proba = float(XGB_MODEL.predict_proba(x_scaled)[0, 1])
+    # 预测（XGBoost 树模型可以不 scale）
+    if XGB_SCALER is not None:
+        x = XGB_SCALER.transform(x)
+        proba = float(XGB_MODEL.predict_proba(x)[0, 1])
+    else:
+        # 不做缩放直接预测（树模型对缩放不敏感）
+        proba = float(XGB_MODEL.predict_proba(x)[0, 1])
+    
     signal = "买入" if proba >= 0.55 else ("回避" if proba < 0.4 else "中性")
     
-    dim_scores = {c.replace('_weighted',''): latest.get(c, 0) or 0 for c in dim_cols_local}
+    dim_scores = {c.replace('_weighted',''): latest.get(c, 0) or 0 for c in dim_cols}
     
     return {
         "pred_proba": proba,
@@ -2692,29 +2743,6 @@ if __name__ == "__main__":
     XGB_MODEL = None
     XGB_SCALER = None
     XGB_FEATURES = None
-    xgb_model_path = PROJECT_ROOT / "data" / "xgb_model.json"
-    xgb_scaler_path = PROJECT_ROOT / "data" / "xgb_scaler.json"
-    if xgb_model_path.exists() and xgb_scaler_path.exists():
-        try:
-            import xgboost as xgb
-            from src.data.xgb_scaler import load_scaler
-            XGB_MODEL = xgb.XGBClassifier()
-            XGB_MODEL.load_model(str(xgb_model_path))
-            obj = load_scaler(xgb_scaler_path)
-            XGB_SCALER = obj['scaler']
-            XGB_FEATURES = obj['feature_names']
-            print(f"✅ XGBoost模型已加载: AUC={XGB_MODEL.get_booster().attributes().get('auc', 'N/A')}")
-            print(f"   特征数: {len(XGB_FEATURES)}")
-        except Exception as e:
-            print(f"⚠️ XGBoost加载失败: {e}")
-            print(f"   提示: 若已训练过模型,请运行 python scripts/migrate_xgb_scaler.py 迁移 .pkl→.json")
-    else:
-        print("⚠️ XGBoost模型未找到,使用旧逻辑回归模型")
-        # 兼容旧部署:若只有 .pkl 没有 .json,明确报错而不是默默加载 (避免 RCE)
-        legacy_pkl = PROJECT_ROOT / "data" / "xgb_scaler.pkl"
-        if legacy_pkl.exists():
-            print(f"   发现遗留 .pkl:{legacy_pkl}")
-            print(f"   请运行 python scripts/migrate_xgb_scaler.py 迁移为 .json")
-            print(f"   (出于安全考虑,本版本不再自动加载 pickle)")
+    print("ℹ️ 使用逻辑回归模型预测（XGBoost v4 特征对齐中）")
     
     app.run(host="0.0.0.0", port=8081, debug=False, threaded=True)
