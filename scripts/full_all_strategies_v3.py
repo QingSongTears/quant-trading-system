@@ -71,7 +71,7 @@ for sid, sid_str, sname in STRATEGIES:
     for batch_start in range(0, len(todo), 200):
         batch = todo[batch_start:batch_start+200]
         ok = 0
-        with ThreadPoolExecutor(max_workers=4) as ex:
+        with ThreadPoolExecutor(max_workers=12) as ex:
             futures = {ex.submit(partial(backtest_one, code, sid_str)): code for code in batch}
             for f in as_completed(futures):
                 if f.result(): ok += 1
