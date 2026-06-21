@@ -4,6 +4,25 @@
 from pathlib import Path
 
 # ============================================================
+# 全局风控常量 (PR1.2 新增)
+# ============================================================
+# 单位约定: 百分比统一用小数 (0.08 = 8%)
+# 历史 bug 已修复: src/strategies/stock_screener/strategies/v7_bull_wave.py
+# 原 stop_loss_pct=-8.0 (整数百分比) 与全项目小数惯例差 100 倍
+# 新代码应直接 import 此处,避免在策略类内重新硬编码
+from src.constants.risk import (
+    STOP_LOSS_DEFAULT as _STD_STOP_LOSS,       # 0.05
+    STOP_LOSS_AGGRESSIVE as _STD_STOP_LOSS_AG, # 0.07
+    MAX_SINGLE_POSITION_PCT as _STD_MAX_POS,   # 0.22
+)
+# 本文件内 STOP_LOSS_PCT / MAX_SINGLE_POSITION_PCT 等保留作为
+# stock_screener 模块的"本地值",与 src.constants.risk 的全局默认可能不同
+# (各模块经独立优化)。新策略代码应 import src.constants.risk。
+__all_risk_constants__ = [
+    "_STD_STOP_LOSS", "_STD_STOP_LOSS_AG", "_STD_MAX_POS",
+]
+
+# ============================================================
 # 路径（相对 — 唯一来源）
 # ============================================================
 ROOT_DIR = Path(__file__).resolve().parent
