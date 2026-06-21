@@ -51,6 +51,7 @@ tr.clickable{cursor:pointer}
   <div class="nav">
     <a href="/diagnose">诊断</a><a href="/backtest-lab">回测</a><a href="/predict">预测</a><a href="/">全部</a>
   </div>
+  <div class="nav-links"><a href="/">← 返回首页</a></div>
 </header>
 <div class="container">
   <div class="toolbar">
@@ -63,6 +64,10 @@ tr.clickable{cursor:pointer}
       <option value="3">≥3只成分股</option><option value="5">≥5只</option><option value="10">≥10只</option><option value="20">≥20只</option>
     </select>
     <span id="sectorDate" style="font-size:0.78rem;color:var(--dim);flex:1;text-align:right"></span>
+    <div style="position:relative;margin-left:8px;">
+      <input type="text" id="sectorSearch" placeholder="搜行业/股票" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.78rem;outline:none;width:130px;" oninput="sectorSuggest()" onkeydown="if(event.key==='Enter')goSectorStock()">
+      <div id="sectorSug" style="display:none;position:absolute;top:100%;right:0;z-index:100;background:var(--card);border:1px solid var(--border);border-radius:6px;max-height:200px;overflow-y:auto;width:220px;"></div>
+    </div>
   </div>
 
   <div class="grid-4" id="statsBar"></div>
@@ -90,6 +95,31 @@ tr.clickable{cursor:pointer}
 <script>
 let sectors = [];
 let chart = null;
+let sugTimer = null;
+
+// 搜索建议
+function sectorSuggest() {
+  clearTimeout(sugTimer);
+  const q = document.getElementById('sectorSearch').value.trim();
+  if (q.length < 1) { document.getElementById('sectorSug').style.display = 'none'; return; }
+  sugTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/stock/search?q=' + encodeURIComponent(q));
+      const d = await r.json();
+      const items = d.results || [];
+      if (!items.length) { document.getElementById('sectorSug').style.display = 'none'; return; }
+      document.getElementById('sectorSug').innerHTML = items.slice(0,8).map(s =>
+        `<div onclick="window.location.href='/diagnose?code=${s.code}'" style="padding:8px 12px;cursor:pointer;font-size:0.78rem;border-bottom:1px solid var(--border)"><span style="color:var(--accent);font-family:monospace">${s.code}</span> ${s.name}</div>`
+      ).join('');
+      document.getElementById('sectorSug').style.display = 'block';
+    } catch(e) {}
+  }, 200);
+}
+function goSectorStock() {
+  const v = document.getElementById('sectorSearch').value.trim();
+  if (v) window.location.href = '/diagnose?code=' + v.replace(/[^0-9]/g,'').padStart(6,'0');
+}
+document.addEventListener('click', e => { if (!e.target.closest('#sectorSearch')) document.getElementById('sectorSug').style.display = 'none'; });
 
 document.addEventListener('DOMContentLoaded', loadSectors);
 document.getElementById('detailModal').addEventListener('click', e => { if(e.target===e.currentTarget) closeDetail(); });
