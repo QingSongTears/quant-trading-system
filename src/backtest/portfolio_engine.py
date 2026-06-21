@@ -22,6 +22,7 @@ import pandas as pd
 from ..config import get_config
 from ..db.sql_utils import read_sql
 from ..models.repository import DataRepository
+from ..metrics import sharpe_ratio as _sharpe_ratio, max_drawdown as _max_drawdown, volatility as _volatility, profit_factor as _profit_factor, win_rate as _win_rate
 from .base_selection_strategy import BaseSelectionStrategy
 from .engine import BacktestReport
 
@@ -477,32 +478,15 @@ class PortfolioBacktestEngine:
         # 日收益率
         daily_returns = equity_series.pct_change().dropna()
 
-        # 夏普比率
-        if len(daily_returns) > 1 and daily_returns.std() > 0:
-            sharpe = (daily_returns.mean() * 250 - self.risk_free_rate) / (daily_returns.std() * np.sqrt(250))
-        else:
-            sharpe = 0
+        # PR2.2: 夏普 / 最大回撤 / 波动率 / 胜率 / 盈亏比 全部委托给 metrics.performance
+        sharpe = _sharpe_ratio(daily_returns.values, risk_free=self.risk_free_rate)
+        max_drawdown = _max_drawdown(equity_series.values)  # 负数或0
+        annual_vol = _volatility(daily_returns.values)
+        win_rate = _win_rate(daily_returns.values)
+        profit_factor = _profit_factor(daily_returns.values)
 
-        # 最大回撤
-        cummax = equity_series.cummax()
-        drawdown = (equity_series - cummax) / cummax * 100
-        max_drawdown = drawdown.min()
-        if max_drawdown > 0:
-            max_drawdown = 0  # 没有回撤
-
-        # 年化波动率
-        annual_vol = daily_returns.std() * np.sqrt(250) * 100 if len(daily_returns) > 1 else 0
-
-        # 胜率 (调仓后正收益的比例，简化为日收益率为正的比例)
-        win_rate = (daily_returns > 0).sum() / len(daily_returns) * 100 if len(daily_returns) > 0 else 0
-
-        # 卡玛比率
+        # 卡玛比率 (依赖上面算出的 annual_return 和 max_drawdown)
         calmar = annual_return / abs(max_drawdown) if max_drawdown != 0 else 0
-
-        # 盈亏比
-        gains = daily_returns[daily_returns > 0]
-        losses = daily_returns[daily_returns < 0]
-        profit_factor = gains.mean() / abs(losses.mean()) if len(losses) > 0 and losses.mean() != 0 else 0
 
         # 基准收益
         benchmark_return = self._calc_benchmark_return(start_date, end_date)

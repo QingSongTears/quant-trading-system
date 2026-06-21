@@ -27,6 +27,9 @@ from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass, field
 import warnings
+
+# PR2.2: 委托给 src.metrics.performance 单一实现
+from src.metrics import sharpe_ratio as _sharpe_ratio, max_drawdown as _max_drawdown
 warnings.filterwarnings("ignore")
 
 from config import DATA_RAW_DIR, OUTPUT_DIR, OUTPUT_COMBINED_DIR
@@ -434,15 +437,19 @@ class BacktestEngine:
         return (eq["equity"].iloc[-1] / eq["equity"].iloc[0] - 1) * 100
 
     def _calc_max_dd(self, eq):
-        if eq.empty: return 0
-        peak = np.maximum.accumulate(eq["equity"].values)
-        return float(np.min((eq["equity"].values - peak) / peak * 100))
+        """PR2.2: 委托 metrics.performance.max_drawdown (返回负数或0, e.g. -25.5 表示 25.5% 回撤)"""
+        if eq.empty:
+            return 0.0
+        return _max_drawdown(eq["equity"].values) * 100  # 转百分比,保持原返回格式
 
     def _calc_sharpe(self, eq):
-        if len(eq) < 10: return 0
+        """PR2.2: 委托 metrics.performance.sharpe_ratio (ann_factor=250, risk_free=0.02 统一)"""
+        if len(eq) < 10:
+            return 0
         daily_r = eq["equity"].pct_change().dropna()
-        if daily_r.std() == 0: return 0
-        return float((daily_r.mean() / daily_r.std()) * np.sqrt(252))
+        if len(daily_r) < 2:
+            return 0
+        return _sharpe_ratio(daily_r.values, risk_free=0.02, ann_factor=250)
 
     def _print_summary(self, result: BacktestResult):
         print(f"\n{'='*70}")

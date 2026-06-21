@@ -18,6 +18,8 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from src.config import get_config, get_db_url
 from src.scoring import ScorerRegistry
+# PR2.2: 委托给 metrics.performance 单一实现 (消除 risk_free=0.025 硬编码)
+from src.metrics import sharpe_ratio as _sharpe_ratio, max_drawdown as _max_drawdown, annual_return as _annual_return, volatility as _volatility
 
 
 def get_recent_weekly_dates(engine, n_dates=8):
@@ -162,7 +164,7 @@ def simulate_portfolio(picks_by_date, price_data, start_d, end_d, initial=1_000_
 
 
 def compute_sharpe(equity_df, risk_free=0.025):
-    """计算 Sharpe / 最大回撤 / 年化收益"""
+    """计算 Sharpe / 最大回撤 / 年化收益 — PR2.2: 委托 metrics.performance"""
     df = equity_df.copy()
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date").reset_index(drop=True)
@@ -173,14 +175,14 @@ def compute_sharpe(equity_df, risk_free=0.025):
     n_years = max(n_days / 365.25, 0.01)
 
     total_ret = df["equity"].iloc[-1] / df["equity"].iloc[0] - 1
-    ann_ret = (1 + total_ret) ** (1 / n_years) - 1 if n_years > 0 else 0
-    vol = df["return"].std() * np.sqrt(252)
-    sharpe = (ann_ret - risk_free) / vol if vol > 0 else 0
+    # PR2.2: 用 metrics.performance 统一算法 (ann_factor=250 替代 sqrt(252))
+    ann_ret = _annual_return(total_ret, n_days, ann_factor=365) / 100  # metrics 返回百分比,转回 decimal
+    vol_pct = _volatility(df["return"].values, ann_factor=365)  # 百分比
+    vol = vol_pct / 100  # 转回 decimal 用于 sharpe 计算
+    sharpe = _sharpe_ratio(df["return"].values, risk_free=risk_free, ann_factor=365)
 
-    # 最大回撤
-    cummax = df["equity"].cummax()
-    drawdown = (df["equity"] - cummax) / cummax
-    max_dd = drawdown.min()
+    # 最大回撤 (PR2.2: 委托 metrics)
+    max_dd = _max_drawdown(df["equity"].values)
 
     return {
         "总收益": f"{total_ret*100:+.2f}%",
