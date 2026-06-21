@@ -4,15 +4,27 @@ FastAPI Web 应用
 
 提供 A 股量化回测系统的 Web 可视化界面。
 所有前端资源通过 CDN 引入，无需 Node.js 构建工具。
+
+安全加固 (2026-06-21)
+---------------------
+- 默认监听 127.0.0.1 (run.py)
+- TrustedHostMiddleware 防 Host header 攻击
+- /api/* 全部需要 Bearer token 认证
+- openapi_url 关掉避免接口被枚举
+- class_path 走白名单 (auth.safe_import_strategy)
 """
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ..config import get_config
+
+logger = logging.getLogger(__name__)
 
 # 模板目录
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -63,12 +75,24 @@ def create_app() -> FastAPI:
     config = get_config()
     web_config = config.get("web", {})
 
+    # TrustedHost 白名单 — 默认仅本地访问
+    # 生产部署时通过 QUANT_ALLOWED_HOSTS 环境变量覆盖(逗号分隔)
+    import os
+    allowed_hosts = os.environ.get(
+        "QUANT_ALLOWED_HOSTS",
+        ",".join(web_config.get("allowed_hosts", ["localhost", "127.0.0.1", "0.0.0.0"]))
+    ).split(",")
+
     app = FastAPI(
         title=web_config.get("title", "QuantTrading - A股量化回测系统"),
         version=config.get("system", {}).get("version", "0.1.0"),
         docs_url=None,      # 生产环境关闭 API 文档
         redoc_url=None,
+        openapi_url=None,   # 关闭 OpenAPI schema 枚举
     )
+
+    # ===== 安全中间件 =====
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
     # 全局异常处理器
     @app.exception_handler(404)
@@ -108,10 +132,12 @@ def create_app() -> FastAPI:
     # 全局 JSON 异常处理
     @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception):
-        """API 错误返回 JSON"""
+        """API 错误返回 JSON(不泄漏 traceback)"""
         if request.url.path.startswith("/api"):
+            # 仅记录到服务端日志,不返回 detail
+            logger.exception("API 错误: %s %s", request.method, request.url.path)
             return JSONResponse(
-                {"success": False, "error": str(exc)},
+                {"success": False, "error": "internal server error"},
                 status_code=500,
             )
         # 非 API 请求交给 Starlette 默认处理
@@ -126,6 +152,9 @@ def create_app() -> FastAPI:
     # 注册路由
     from .routes import main, api
     app.include_router(main.router)
+    # /api/* 全部需要 Bearer token
+    # 依赖在路由模块内部用 Depends 显式标注,这里不再做 router 级依赖
+    # (避免影响未来添加的 public 端点)
     app.include_router(api.router, prefix="/api")
 
     return app

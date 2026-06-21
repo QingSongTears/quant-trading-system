@@ -61,7 +61,11 @@ def main():
         """
     )
     parser.add_argument("--port", type=int, default=5050, help="Web 服务端口 (默认: 5050)")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="监听地址 (默认: 0.0.0.0)")
+    # 安全:默认绑定 127.0.0.1 (仅本机访问),避免无认证服务暴露到公网
+    # 如需公开访问,显式 --host=0.0.0.0 并配合 QUANT_API_KEY 环境变量 + 反向代理
+    parser.add_argument("--host", type=str,
+                        default=os.environ.get("BIND_HOST", "127.0.0.1"),
+                        help="监听地址 (默认: 127.0.0.1, env BIND_HOST 可覆盖)")
     parser.add_argument("--download", action="store_true", help="下载全市场历史数据")
     parser.add_argument("--download-incr", action="store_true", help="增量更新数据")
     parser.add_argument("--check", action="store_true", help="检查数据库状态")
