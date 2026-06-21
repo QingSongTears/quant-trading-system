@@ -10,8 +10,8 @@ from unittest.mock import patch, MagicMock, PropertyMock
 
 import pandas as pd
 
-# FastAPI TestClient
-from fastapi.testclient import TestClient
+# FastAPI TestClient (包装为自动带 Bearer token)
+from tests.conftest import AuthedTestClient as TestClient
 
 
 # ============================================================
@@ -65,7 +65,7 @@ def test_app():
 
 @pytest.fixture
 def client(test_app):
-    """TestClient"""
+    """TestClient (autouse Bearer token for /api/* endpoints)"""
     return TestClient(test_app)
 
 

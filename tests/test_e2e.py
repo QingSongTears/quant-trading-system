@@ -25,7 +25,11 @@ import pytest
 pytest.importorskip("httpx")
 import pandas as pd
 import numpy as np
-from fastapi.testclient import TestClient
+# FastAPI TestClient (包装为自动带 Bearer token)
+try:
+    from tests.conftest import AuthedTestClient as TestClient
+except ImportError:
+    from fastapi.testclient import TestClient
 
 # 确保项目根在 sys.path
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -793,8 +797,6 @@ class TestSmokeRegression:
     def test_core_pages_accessible(self, seeded_db):
         """冒烟: 3 个核心页面可访问"""
         from src.web.app import create_app
-        from fastapi.testclient import TestClient
-
         app = create_app()
         client = TestClient(app)
 
