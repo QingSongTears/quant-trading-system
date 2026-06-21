@@ -327,6 +327,11 @@ def signal_dashboard():
     return send_from_directory(str(PROJECT_ROOT / "output"), "signal_dashboard.html")
 
 
+@app.route("/dashboard")
+def dashboard():
+    return send_from_directory(str(PROJECT_ROOT / "output"), "dashboard.html")
+
+
 @app.route("/diagnose")
 def diagnose_page():
     return send_from_directory(str(PROJECT_ROOT / "output"), "diagnose.html")

@@ -39,11 +39,10 @@ print(f"   已回测(牛股策略): {len(done)} 只")
 print(f"   待回测: {len(todo)} 只")
 print(f"   总API调用: {len(todo) * len(STRATEGIES)} 次")
 
-# 截取上限(全部跑完可能要很久, 先跑2000只)
-BATCH_LIMIT = 2000
-if len(todo) > BATCH_LIMIT:
-    print(f"   分批: 先跑前{BATCH_LIMIT}只")
-    todo = todo[:BATCH_LIMIT]
+# 全部跑完(约7分钟)
+BATCH_LIMIT = len(todo)
+print(f"   本轮: 全量{len(todo)}只")
+print(f"   总API调用: {len(todo) * len(STRATEGIES)} 次")
 
 # 2. 并发回测
 results = []
