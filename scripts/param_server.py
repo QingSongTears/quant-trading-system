@@ -1945,7 +1945,7 @@ def api_dashboard_stats():
         sid = s['strategy_id']
         rows2 = conn.execute("""
             SELECT stock_code, stock_name, total_return, sharpe_ratio, win_rate, total_trades,
-                   start_date, end_date, benchmark_return, excess_return 
+                   start_date, end_date, benchmark_return, excess_return, max_drawdown
             FROM backtest_result 
             WHERE strategy_id=? AND total_return IS NOT NULL 
             ORDER BY total_return DESC LIMIT 20 
@@ -1990,13 +1990,19 @@ def api_dashboard_stats():
     
     # 5. 覆盖率统计
     coverage = {}
-    score_rows = conn.execute("SELECT COUNT(DISTINCT code) as n FROM stock_score").fetchone()
-    coverage['score_stocks'] = score_rows['n'] if score_rows else 0 
+    # 使用 prediction_record 替代不存在的 stock_score 表
+    pr_rows = conn.execute("SELECT COUNT(DISTINCT code) as n FROM prediction_record").fetchone()
+    coverage['score_stocks'] = pr_rows['n'] if pr_rows else 0
     kline_rows = conn.execute("SELECT COUNT(DISTINCT code) as n FROM daily_price WHERE close IS NOT NULL").fetchone()
-    coverage['kline_stocks'] = kline_rows['n'] if kline_rows else 0 
-    coverage['backtest_done'] = strategies[0]['cnt'] if strategies else 0 
-    coverage['score_records'] = conn.execute("SELECT COUNT(*) as n FROM stock_score").fetchone()['n'] 
-    coverage['tech_indicators'] = conn.execute("SELECT COUNT(DISTINCT code) as n FROM technical_indicators").fetchone()['n'] 
+    coverage['kline_stocks'] = kline_rows['n'] if kline_rows else 0
+    coverage['backtest_done'] = strategies[0]['cnt'] if strategies else 0
+    coverage['score_records'] = conn.execute("SELECT COUNT(*) as n FROM prediction_record").fetchone()['n']
+    # technical_indicators 表可能也不存在，先检查
+    try:
+        ti_rows = conn.execute("SELECT COUNT(DISTINCT code) as n FROM technical_indicators").fetchone()
+        coverage['tech_indicators'] = ti_rows['n'] if ti_rows else 0
+    except:
+        coverage['tech_indicators'] = 0 
     
     conn.close() 
     
