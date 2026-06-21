@@ -849,7 +849,13 @@ function generateConclusion(signals, scoreVal, rsiVal, lastClose, prevClose) {
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
-  // 预加载
+  // 支持URL参数自动搜索
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  if (code) {
+    document.getElementById('searchInput').value = code;
+    diagnose();
+  }
 });
 </script>
 </body>
