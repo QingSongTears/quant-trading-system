@@ -20,7 +20,8 @@ A股筹码锁定策略 — 流动性溢价。
       An Alternative Test of Amihud and Mendelson's Model.
       Amihud & Mendelson (1986). Asset Pricing and the Bid-Ask Spread.
 """
-from typing import List
+from __future__ import annotations
+
 
 import pandas as pd
 
@@ -43,7 +44,7 @@ class LowTurnoverStrategy(BaseSelectionStrategy):
     max_turnover: float = 1.0      # 换手率上限(%) — 低于此值才入选
     exclude_st: bool = True
 
-    def select(self, rebalance_date, universe_df: pd.DataFrame) -> List[str]:
+    def select(self, rebalance_date, universe_df: pd.DataFrame) -> list[str]:
         """
         选股逻辑: 按日均换手率升序 → 取换手最低的 n_stocks 只
 

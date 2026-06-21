@@ -8,11 +8,12 @@
 - 批量回测（多策略 × 多股票，并行执行）
 - 参数网格/随机/贝叶斯搜索
 """
+from __future__ import annotations
 import json
 import logging
 import random
 from datetime import date
-from typing import Dict, List, Optional, Any, Callable
+from typing import Any, Callable
 from dataclasses import dataclass, asdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -53,9 +54,9 @@ class BacktestReport:
     excess_return: float = 0.0
 
     # 序列化数据（供前端渲染图表）
-    equity_curve: List[Dict] = None
-    trades_detail: List[Dict] = None
-    monthly_returns: Dict[str, float] = None
+    equity_curve: list[Dict] = None
+    trades_detail: list[Dict] = None
+    monthly_returns: dict[str, float] = None
 
     # 成本配置快照
     cost_config: Dict = None
@@ -142,10 +143,10 @@ class BacktestEngine:
             start_date: date,
             end_date: date,
             initial_capital: float = 100000,
-            strategy_params: Optional[Dict[str, Any]] = None,
-            commission: Optional[float] = None,
-            stamp_duty: Optional[float] = None,
-            slippage: Optional[float] = None,
+            strategy_params: dict[str, Any] | None = None,
+            commission: float | None = None,
+            stamp_duty: float | None = None,
+            slippage: float | None = None,
             ) -> BacktestReport:
         """
         执行单次回测
@@ -214,12 +215,12 @@ class BacktestEngine:
         total_return = (stats["Equity Final [$]"] / initial_capital - 1) * 100
         trading_days = len(df)
         annual_return = self._calc_annual_return(total_return, trading_days)
-        sharpe = self._calc_sharpe(df, initial_capital, stats["Equity Final [$]"], trading_days)
+        sharpe = self._calc_sharpe(stats, initial_capital, stats["Equity Final [$]"], trading_days)
         max_dd = -abs(stats.get("Max. Drawdown [%]", 0))  # PR2.2: 统一为负数,与 metrics.performance.max_drawdown 一致
         win_rate = stats.get("Win Rate [%]", 0)
         total_trades = stats.get("# Trades", 0)
         profit_factor = stats.get("Profit Factor", 0)
-        annual_vol = self._calc_annual_volatility(df)
+        annual_vol = self._calc_annual_volatility(stats)
         calmar = annual_return / max_dd if max_dd > 0 else 0
 
         # 基准对比
@@ -274,14 +275,14 @@ class BacktestEngine:
     # ──────────────────────────────────────────────
 
     def run_batch(self,
-                  strategy_classes: List[type],
-                  stock_codes: List[str],
+                  strategy_classes: list[type],
+                  stock_codes: list[str],
                   start_date: date,
                   end_date: date,
                   initial_capital: float = 100000,
                   max_workers: int = 4,
-                  progress_callback: Optional[Callable] = None,
-                  ) -> List[BacktestReport]:
+                  progress_callback: Callable | None = None,
+                  ) -> list[BacktestReport]:
         """
         批量回测: 多策略 × 多只股票，并行执行
 
@@ -340,10 +341,10 @@ class BacktestEngine:
         return reports
 
     def rank_batch_results(self,
-                           reports: List[BacktestReport],
+                           reports: list[BacktestReport],
                            sort_by: str = "sharpe_ratio",
-                           top_n: Optional[int] = None,
-                           ) -> List[Dict]:
+                           top_n: int | None = None,
+                           ) -> list[Dict]:
         """
         对批量回测结果排序并返回排名
 
@@ -393,10 +394,10 @@ class BacktestEngine:
                         stock_code: str,
                         start_date: date,
                         end_date: date,
-                        param_grid: Dict[str, list],
+                        param_grid: dict[str, list],
                         metric: str = "total_return",
                         max_workers: int = 4,
-                        ) -> List[Dict]:
+                        ) -> list[Dict]:
         """
         参数网格搜索（并行执行）
 
@@ -458,11 +459,11 @@ class BacktestEngine:
                           stock_code: str,
                           start_date: date,
                           end_date: date,
-                          param_ranges: Dict[str, tuple],
+                          param_ranges: dict[str, tuple],
                           n_iter: int = 50,
                           metric: str = "total_return",
                           max_workers: int = 4,
-                          ) -> List[Dict]:
+                          ) -> list[Dict]:
         """
         随机参数搜索: 从参数范围中随机采样 n_iter 组
 
@@ -528,12 +529,12 @@ class BacktestEngine:
                             stock_code: str,
                             start_date: date,
                             end_date: date,
-                            param_ranges: Dict[str, tuple],
+                            param_ranges: dict[str, tuple],
                             n_iter: int = 50,
                             n_initial: int = 10,
                             metric: str = "total_return",
                             max_workers: int = 4,
-                            ) -> List[Dict]:
+                            ) -> list[Dict]:
         """
         简单贝叶斯搜索 (基于随机+优化重采样)
         使用高斯过程代理模型引导采样，不依赖外部 GP 库。
@@ -632,9 +633,9 @@ class BacktestEngine:
         return results
 
     def multi_metric_optimize(self,
-                              results: List[Dict],
-                              metrics: List[str] = None,
-                              ) -> List[Dict]:
+                              results: list[Dict],
+                              metrics: list[str] = None,
+                              ) -> list[Dict]:
         """
         多指标综合优化 (加权评分 + Pareto 前沿)
         适用于 run_grid_search / run_random_search 的结果
@@ -690,18 +691,39 @@ class BacktestEngine:
         years = trading_days / 250
         return ((total_return_ratio ** (1 / years)) - 1) * 100 if years > 0 else 0
 
-    def _calc_sharpe(self, df: pd.DataFrame, initial: float, final: float, days: int) -> float:
-        """计算夏普比率 — PR2.2: delegate to metrics.performance.sharpe_ratio"""
+    def _extract_equity_series(self, stats: dict):
+        """从 backtesting.py stats 中提取权益序列（Series）"""
+        try:
+            equity = stats.get("_equity_curve", None)
+            if equity is None:
+                return None
+            if hasattr(equity, 'columns'):
+                # DataFrame: 取第一列 (Equity)
+                return equity.iloc[:, 0]
+            elif hasattr(equity, 'values'):
+                return pd.Series(equity.values)
+            return None
+        except Exception:
+            return None
+
+    def _calc_sharpe(self, stats: dict, initial: float, final: float, days: int) -> float:
+        """计算夏普比率 — 基于策略权益曲线日收益率（非标的资产价格）"""
         if days <= 1:
             return 0
-        daily_returns = df["Close"].pct_change().dropna()
+        equity = self._extract_equity_series(stats)
+        if equity is None or len(equity) < 2:
+            return 0
+        daily_returns = equity.pct_change().dropna()
         if len(daily_returns) == 0:
             return 0
         return _sharpe_ratio(daily_returns.values, risk_free=self.risk_free_rate)
 
-    def _calc_annual_volatility(self, df: pd.DataFrame) -> float:
-        """计算年化波动率 — PR2.2: delegate to metrics.performance.volatility"""
-        daily_returns = df["Close"].pct_change().dropna()
+    def _calc_annual_volatility(self, stats: dict) -> float:
+        """计算年化波动率 — 基于策略权益曲线日收益率（非标的资产价格）"""
+        equity = self._extract_equity_series(stats)
+        if equity is None or len(equity) < 2:
+            return 0
+        daily_returns = equity.pct_change().dropna()
         if len(daily_returns) == 0:
             return 0
         return _volatility(daily_returns.values)
@@ -716,7 +738,7 @@ class BacktestEngine:
         except Exception:
             return 0
 
-    def _build_equity_curve(self, stats, index) -> List[Dict]:
+    def _build_equity_curve(self, stats, index) -> list[Dict]:
         """构建净值曲线数据 — backtesting 返回 DataFrame/Series 都需兼容"""
         try:
             equity = stats.get("_equity_curve", None)
@@ -742,7 +764,7 @@ class BacktestEngine:
         except Exception:
             return []
 
-    def _build_trades_detail(self, stats) -> List[Dict]:
+    def _build_trades_detail(self, stats) -> list[Dict]:
         """构建交易明细"""
         try:
             trades = stats.get("_trades", None)
@@ -763,7 +785,7 @@ class BacktestEngine:
         except Exception:
             return []
 
-    def _calc_monthly_returns(self, stats, index) -> Dict[str, float]:
+    def _calc_monthly_returns(self, stats, index) -> dict[str, float]:
         """计算月度收益率 (取每月最后一个交易日的权益值)"""
         try:
             equity = stats.get("_equity_curve", None)

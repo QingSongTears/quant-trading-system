@@ -9,5 +9,6 @@ QuantTradingSystem - A股量化交易模型系统
 所有数据来源于可考证的公开数据接口（AKShare / WeStock Data / Baostock）。
 """
 
+from __future__ import annotations
 __version__ = "0.1.0"
 __author__ = "QuantTrading Team"

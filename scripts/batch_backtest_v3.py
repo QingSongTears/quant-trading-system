@@ -3,10 +3,15 @@
 200只股票 × 4策略 = 800次
 策略: bollinger / oversold / bull_wave / combo
 """
+from __future__ import annotations
 import sys, json, time, urllib.request
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.db.engine import get_engine
+from src.db.sql_utils import read_sql
 
 BASE_URL = "http://localhost:8081"
 PARAMS = {"start": "2024-01-01", "end": "2026-06-01", "initial_capital": 100000}
@@ -19,17 +24,14 @@ strategies = [
 ]
 
 # 从DB取已有K线数据的股票
-import sqlite3
-db = PROJECT_ROOT / "database" / "quant.db"
-conn = sqlite3.connect(str(db))
-codes = [r[0] for r in conn.execute("""
+df = read_sql("""
     SELECT DISTINCT r.stock_code FROM backtest_result r
     JOIN daily_price d ON r.stock_code = d.code
     WHERE r.total_return IS NOT NULL
     GROUP BY r.stock_code HAVING COUNT(d.trade_date) >= 120
     ORDER BY r.total_return DESC
-""").fetchall()]
-conn.close()
+""", get_engine())
+codes = df["stock_code"].tolist()
 
 samples = codes[:200]
 total_tasks = len(samples) * len(strategies)

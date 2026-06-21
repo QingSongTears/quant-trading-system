@@ -8,17 +8,16 @@ import sys, json
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.config import get_config, get_db_url
+from src.db.engine import get_engine
 from src.scoring import ScorerRegistry
 
 
 def main():
-    engine = create_engine(get_db_url(get_config()), echo=False)
+    engine = get_engine()
     df = pd.read_csv(PROJECT_ROOT / "data" / "combined_3d_scores.csv")
     df["sample_key"] = df["code"].astype(str) + "_" + df["year_month"].astype(str)
     df_sample = df.drop_duplicates(subset=["sample_key"]).copy()
@@ -50,16 +49,12 @@ def main():
         
         # 龙虎榜机构面：直接从数据库聚合，不走batch_score
         if dim_name == "lh_institutional":
-            import sqlite3
-            db_path = PROJECT_ROOT / "database" / "quant.db"
-            conn = sqlite3.connect(str(db_path))
             # 对每个股票，取最近龙虎榜净买入汇总
             lhb_df = pd.read_sql("""
                 SELECT code, SUM(inst_net) as total_inst_net
                 FROM lhb_institutional
                 GROUP BY code
-            """, conn)
-            conn.close()
+            """, engine)
             lhb_df["code"] = lhb_df["code"].astype(str).str.zfill(6)
             # 将 total_inst_net 转换为 0-20 分制评分
             # 正净买入 → 高分，负净买入 → 低分

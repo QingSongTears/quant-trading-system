@@ -2,10 +2,11 @@
 系统配置加载器
 从 config/config.yaml 读取全局配置
 """
+from __future__ import annotations
 import os
 import yaml
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 
 # 项目根目录 (src/config.py → ../ 即项目根)
@@ -17,7 +18,7 @@ CONFIG_FILE = CONFIG_DIR / "config.yaml"
 STRATEGIES_FILE = CONFIG_DIR / "strategies.yaml"
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """加载全局配置"""
     if not CONFIG_FILE.exists():
         raise FileNotFoundError(f"配置文件不存在: {CONFIG_FILE}")
@@ -39,7 +40,7 @@ def load_config() -> Dict[str, Any]:
     return config
 
 
-def load_strategies() -> Dict[str, Any]:
+def load_strategies() -> dict[str, Any]:
     """加载策略注册表"""
     if not STRATEGIES_FILE.exists():
         return {"strategies": []}
@@ -48,7 +49,7 @@ def load_strategies() -> Dict[str, Any]:
         return yaml.safe_load(f)
 
 
-def get_db_url(config: Dict[str, Any]) -> str:
+def get_db_url(config: dict[str, Any]) -> str:
     """获取数据库连接 URL"""
     db_config = config.get("database", {})
     engine = db_config.get("engine", "sqlite")
@@ -57,10 +58,10 @@ def get_db_url(config: Dict[str, Any]) -> str:
 
 
 # 模块级配置缓存
-_config: Dict[str, Any] | None = None
+_config: dict[str, Any] | None = None
 
 
-def get_config() -> Dict[str, Any]:
+def get_config() -> dict[str, Any]:
     """获取全局配置（带缓存）"""
     global _config
     if _config is None:

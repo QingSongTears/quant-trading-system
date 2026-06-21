@@ -21,7 +21,8 @@ A股防御利器 — 低波动异象。
       Haugen & Baker (1991). The Efficient Market Inefficiency of Capitalization-
       Weighted Stock Portfolios.
 """
-from typing import List
+from __future__ import annotations
+
 
 import pandas as pd
 
@@ -42,7 +43,7 @@ class LowVolatilityStrategy(BaseSelectionStrategy):
     min_amount_wan: float = 2000   # 日均成交额 >= 2000万
     exclude_st: bool = True
 
-    def select(self, rebalance_date, universe_df: pd.DataFrame) -> List[str]:
+    def select(self, rebalance_date, universe_df: pd.DataFrame) -> list[str]:
         """
         选股逻辑: 按波动率升序 → 取波动最低的 n_stocks 只
         """

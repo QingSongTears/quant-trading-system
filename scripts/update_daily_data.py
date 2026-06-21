@@ -3,7 +3,9 @@
 日K线增量更新脚本 — 从 AKShare 拉取最新日线数据写入 quant.db
 ======================================================================
 用法:
-  python scripts/update_daily_data.py
+  python scripts/update_daily_data.py           # 交互确认
+  python scripts/update_daily_data.py -y        # 非交互（CI/定时任务用）
+  python scripts/update_daily_data.py --yes     # 同上
 
 行为:
   1. 查询 daily_price 最新日期
@@ -19,6 +21,7 @@
 import sys
 import os
 import time
+import argparse
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -139,7 +142,7 @@ def update_daily_price(engine, start_date: str, end_date: str) -> int:
     return len(new_rows)
 
 
-def main():
+def main(args):
     print("=" * 60)
     print("  日 K 线增量更新工具")
     print("=" * 60)
@@ -173,14 +176,19 @@ def main():
         return
 
     print(f"[INFO] 更新范围: {start_date} ~ {end_date}")
-    confirm = input("确认开始更新? [y/N]: ")
-    if confirm.lower() != "y":
-        print("[INFO] 已取消")
-        return
+
+    if not args.yes:
+        confirm = input("确认开始更新? [y/N]: ")
+        if confirm.lower() != "y":
+            print("[INFO] 已取消")
+            return
 
     n = update_daily_price(engine, start_date, end_date)
     print(f"\n✅ 更新完成! 新增/更新 {n} 行")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="日K线增量更新工具")
+    parser.add_argument("-y", "--yes", action="store_true", help="跳过交互确认，直接更新")
+    args = parser.parse_args()
+    main(args)

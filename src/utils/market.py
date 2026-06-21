@@ -10,6 +10,7 @@
 - scripts/import_csv_to_db_v2.py:76
 本模块是单一来源,支持 SH/SZ/BJ 三市场。
 """
+from __future__ import annotations
 import re
 from typing import Literal
 

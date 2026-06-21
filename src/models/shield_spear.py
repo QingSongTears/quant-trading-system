@@ -26,8 +26,9 @@
 当前状态: 矛端完整，盾端用低波动代理。
           红利(股息率)/质量(ROE) 等待 financial_data 表扩展。
 """
+from __future__ import annotations
 from datetime import date
-from typing import List
+
 
 import pandas as pd
 
@@ -93,7 +94,7 @@ class ShieldSpearStrategy(BaseSelectionStrategy):
 
         return df
 
-    def select(self, rebalance_date, universe_df: pd.DataFrame) -> List[str]:
+    def select(self, rebalance_date, universe_df: pd.DataFrame) -> list[str]:
         """
         温度计调节盾矛配比 → 执行选股
 

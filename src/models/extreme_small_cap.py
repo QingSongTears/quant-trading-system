@@ -19,8 +19,9 @@
   单只止损: -15%
   最大持仓: 50只
 """
+from __future__ import annotations
 from datetime import date
-from typing import List
+
 
 import pandas as pd
 
@@ -94,7 +95,7 @@ class ExtremeSmallCapStrategy(BaseSelectionStrategy):
 
         return df
 
-    def select(self, rebalance_date, universe_df: pd.DataFrame) -> List[str]:
+    def select(self, rebalance_date, universe_df: pd.DataFrame) -> list[str]:
         """
         层4 + 层5: 市值最小200 → 精选50
 

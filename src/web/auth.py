@@ -9,11 +9,12 @@ Web 层认证与策略加载安全工具
 - safe_import_strategy: 白名单 importlib,只允许 src.strategies.* / src.models.*
 - get_api_key: API key 来源(env QUANT_API_KEY > 临时生成)
 """
+from __future__ import annotations
 import importlib
 import logging
 import os
 import secrets
-from typing import Optional, Tuple, Type
+from typing import Type
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -56,7 +57,7 @@ def get_api_key() -> str:
     return _api_key_cache
 
 
-def check_bearer_token(authorization_header: Optional[str]) -> bool:
+def check_bearer_token(authorization_header: str | None) -> bool:
     """框架无关:校验 Authorization header 的 Bearer token
 
     Args:

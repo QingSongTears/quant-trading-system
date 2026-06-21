@@ -10,6 +10,7 @@ BaseStrategy 继承自 backtesting.Strategy，并封装了:
 
 策略来源文献标注在策略类的 docstring 中，确保可考证。
 """
+from __future__ import annotations
 from backtesting import Strategy
 import pandas as pd
 import numpy as np

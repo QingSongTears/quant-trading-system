@@ -5,12 +5,13 @@
 将 BacktestReport 转换为 HTML 可消费的格式，
 包含净值曲线、回撤曲线、指标数据等。
 """
+from __future__ import annotations
 import json
-from typing import Dict, List, Any
+from typing import Any
 from .engine import BacktestReport
 
 
-def report_to_chart_data(report: BacktestReport) -> Dict[str, Any]:
+def report_to_chart_data(report: BacktestReport) -> dict[str, Any]:
     """
     将回测报告转为前端 ECharts 所需的数据格式
     
@@ -59,7 +60,7 @@ def report_to_chart_data(report: BacktestReport) -> Dict[str, Any]:
     }
 
 
-def _calc_drawdown_curve(equity_curve: List[Dict]) -> List[Dict]:
+def _calc_drawdown_curve(equity_curve: list[Dict]) -> list[Dict]:
     """从净值曲线计算回撤曲线"""
     if not equity_curve:
         return []
@@ -80,7 +81,7 @@ def _calc_drawdown_curve(equity_curve: List[Dict]) -> List[Dict]:
     return drawdowns
 
 
-def _calc_annual_returns(equity_curve: List[Dict]) -> List[Dict]:
+def _calc_annual_returns(equity_curve: list[Dict]) -> list[Dict]:
     """计算年度收益率"""
     if not equity_curve:
         return []
@@ -100,7 +101,7 @@ def _calc_annual_returns(equity_curve: List[Dict]) -> List[Dict]:
     return result
 
 
-def _build_monthly_heatmap(monthly_returns) -> List[Dict]:
+def _build_monthly_heatmap(monthly_returns) -> list[Dict]:
     """构建月度热力图数据"""
     if isinstance(monthly_returns, str):
         monthly_returns = json.loads(monthly_returns)

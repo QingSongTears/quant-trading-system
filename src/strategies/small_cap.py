@@ -14,7 +14,8 @@ A股最可靠 Alpha 来源 — 小市值溢价。
 来源: Fama & French (1993). Common Risk Factors in the Returns on Stocks and Bonds.
 SMB (Small Minus Big) 因子在A股年化超额 5-8%。
 """
-from typing import List
+from __future__ import annotations
+
 
 import pandas as pd
 
@@ -35,7 +36,7 @@ class SmallCapStrategy(BaseSelectionStrategy):
     min_amount_wan: float = 3000  # 日均成交额 >= 3000万
     exclude_st: bool = True
 
-    def select(self, rebalance_date, universe_df: pd.DataFrame) -> List[str]:
+    def select(self, rebalance_date, universe_df: pd.DataFrame) -> list[str]:
         """
         选股逻辑: 按估算市值升序 → 取最小 n_stocks 只
 

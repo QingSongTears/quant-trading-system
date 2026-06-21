@@ -3,34 +3,36 @@
 策略: bull_wave(七维共振牛股) + combo(综合多信号)
 加速: 并行4线程
 """
+from __future__ import annotations
 import sys, json, time, urllib.request
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.db.engine import get_engine
+from src.db.sql_utils import read_sql
+
 BASE = "http://localhost:8081"
 PARAMS = "start=2024-01-01&end=2026-06-01&capital=100000"
 STRATEGIES = [("bull_wave", "七维共振牛股"), ("combo", "综合多信号")]
 
 # 1. 获取未回测但有K线的股票
 print("📊 获取未回测股票...")
-import sqlite3
-db = PROJECT_ROOT / "database" / "quant.db"
-conn = sqlite3.connect(str(db))
+engine = get_engine()
 # 已回测的 (bull_wave + combo)
-done = set()
-rows = conn.execute("SELECT DISTINCT stock_code FROM backtest_result WHERE strategy_id IN (6,7) AND total_return IS NOT NULL").fetchall()
-for r in rows: done.add(r[0])
+df_done = read_sql("SELECT DISTINCT stock_code FROM backtest_result WHERE strategy_id IN (6,7) AND total_return IS NOT NULL", engine)
+done = set(df_done["stock_code"].tolist())
 
 # 有足够K线数据的
-all_codes = []
-rows = conn.execute("""
+df_codes = read_sql("""
     SELECT code FROM daily_price GROUP BY code HAVING COUNT(*) >= 120 ORDER BY code
-""").fetchall()
-for r in rows:
-    code = r[0].replace('sz','').replace('sh','').strip().zfill(6)
+""", engine)
+all_codes = []
+for c in df_codes["code"]:
+    code = str(c).replace('sz','').replace('sh','').strip().zfill(6)
     if len(code) >= 6: all_codes.append(code)
-conn.close()
 
 # 未回测的
 todo = sorted(set(all_codes) - done)

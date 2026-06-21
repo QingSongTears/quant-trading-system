@@ -2,9 +2,10 @@
 SQLAlchemy 数据模型定义
 所有表结构在此定义，通过 alembic 或 create_all 创建
 """
+from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+
 
 from sqlalchemy import (
     Column, Integer, String, Date, DateTime, Float,
@@ -29,9 +30,9 @@ class StockBasic(Base):
     code: Mapped[str] = mapped_column(String(10), primary_key=True, comment="股票代码")
     name: Mapped[str] = mapped_column(String(50), nullable=False, comment="股票名称")
     market: Mapped[str] = mapped_column(String(2), nullable=False, comment="市场: SH/SZ/BJ")
-    list_date: Mapped[Optional[date]] = mapped_column(Date, comment="上市日期")
-    delist_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, comment="退市日期")
-    industry: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="所属行业")
+    list_date: Mapped[date | None] = mapped_column(Date, comment="上市日期")
+    delist_date: Mapped[date | None] = mapped_column(Date, nullable=True, comment="退市日期")
+    industry: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="所属行业")
 
     # 关系
     daily_prices = relationship("DailyPrice", back_populates="stock", lazy="dynamic")
@@ -63,9 +64,9 @@ class DailyPrice(Base):
     low: Mapped[float] = mapped_column(Float, nullable=False, comment="最低价")
     close: Mapped[float] = mapped_column(Float, nullable=False, comment="收盘价")
     volume: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="成交量(股)")
-    amount: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="成交额(元)")
-    pct_change: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="涨跌幅(%)")
-    turnover: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="换手率(%)")
+    amount: Mapped[float | None] = mapped_column(Float, nullable=True, comment="成交额(元)")
+    pct_change: Mapped[float | None] = mapped_column(Float, nullable=True, comment="涨跌幅(%)")
+    turnover: Mapped[float | None] = mapped_column(Float, nullable=True, comment="换手率(%)")
 
     # 关系
     stock = relationship("StockBasic", back_populates="daily_prices")
@@ -89,7 +90,7 @@ class BenchmarkData(Base):
     index_code: Mapped[str] = mapped_column(String(10), nullable=False, comment="指数代码")
     trade_date: Mapped[date] = mapped_column(Date, nullable=False, comment="交易日期")
     close: Mapped[float] = mapped_column(Float, nullable=False, comment="收盘价")
-    pct_change: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="涨跌幅(%)")
+    pct_change: Mapped[float | None] = mapped_column(Float, nullable=True, comment="涨跌幅(%)")
 
 
 class StrategyConfig(Base):
@@ -103,8 +104,8 @@ class StrategyConfig(Base):
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, comment="策略名称")
     class_path: Mapped[str] = mapped_column(String(200), nullable=False, comment="Python类路径")
     params: Mapped[str] = mapped_column(Text, nullable=False, comment="JSON格式参数")
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="策略描述")
-    source: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="策略来源文献")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True, comment="策略描述")
+    source: Mapped[str | None] = mapped_column(Text, nullable=True, comment="策略来源文献")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, comment="创建时间"
     )
@@ -125,40 +126,40 @@ class BacktestResult(Base):
         Integer, ForeignKey("strategy_config.id"), nullable=False, comment="策略ID"
     )
     stock_code: Mapped[str] = mapped_column(String(10), nullable=False, comment="回测标的")
-    stock_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="标的名称")
+    stock_name: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="标的名称")
     start_date: Mapped[date] = mapped_column(Date, nullable=False, comment="回测开始日期")
     end_date: Mapped[date] = mapped_column(Date, nullable=False, comment="回测结束日期")
     initial_capital: Mapped[float] = mapped_column(Float, nullable=False, comment="初始资金")
     final_equity: Mapped[float] = mapped_column(Float, nullable=False, comment="最终权益")
 
     # 核心指标
-    total_return: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="总收益率(%)")
-    annual_return: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="年化收益率(%)")
-    sharpe_ratio: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="夏普比率")
-    max_drawdown: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="最大回撤(%)")
-    win_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="胜率(%)")
-    profit_factor: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="盈亏比")
-    total_trades: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="总交易次数")
-    annual_volatility: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="年化波动率(%)")
-    calmar_ratio: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="卡玛比率")
+    total_return: Mapped[float | None] = mapped_column(Float, nullable=True, comment="总收益率(%)")
+    annual_return: Mapped[float | None] = mapped_column(Float, nullable=True, comment="年化收益率(%)")
+    sharpe_ratio: Mapped[float | None] = mapped_column(Float, nullable=True, comment="夏普比率")
+    max_drawdown: Mapped[float | None] = mapped_column(Float, nullable=True, comment="最大回撤(%)")
+    win_rate: Mapped[float | None] = mapped_column(Float, nullable=True, comment="胜率(%)")
+    profit_factor: Mapped[float | None] = mapped_column(Float, nullable=True, comment="盈亏比")
+    total_trades: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="总交易次数")
+    annual_volatility: Mapped[float | None] = mapped_column(Float, nullable=True, comment="年化波动率(%)")
+    calmar_ratio: Mapped[float | None] = mapped_column(Float, nullable=True, comment="卡玛比率")
 
     # 基准对比
-    benchmark_return: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="基准收益率(%)")
-    excess_return: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="超额收益(%)")
+    benchmark_return: Mapped[float | None] = mapped_column(Float, nullable=True, comment="基准收益率(%)")
+    excess_return: Mapped[float | None] = mapped_column(Float, nullable=True, comment="超额收益(%)")
 
     # 序列化数据
-    equity_curve: Mapped[Optional[str]] = mapped_column(
+    equity_curve: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="净值曲线 JSON: [{date, equity}, ...]"
     )
-    trades_detail: Mapped[Optional[str]] = mapped_column(
+    trades_detail: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="交易明细 JSON: [{entry_date, exit_date, ...}, ...]"
     )
-    monthly_returns: Mapped[Optional[str]] = mapped_column(
+    monthly_returns: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="月度收益率 JSON"
     )
 
     # 回测配置快照
-    cost_config: Mapped[Optional[str]] = mapped_column(
+    cost_config: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="交易成本配置 JSON"
     )
 
@@ -185,14 +186,14 @@ class DataSourceMeta(Base):
     download_time: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, comment="下载时间"
     )
-    date_start: Mapped[Optional[date]] = mapped_column(Date, comment="数据起始日期")
-    date_end: Mapped[Optional[date]] = mapped_column(Date, comment="数据结束日期")
-    stock_count: Mapped[Optional[int]] = mapped_column(Integer, comment="股票数量")
-    record_count: Mapped[Optional[int]] = mapped_column(Integer, comment="记录总数")
+    date_start: Mapped[date | None] = mapped_column(Date, comment="数据起始日期")
+    date_end: Mapped[date | None] = mapped_column(Date, comment="数据结束日期")
+    stock_count: Mapped[int | None] = mapped_column(Integer, comment="股票数量")
+    record_count: Mapped[int | None] = mapped_column(Integer, comment="记录总数")
     status: Mapped[str] = mapped_column(
         String(20), default="completed", comment="状态: downloading/completed/failed"
     )
-    error_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="错误日志")
+    error_log: Mapped[str | None] = mapped_column(Text, nullable=True, comment="错误日志")
 
 
 class TechnicalIndicator(Base):
@@ -217,22 +218,22 @@ class TechnicalIndicator(Base):
     trade_date: Mapped[date] = mapped_column(Date, nullable=False, comment="交易日期")
 
     # MACD (12, 26, 9)
-    macd_dif: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="MACD DIF线")
-    macd_dea: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="MACD DEA线")
-    macd_hist: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="MACD 柱状线")
+    macd_dif: Mapped[float | None] = mapped_column(Float, nullable=True, comment="MACD DIF线")
+    macd_dea: Mapped[float | None] = mapped_column(Float, nullable=True, comment="MACD DEA线")
+    macd_hist: Mapped[float | None] = mapped_column(Float, nullable=True, comment="MACD 柱状线")
 
     # RSI
-    rsi14: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="RSI(14)")
+    rsi14: Mapped[float | None] = mapped_column(Float, nullable=True, comment="RSI(14)")
 
     # KDJ (9, 3, 3)
-    kdj_k: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="KDJ_K值")
-    kdj_d: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="KDJ_D值")
-    kdj_j: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="KDJ_J值")
+    kdj_k: Mapped[float | None] = mapped_column(Float, nullable=True, comment="KDJ_K值")
+    kdj_d: Mapped[float | None] = mapped_column(Float, nullable=True, comment="KDJ_D值")
+    kdj_j: Mapped[float | None] = mapped_column(Float, nullable=True, comment="KDJ_J值")
 
     # Bollinger Bands (20, 2)
-    boll_mid: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="布林带中轨(MA20)")
-    boll_upper: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="布林带上轨")
-    boll_lower: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="布林带下轨")
+    boll_mid: Mapped[float | None] = mapped_column(Float, nullable=True, comment="布林带中轨(MA20)")
+    boll_upper: Mapped[float | None] = mapped_column(Float, nullable=True, comment="布林带上轨")
+    boll_lower: Mapped[float | None] = mapped_column(Float, nullable=True, comment="布林带下轨")
 
     def __repr__(self):
         return f"<TechnicalIndicator(code={self.code}, date={self.trade_date})>"
@@ -254,53 +255,53 @@ class FinanceSummary(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     code: Mapped[str] = mapped_column(String(10), nullable=False, comment="股票代码")
-    _date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, comment="数据日期")
-    EndDate: Mapped[Optional[date]] = mapped_column(Date, nullable=True, comment="报告期截止日")
+    _date: Mapped[date | None] = mapped_column(Date, nullable=True, comment="数据日期")
+    EndDate: Mapped[date | None] = mapped_column(Date, nullable=True, comment="报告期截止日")
 
     # 盈利能力
-    ROE: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="ROE(%)")
-    ROETTM: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="ROE TTM(%)")
-    ROEWeighted: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="加权ROE(%)")
-    EPS: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="每股收益")
-    EPSTTM: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="每股收益 TTM")
-    BasicEPS: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="基本每股收益")
-    DilutedEPS: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="稀释每股收益")
-    NAPS: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="每股净资产")
-    NetProfitRatio: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="净利率(%)")
-    NetProfitRatioTTM: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="净利率 TTM(%)")
+    ROE: Mapped[float | None] = mapped_column(Float, nullable=True, comment="ROE(%)")
+    ROETTM: Mapped[float | None] = mapped_column(Float, nullable=True, comment="ROE TTM(%)")
+    ROEWeighted: Mapped[float | None] = mapped_column(Float, nullable=True, comment="加权ROE(%)")
+    EPS: Mapped[float | None] = mapped_column(Float, nullable=True, comment="每股收益")
+    EPSTTM: Mapped[float | None] = mapped_column(Float, nullable=True, comment="每股收益 TTM")
+    BasicEPS: Mapped[float | None] = mapped_column(Float, nullable=True, comment="基本每股收益")
+    DilutedEPS: Mapped[float | None] = mapped_column(Float, nullable=True, comment="稀释每股收益")
+    NAPS: Mapped[float | None] = mapped_column(Float, nullable=True, comment="每股净资产")
+    NetProfitRatio: Mapped[float | None] = mapped_column(Float, nullable=True, comment="净利率(%)")
+    NetProfitRatioTTM: Mapped[float | None] = mapped_column(Float, nullable=True, comment="净利率 TTM(%)")
 
     # 负债与结构
-    DebtAssetsRatio: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="资产负债率(%)")
-    DebtEquityRatio: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="权益乘数")
+    DebtAssetsRatio: Mapped[float | None] = mapped_column(Float, nullable=True, comment="资产负债率(%)")
+    DebtEquityRatio: Mapped[float | None] = mapped_column(Float, nullable=True, comment="权益乘数")
 
     # 营收与利润
-    OperatingRevenue: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="营业收入")
-    OperatingRevenueTTM: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="营业收入 TTM")
-    OperatingRevenueGrowRate: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="营收增长率(%)")
-    OperatingProfit: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="营业利润")
-    OperatingProfitTTM: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="营业利润 TTM")
-    TotalOperatingRevenue: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="营业总收入")
-    NPParentCompanyOwners: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="归母净利润")
-    NPParentCompanyOwnersTTM: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="归母净利润 TTM")
-    NPParentCompanyYOY: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="归母净利润同比(%)")
+    OperatingRevenue: Mapped[float | None] = mapped_column(Float, nullable=True, comment="营业收入")
+    OperatingRevenueTTM: Mapped[float | None] = mapped_column(Float, nullable=True, comment="营业收入 TTM")
+    OperatingRevenueGrowRate: Mapped[float | None] = mapped_column(Float, nullable=True, comment="营收增长率(%)")
+    OperatingProfit: Mapped[float | None] = mapped_column(Float, nullable=True, comment="营业利润")
+    OperatingProfitTTM: Mapped[float | None] = mapped_column(Float, nullable=True, comment="营业利润 TTM")
+    TotalOperatingRevenue: Mapped[float | None] = mapped_column(Float, nullable=True, comment="营业总收入")
+    NPParentCompanyOwners: Mapped[float | None] = mapped_column(Float, nullable=True, comment="归母净利润")
+    NPParentCompanyOwnersTTM: Mapped[float | None] = mapped_column(Float, nullable=True, comment="归母净利润 TTM")
+    NPParentCompanyYOY: Mapped[float | None] = mapped_column(Float, nullable=True, comment="归母净利润同比(%)")
 
     # 现金流
-    NetOperateCashFlow: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="经营活动现金流净额")
-    NetOperateCashFlowTTM: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="经营活动现金流 TTM")
+    NetOperateCashFlow: Mapped[float | None] = mapped_column(Float, nullable=True, comment="经营活动现金流净额")
+    NetOperateCashFlowTTM: Mapped[float | None] = mapped_column(Float, nullable=True, comment="经营活动现金流 TTM")
 
     # 资产与股东权益
-    TotalAssets: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="总资产")
-    TotalShareholderEquity: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="股东权益合计")
-    TotalLiability: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="总负债")
+    TotalAssets: Mapped[float | None] = mapped_column(Float, nullable=True, comment="总资产")
+    TotalShareholderEquity: Mapped[float | None] = mapped_column(Float, nullable=True, comment="股东权益合计")
+    TotalLiability: Mapped[float | None] = mapped_column(Float, nullable=True, comment="总负债")
 
     # 增长率
-    NetAssetGrowRate: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="净资产增长率(%)")
-    TotalAssetGrowRate: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="总资产增长率(%)")
+    NetAssetGrowRate: Mapped[float | None] = mapped_column(Float, nullable=True, comment="净资产增长率(%)")
+    TotalAssetGrowRate: Mapped[float | None] = mapped_column(Float, nullable=True, comment="总资产增长率(%)")
 
     # 每股现金流
-    CashFlowPS: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="每股现金流")
-    OperCashFlowPS: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="每股经营现金流")
-    MainIncomePS: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="每股主营收入")
+    CashFlowPS: Mapped[float | None] = mapped_column(Float, nullable=True, comment="每股现金流")
+    OperCashFlowPS: Mapped[float | None] = mapped_column(Float, nullable=True, comment="每股经营现金流")
+    MainIncomePS: Mapped[float | None] = mapped_column(Float, nullable=True, comment="每股主营收入")
 
     def __repr__(self):
         return f"<FinanceSummary(code={self.code}, date={self._date})>"
@@ -321,16 +322,16 @@ class StockProfile(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     code: Mapped[str] = mapped_column(String(10), nullable=False, comment="股票代码（纯数字）")
     name: Mapped[str] = mapped_column(String(50), nullable=False, comment="股票名称")
-    listed_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, comment="上市日期")
-    industry: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="所属行业")
-    sector: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="所属板块")
-    issue_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="发行价")
-    reg_capital: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="注册资本(万元)")
-    chairman: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="董事长")
-    establish_date: Mapped[Optional[str]] = mapped_column(String(30), nullable=True, comment="成立日期")
-    website: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, comment="公司网站")
-    business: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="主营业务")
-    reg_address: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, comment="注册地址")
+    listed_date: Mapped[date | None] = mapped_column(Date, nullable=True, comment="上市日期")
+    industry: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="所属行业")
+    sector: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="所属板块")
+    issue_price: Mapped[float | None] = mapped_column(Float, nullable=True, comment="发行价")
+    reg_capital: Mapped[float | None] = mapped_column(Float, nullable=True, comment="注册资本(万元)")
+    chairman: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="董事长")
+    establish_date: Mapped[str | None] = mapped_column(String(30), nullable=True, comment="成立日期")
+    website: Mapped[str | None] = mapped_column(String(200), nullable=True, comment="公司网站")
+    business: Mapped[str | None] = mapped_column(Text, nullable=True, comment="主营业务")
+    reg_address: Mapped[str | None] = mapped_column(String(200), nullable=True, comment="注册地址")
 
     def __repr__(self):
         return f"<StockProfile(code={self.code}, name={self.name}, industry={self.industry})>"
@@ -351,14 +352,14 @@ class FundFlowData(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     code: Mapped[str] = mapped_column(String(10), nullable=False, comment="股票代码")
-    market: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, comment="市场")
-    name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="股票名称")
-    trade_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, comment="交易日期")
-    main_net: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="主力净流入(万元)")
-    super_large_net: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="超大单净流入(万元)")
-    large_net: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="大单净流入(万元)")
-    medium_net: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="中单净流入(万元)")
-    small_net: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="小单净流入(万元)")
+    market: Mapped[str | None] = mapped_column(String(10), nullable=True, comment="市场")
+    name: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="股票名称")
+    trade_date: Mapped[date | None] = mapped_column(Date, nullable=True, comment="交易日期")
+    main_net: Mapped[float | None] = mapped_column(Float, nullable=True, comment="主力净流入(万元)")
+    super_large_net: Mapped[float | None] = mapped_column(Float, nullable=True, comment="超大单净流入(万元)")
+    large_net: Mapped[float | None] = mapped_column(Float, nullable=True, comment="大单净流入(万元)")
+    medium_net: Mapped[float | None] = mapped_column(Float, nullable=True, comment="中单净流入(万元)")
+    small_net: Mapped[float | None] = mapped_column(Float, nullable=True, comment="小单净流入(万元)")
 
     def __repr__(self):
         return f"<FundFlowData(code={self.code}, date={self.trade_date})>"

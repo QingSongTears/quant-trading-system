@@ -13,6 +13,7 @@
 
 本模块提供收口函数,允许在 API 边界或脚本内统一转换。
 """
+from __future__ import annotations
 import re
 from typing import Any
 

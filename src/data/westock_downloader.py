@@ -9,8 +9,9 @@ WeStock 数据下载器 — 桥接模块
 
 调用方应直接使用 `DataDownloader`,或检测到 ImportError/NotImplementedError 后 fallback。
 """
+from __future__ import annotations
 import logging
-from typing import Callable, Optional
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +41,13 @@ class WestockDownloader:
             "详见 PR1 commit 1.1。"
         )
 
-    def download_full(self, progress_callback: Optional[Callable] = None) -> dict:
+    def download_full(self, progress_callback: Callable | None = None) -> dict:
         # 仅为接口兼容保留 — 正常路径下不会到这里 (因为 __init__ 已抛错)
         raise WestockDownloaderNotImplemented(
             "WestockDownloader.download_full 未实现,请使用 DataDownloader"
         )
 
-    def download_incremental(self, progress_callback: Optional[Callable] = None) -> dict:
+    def download_incremental(self, progress_callback: Callable | None = None) -> dict:
         raise WestockDownloaderNotImplemented(
             "WestockDownloader.download_incremental 未实现,请使用 DataDownloader"
         )

@@ -8,6 +8,7 @@ MACD 线下穿信号线 → 卖出
 
 来源: Appel, G. (1979). The Moving Average Convergence-Divergence Method.
 """
+from __future__ import annotations
 from ..backtest.base_strategy import BaseStrategy
 
 

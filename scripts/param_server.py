@@ -35,7 +35,9 @@ from src.constants.signal import (
 app = Flask(__name__, static_folder=str(PROJECT_ROOT))
 CORS(app)
 
-# ── 安全:所有 /api/* 端点需要 Bearer token 认证 (2026-06-21) ──
+# ── 安全:所有 /api/* 端点需要 Bearer token 认证 ──
+from src.web.auth import require_api_key
+app.before_request(require_api_key("/api/"))
 # ── 全局数据 ──
 records = []
 dim_cols = []
@@ -201,8 +203,9 @@ class BacktestTask:
                 self.status = "done"
 
         except Exception as e:
+            print(f"  [回测任务] 失败: {e}")
             with self._lock:
-                self.error = str(e)
+                self.error = "回测任务执行失败，详查日志"
                 self.status = "error"
 
     @staticmethod
@@ -517,9 +520,8 @@ def api_v5_run():
         })
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        print(f"[v5] 回测失败: {e}")
+        return jsonify({"error": "回测服务异常，请稍后重试"}), 500
 
 
 @app.route("/api/v5/scan-results")
@@ -546,7 +548,10 @@ def api_v5_scan_results():
             })
         return jsonify({"results": results})
     except Exception as e:
-        return jsonify({"results": [], "error": str(e)})# ── 股票搜索API ──
+        print(f"[scan] 读取扫描结果失败: {e}")
+        return jsonify({"results": [], "error": "读取扫描结果失败"})
+
+# ── 股票搜索API ──
 SEARCH_INDEX = None  # 懒加载
 
 def _build_search_index():
