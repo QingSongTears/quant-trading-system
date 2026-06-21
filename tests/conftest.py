@@ -12,6 +12,9 @@ import pytest
 import pandas as pd
 import numpy as np
 
+# PR2.4: 统一市场推断 (消除 startswith("6") 散落)
+from src.utils.market import infer_market
+
 # ============================================================
 # 测试环境: 设置 API key (必须在 import src.web.auth 之前)
 # ============================================================
@@ -239,7 +242,7 @@ def sample_kline_data() -> pd.DataFrame:
         for i, d in enumerate(dates):
             rows.append({
                 "code": code,
-                "market": "SH" if code.startswith("6") else "SZ",
+                "market": infer_market(code),  # PR2.4: 用统一工具替代 startswith
                 "name": f"测试_{code}",
                 "date": d,
                 "open": round(close[i] * np.random.uniform(0.98, 1.02), 2),
