@@ -1,5 +1,9 @@
 """
 API 路由 (JSON 响应)
+===================
+
+所有 /api/* 端点需要 Bearer token 认证 (HTTPBearer)
+策略 class_path 走白名单加载 (auth.safe_import_strategy)
 """
 import json
 import logging
@@ -8,7 +12,7 @@ import traceback
 from datetime import date, datetime
 from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -19,8 +23,10 @@ from ...data.westock_downloader import WestockDownloader
 from ...backtest.engine import BacktestEngine
 from ...backtest.portfolio_engine import PortfolioBacktestEngine
 from ..app import download_status as _download_status
+from ..auth import safe_import_strategy, verify_api_key
 
-router = APIRouter()
+# 所有 /api/* 端点统一要求 Bearer token
+router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 
 # ===== 序列化辅助函数 (处理 np.nan / np.float64) =====
@@ -259,10 +265,7 @@ async def run_backtest(req: BacktestRequest):
                         f"src/backtest/base_strategy.py 的 BaseStrategy 接口). "
                         f"详见 stock_screener 文档。"
                     )
-                import importlib
-                module_path, class_name = s["class_path"].rsplit(".", 1)
-                module = importlib.import_module(module_path)
-                strategy_class = getattr(module, class_name)
+                strategy_class = safe_import_strategy(s["class_path"])
                 break
 
         if strategy_class is None:
@@ -349,7 +352,6 @@ async def run_portfolio_backtest(req: PortfolioBacktestRequest):
     """执行组合回测 (选股策略)"""
     try:
         from ...config import load_strategies
-        import importlib
 
         strategies_config = load_strategies()
         strategy_class = None
@@ -357,9 +359,7 @@ async def run_portfolio_backtest(req: PortfolioBacktestRequest):
 
         for s in strategies_config.get("strategies", []):
             if s["name"] == req.strategy_name and s.get("strategy_type") == "portfolio":
-                module_path, class_name = s["class_path"].rsplit(".", 1)
-                module = importlib.import_module(module_path)
-                strategy_class = getattr(module, class_name)
+                strategy_class = safe_import_strategy(s["class_path"])
                 strategy_meta = s
                 break
 
@@ -639,7 +639,6 @@ async def run_batch_backtest(req: BatchBacktestRequest):
     """批量回测: 多策略 × 多股票"""
     try:
         from ...config import load_strategies
-        import importlib
 
         strategies_config = load_strategies()
 
@@ -649,9 +648,7 @@ async def run_batch_backtest(req: BatchBacktestRequest):
             found = False
             for s in strategies_config.get("strategies", []):
                 if s["name"] == s_name and s.get("strategy_type", "signal") == "signal":
-                    module_path, class_name = s["class_path"].rsplit(".", 1)
-                    module = importlib.import_module(module_path)
-                    strategy_classes.append(getattr(module, class_name))
+                    strategy_classes.append(safe_import_strategy(s["class_path"]))
                     found = True
                     break
             if not found:
@@ -695,15 +692,12 @@ async def run_param_search(req: ParamSearchRequest):
     """参数搜索: 网格/随机/贝叶斯"""
     try:
         from ...config import load_strategies
-        import importlib
 
         strategies_config = load_strategies()
         strategy_class = None
         for s in strategies_config.get("strategies", []):
             if s["name"] == req.strategy_name and s.get("strategy_type", "signal") == "signal":
-                module_path, class_name = s["class_path"].rsplit(".", 1)
-                module = importlib.import_module(module_path)
-                strategy_class = getattr(module, class_name)
+                strategy_class = safe_import_strategy(s["class_path"])
                 break
 
         if strategy_class is None:
