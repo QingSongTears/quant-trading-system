@@ -50,7 +50,9 @@ class PortfolioBacktestEngine:
         # 交易成本
         costs = config["backtest"]["costs"]
         self.commission = costs["commission_rate"]   # 0.0003 (万三)
-        self.stamp_duty = costs["stamp_duty_rate"]   # 0.0005 (千五，仅卖出)
+        self.stamp_duty = costs["stamp_duty_rate"]   # 0.0005 (千五,仅卖出)
+        self.slippage = costs.get("slippage", 0.0001)  # 0.0001 (万分之一)
+        self.min_commission = costs.get("min_commission", 5.0)  # ¥5 最低佣金
         self.benchmark_code = config["backtest"]["benchmark"]
         self.risk_free_rate = config["backtest"]["risk_free_rate"]
 
@@ -352,17 +354,45 @@ class PortfolioBacktestEngine:
                 rebalance_change_indices.add(i)
 
         def _apply_cost_at(idx: int, base_equity: float):
-            """在 idx 日末尾应用调仓成本, 返回扣减后的 equity 和补全 rebalance_details"""
+            """在 idx 日末尾应用调仓成本, 返回扣减后的 equity 和补全 rebalance_details
+
+            成本按"实际换手金额"计算,不是全仓:
+            - 卖出侧: 卖出股数 / 原持仓数 × equity (等权假设)
+            - 买入侧: 买入股数 / 新持仓数 × equity (等权假设)
+            """
             prev_holdings = holdings_history[idx]
-            sell_cost = self._calc_transaction_cost(base_equity, is_sell=True) if prev_holdings else 0
-            buy_cost = self._calc_transaction_cost(base_equity, is_sell=False)
+            new_holdings = holdings_history[idx + 1] if idx + 1 < n_days else prev_holdings
+
+            prev_set = set(prev_holdings)
+            new_set = set(new_holdings)
+            n_sold = len(prev_set - new_set)
+            n_bought = len(new_set - prev_set)
+            n_prev = len(prev_holdings)
+            n_new = len(new_holdings)
+
+            # 等权假设:卖出/买入金额按持仓占比折算
+            sell_amount = (n_sold / n_prev) * base_equity if n_prev and n_sold else 0.0
+            buy_amount = (n_bought / n_new) * base_equity if n_new and n_bought else 0.0
+
+            sell_cost = self._calc_transaction_cost(
+                sell_amount, is_sell=True, n_trades=n_sold
+            ) if n_sold else 0.0
+            buy_cost = self._calc_transaction_cost(
+                buy_amount, is_sell=False, n_trades=n_bought
+            ) if n_bought else 0.0
+
             new_equity = base_equity - sell_cost - buy_cost
+
             # 补全 rebalance_details 中匹配 date 的最后一条
             if rebalance_details:
                 last = rebalance_details[-1]
                 if last.get("date") == str(all_dates[idx].date()):
                     last["equity_before_rebalance"] = base_equity
                     last["transaction_cost"] = sell_cost + buy_cost
+                    last["turnover_pct"] = round(
+                        (sell_amount + buy_amount) / base_equity * 100
+                        if base_equity > 0 else 0, 2
+                    )
             return new_equity
 
         # 1) 处理 Day 0 的调仓成本 (基线是 initial_capital)
@@ -382,18 +412,44 @@ class PortfolioBacktestEngine:
         equity_series = pd.Series(equity_curve, index=pd.to_datetime(all_dates))
         return equity_series, rebalance_details
 
-    def _calc_transaction_cost(self, equity: float, is_sell: bool = False) -> float:
+    def _calc_transaction_cost(
+        self,
+        turnover_amount: float,
+        is_sell: bool = False,
+        n_trades: int = 1,
+    ) -> float:
         """
-        计算全仓调仓的交易成本
+        计算调仓的交易成本(基于实际换手金额,不是全仓)
 
-        简化模型: 假设全仓换手
-        买入: 佣金 (双边)
-        卖出: 佣金 + 印花税
+        成本构成:
+        1. 佣金: turnover * commission_rate,每笔最低 min_commission 元
+        2. 印花税(仅卖出): turnover * stamp_duty_rate
+        3. 滑点: turnover * slippage (假设每次成交滑点一致)
+
+        Args:
+            turnover_amount: 实际买卖金额(不是全仓 equity)
+            is_sell: True=卖出侧, False=买入侧
+            n_trades: 本次调仓涉及的交易笔数(用于 min_commission 计算)
+
+        修复历史:
+            之前版本按"全仓换手"假设,即 1 只调仓也扣 100% 仓位的佣金,
+            实际只调 N 只时,成本高估 N 倍。改为按实际 turnover_amount 计费。
         """
-        cost = equity * self.commission  # 佣金
-        if is_sell:
-            cost += equity * self.stamp_duty  # 印花税(仅卖出)
-        return cost
+        if turnover_amount <= 0 or n_trades <= 0:
+            return 0.0
+
+        # 1. 佣金(双边,按笔数摊销 min_commission)
+        commission_raw = turnover_amount * self.commission
+        commission_min_floor = self.min_commission * n_trades
+        commission = max(commission_raw, commission_min_floor)
+
+        # 2. 印花税(仅卖出)
+        stamp = turnover_amount * self.stamp_duty if is_sell else 0.0
+
+        # 3. 滑点(双边都收)
+        slip = turnover_amount * self.slippage
+
+        return commission + stamp + slip
 
     def _build_report(self,
                       strategy: BaseSelectionStrategy,
@@ -489,7 +545,9 @@ class PortfolioBacktestEngine:
             cost_config={
                 "commission_rate": self.commission,
                 "stamp_duty_rate": self.stamp_duty,
-                "note": "组合回测: 等权配置，全仓调仓时计算双边佣金+卖出印花税",
+                "slippage": self.slippage,
+                "min_commission": self.min_commission,
+                "note": "组合回测: 等权配置,按实际换手金额计算(佣金+印花税+滑点)",
             }
         )
         return report
