@@ -299,11 +299,12 @@ for threshold in [0.4, 0.45, 0.5, 0.55, 0.6]:
     print(f"   阈值={threshold:.2f}: 预测正例={total_pos} 精确率={prec:.1f}% 召回率={rec:.1f}%")
 
 # ===== 10. 保存 =====
+# 安全:改用 JSON 保存 scaler,避免 pickle 反序列化 RCE
 model_path = DATA_DIR / "xgb_model.json"
-scaler_path = DATA_DIR / "xgb_scaler.pkl"
+scaler_path = DATA_DIR / "xgb_scaler.json"
 model.save_model(str(model_path))
-with open(scaler_path, 'wb') as f:
-    pickle.dump({'scaler': scaler, 'feature_names': feature_cols}, f)
+from src.data.xgb_scaler import save_scaler
+save_scaler(scaler, feature_cols, scaler_path)
 
 elapsed = time.time() - t0
 print(f"\n💾 模型已保存: {model_path}")
