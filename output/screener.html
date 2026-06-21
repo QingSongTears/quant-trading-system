@@ -93,6 +93,11 @@ tr.clickable{cursor:pointer}
         <label> </label>
         <button class="btn" onclick="search()">🔍 筛选</button>
       </div>
+      <div class="filter-group" style="margin-left:auto">
+        <label>搜索股票</label>
+        <input type="text" id="stockSearchInput" placeholder="代码/中文/拼音" style="width:160px;" oninput="searchStockSuggest()" onkeydown="if(event.key==='Enter')goToStock()">
+        <div id="sugBox" style="display:none;position:absolute;z-index:100;background:var(--card);border:1px solid var(--border);border-radius:6px;max-height:200px;overflow-y:auto;width:200px;"></div>
+      </div>
     </div>
   </div>
 
@@ -108,6 +113,33 @@ tr.clickable{cursor:pointer}
 </div>
 
 <script>
+let sugTimer = null;
+async function searchStockSuggest() {
+  clearTimeout(sugTimer);
+  const q = document.getElementById('stockSearchInput').value.trim();
+  if (q.length < 1) { document.getElementById('sugBox').style.display = 'none'; return; }
+  sugTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/stock/search?q=' + encodeURIComponent(q));
+      const d = await r.json();
+      const items = d.results || [];
+      if (!items.length) { document.getElementById('sugBox').style.display = 'none'; return; }
+      document.getElementById('sugBox').innerHTML = items.slice(0,8).map(s =>
+        `<div onclick="goToStockCode('${s.code}')" style="padding:8px 12px;cursor:pointer;font-size:0.8rem;border-bottom:1px solid var(--border)"><span style="color:var(--accent);font-family:monospace">${s.code}</span> ${s.name}</div>`
+      ).join('');
+      document.getElementById('sugBox').style.display = 'block';
+    } catch(e) {}
+  }, 200);
+}
+function goToStockCode(code) {
+  window.location.href = '/diagnose?code=' + code;
+}
+function goToStock() {
+  const v = document.getElementById('stockSearchInput').value.trim();
+  if (v) goToStockCode(v.replace(/[^0-9]/g,'').padStart(6,'0'));
+}
+document.addEventListener('click', e => { if (!e.target.closest('#stockSearchInput')) document.getElementById('sugBox').style.display = 'none'; });
+
 document.addEventListener('DOMContentLoaded', async () => {
   await loadIndustries();
   search();
