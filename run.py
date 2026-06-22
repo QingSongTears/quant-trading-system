@@ -27,8 +27,21 @@ import uvicorn
 def check_database():
     """检查数据库状态"""
     from src.models.repository import DataRepository
+    db_path = PROJECT_ROOT / "database" / "quant.db"
     repo = DataRepository()
     try:
+        # 如果 DB 不存在,提示从 CSV 构建
+        if not db_path.exists():
+            print("\n📊 数据库状态检查")
+            print("=" * 50)
+            print(f"  ❌ 数据库文件不存在: {db_path}")
+            print(f"  数据库文件:   {db_path}")
+            print("=" * 50)
+            print("\n💡 DB 文件已 gitignore, 需要从 market_data/ 下的 CSV 构建:")
+            print("   python scripts/build_db.py")
+            print("   (或 python scripts/build_db.py --incremental 仅增量)")
+            return False
+
         coverage = repo.get_data_coverage()
         print("\n📊 数据库状态检查")
         print("=" * 50)
@@ -36,7 +49,7 @@ def check_database():
         print(f"  日线记录:     {coverage['total_records']:,}")
         date_range = coverage.get("date_range", {})
         print(f"  数据区间:     {date_range.get('start', 'N/A')} ~ {date_range.get('end', 'N/A')}")
-        print(f"  数据库文件:   {PROJECT_ROOT / 'database' / 'quant.db'}")
+        print(f"  数据库文件:   {db_path}")
         print("=" * 50)
 
         if coverage["total_records"] == 0:
