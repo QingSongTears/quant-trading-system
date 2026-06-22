@@ -327,6 +327,19 @@ async def workbench_page(request: Request):
     return templates.TemplateResponse(request, "workbench.html", ctx)
 
 
+@router.get("/simulate", response_class=HTMLResponse)
+async def simulate_page(request: Request):
+    """模拟交易工作台"""
+    ctx = _get_global_context()
+    from ...strategies.trading.config import TradingConfig
+    ctx.update({
+        "default_config": TradingConfig().to_dict(),
+        "default_start": (date.today() - timedelta(days=365)).strftime("%Y-%m-%d"),
+        "default_end": date.today().strftime("%Y-%m-%d"),
+    })
+    return templates.TemplateResponse(request, "simulate.html", ctx)
+
+
 # ============================================================
 # 独立页面 (output/ 移植, 暗色主题, 不继承 base.html)
 # ============================================================
