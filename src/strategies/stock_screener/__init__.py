@@ -1,10 +1,17 @@
 """
-A股波段选股策略模块 — Stock Screener
+⚠️ LEGACY — A股波段选股策略模块（Stock Screener）
 
-独立运行:
-    cd src/strategies/stock_screener && python main.py
+状态: 归档保留，不再积极维护。详见 LEGACY.md。
 
-跨模块导入:
+新策略请写到 src/strategies/ 主系统（使用 BaseSelectionStrategy 基类）。
+新数据加载请用 src.models.repository.DataRepository。
+
+主推策略位置:
+  - V6超卖反转:     src.strategies.v6_reversal_selection
+  - V6多维融合:     src.strategies.v6_pipeline_hybrid
+  - V龙头主升:      src.strategies.v_leader_main_surge (骨架)
+
+跨模块导入（向后兼容）:
     from src.strategies.stock_screener.core.strategy import StockScreenerStrategy
 """
 
