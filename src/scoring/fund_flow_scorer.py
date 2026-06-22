@@ -96,10 +96,10 @@ class FundFlowScorer(BaseScorer):
         return df
 
     def _load_market_cap(self, code: str) -> float:
-        """获取流通市值 — 优先级: DB > API > 绝对金额兜底
+        """获取流通市值 — 优先级: DB > WeStock CLI > 绝对金额兜底
         
-        1. 先查 stock_profile.circulating_shares (本地DB)
-        2. 若没有, 尝试从东方财富API实时获取
+        1. 先查 stock_profile.circulating_shares (可从WeStock批量采集)
+        2. 若没有, 通过 WeStock Data CLI 实时获取 regCapital
         3. 都失败, 返回 NaN (触发绝对金额判断)
         """
         try:
@@ -115,33 +115,44 @@ class FundFlowScorer(BaseScorer):
         except Exception:
             pass
         
-        # 2. 尝试 API 实时获取
+        # 2. 通过 WeStock Data CLI 实时获取
         try:
-            import requests as _req
-            market = 1 if code.startswith("6") else 0
-            url = (
-                f"https://push2.eastmoney.com/api/qt/stock/get"
-                f"?secid={market}.{code}"
-                f"&fields=f57,f58,f84,f85,f86"
+            import subprocess as _sp
+            # 转换代码格式
+            if code.startswith("6"):
+                wscode = "sh" + code
+            elif code.startswith("0") or code.startswith("3"):
+                wscode = "sz" + code
+            elif code.startswith("8") or code.startswith("4"):
+                wscode = "bj" + code
+            else:
+                return np.nan
+            
+            result = _sp.run(
+                ["npx", "-y", "westock-data-clawhub@1.0.4", "profile", wscode],
+                capture_output=True, text=True, timeout=20,
+                env={**__import__('os').environ, "NODE_OPTIONS": ""}
             )
-            resp = _req.get(url, headers={
-                "User-Agent": "Mozilla/5.0"
-            }, timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get("data") and data["data"].get("f85"):
-                    shares = float(data["data"]["f85"])
-                    # 异步保存到DB
-                    try:
-                        with self.engine.connect() as _c:
-                            _c.execute(
-                                text("UPDATE stock_profile SET circulating_shares = :s WHERE code = :c"),
-                                {"s": shares, "c": code}
-                            )
-                            _c.commit()
-                    except Exception:
-                        pass
-                    return shares
+            if result.returncode == 0:
+                lines = result.stdout.strip().split("\n")
+                if len(lines) >= 3:
+                    headers = [h.strip() for h in lines[0].split("|")[1:-1]]
+                    values = [v.strip() for v in lines[2].split("|")[1:-1]]
+                    data = dict(zip(headers, values))
+                    reg_capital_wan = data.get("regCapital", "")
+                    if reg_capital_wan:
+                        shares = float(reg_capital_wan.replace(",", "")) * 10000  # 万元→元
+                        # 缓存到 DB
+                        try:
+                            with self.engine.connect() as _c:
+                                _c.execute(
+                                    text("UPDATE stock_profile SET circulating_shares = :s WHERE code = :c"),
+                                    {"s": shares, "c": code}
+                                )
+                                _c.commit()
+                        except Exception:
+                            pass
+                        return shares
         except Exception:
             pass
         
