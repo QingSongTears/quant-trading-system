@@ -17,7 +17,7 @@ from src.config import get_config, get_db_url
 
 
 def main():
-    csv_path = Path(__file__).parent.parent / "A股全市场数据" / "finance_summary.csv"
+    csv_path = Path(__file__).parent.parent / "market_data" / "finance_summary.csv"
     print(f"加载: {csv_path}")
 
     df = pd.read_csv(csv_path, on_bad_lines='skip', low_memory=False)

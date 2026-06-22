@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 # 配置
 CODES_FILE = "/tmp/stock_profile.csv"
-OUTPUT = "/workspace/quant-trading-system/A股全市场数据/fund_flow_120d.csv"
+OUTPUT = "/workspace/quant-trading-system/market_data/fund_flow_120d.csv"
 PARALLEL = 10  # 同时跑10个日期，速度拉满
 
 # 读取股票代码

@@ -13,8 +13,8 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).parent.parent
-KLINE_CSV = ROOT / "A股全市场数据" / "kline_daily.csv"
-STOCK_CSV = ROOT / "A股全市场数据" / "stock_profile.csv"
+KLINE_CSV = ROOT / "market_data" / "kline_daily.csv"
+STOCK_CSV = ROOT / "market_data" / "stock_profile.csv"
 BATCH = 500
 
 

@@ -16,8 +16,8 @@ import pandas as pd
 # 配置
 DATE = "2026-06-18"
 REPO_ROOT = Path(__file__).parent.parent
-STOCK_PROFILE = REPO_ROOT / "A股全市场数据" / "stock_profile.csv"
-OUTPUT_CSV = REPO_ROOT / "A股全市场数据" / "fund_flow_120d.csv"
+STOCK_PROFILE = REPO_ROOT / "market_data" / "stock_profile.csv"
+OUTPUT_CSV = REPO_ROOT / "market_data" / "fund_flow_120d.csv"
 BATCH_SIZE = 500  # 每批股票数量
 
 def get_stock_codes():

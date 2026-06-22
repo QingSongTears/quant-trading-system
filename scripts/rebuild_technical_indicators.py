@@ -10,8 +10,8 @@ import numpy as np
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
-KLINE_CSV = REPO_ROOT / "A股全市场数据" / "kline_daily.csv"
-OUTPUT_CSV = REPO_ROOT / "A股全市场数据" / "technical_indicators.csv"
+KLINE_CSV = REPO_ROOT / "market_data" / "kline_daily.csv"
+OUTPUT_CSV = REPO_ROOT / "market_data" / "technical_indicators.csv"
 
 
 # ============================================================

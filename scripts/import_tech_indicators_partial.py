@@ -21,7 +21,7 @@ from src.models.database import Base, TechnicalIndicator
 
 
 def main():
-    data_dir = Path(__file__).parent.parent / "A股全市场数据" / "raw" / "technical_indicators"
+    data_dir = Path(__file__).parent.parent / "market_data" / "raw" / "technical_indicators"
     csv_files = [
         data_dir / "tech_indicators_2025_part1.csv",
         data_dir / "tech_indicators_2025_part2.csv",
