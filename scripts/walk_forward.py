@@ -39,6 +39,7 @@ import argparse
 import json
 import logging
 import sys
+import time
 from dataclasses import dataclass, field, asdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -233,12 +234,33 @@ class WalkForwardValidator:
     ) -> WindowResult:
         """
         单窗口 walk-forward:
+          0. (优化) 若策略有 precompute_all, 预计算 train+test 全段指标
           1. 在 [train_start, train_end] 上做参数搜索
           2. 取最优参数
           3. 在 [test_start, test_end] 上做 OOS 回测
           4. 返回 OOS 指标
         """
-        # TODO: 实现
+        # 0. 预计算指标 (覆盖 train+test 全段, 后续 optimize + backtest 复用)
+        # 提速关键: V6 默认每次 select 重新算 RSI/BB, 开启预计算后单窗口仅算一次
+        log.debug(f"[Window {window_id}] 检查预计算 hook")
+        precompute_all = getattr(self.strategy_class, "precompute_all", None)
+        if callable(precompute_all):
+            try:
+                # 实例化临时 strategy 用于预计算 (避免污染真实 strategy)
+                tmp_strategy = self.strategy_class(**self.strategy_params)
+                log.info(
+                    f"[Window {window_id}] 预计算指标 "
+                    f"[{train_start}, {test_end}]..."
+                )
+                t = time.time()
+                tmp_strategy.precompute_all(train_start, test_end)
+                log.info(
+                    f"[Window {window_id}] 预计算完成 ({time.time()-t:.1f}s), "
+                    f"{len(tmp_strategy._indicator_cache)} 个交易日已缓存"
+                )
+            except Exception as e:
+                log.warning(f"[Window {window_id}] 预计算失败 (继续): {e}")
+
         # Step 1: 参数搜索
         best_params, in_sample_sharpe = self._optimize(
             train_start, train_end,
