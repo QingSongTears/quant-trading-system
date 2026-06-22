@@ -38,7 +38,7 @@ class V6PipelineHybridStrategy(V6ReversalSelectionStrategy):
     4. 按融合分排序 → 返回 top N
     """
 
-    name: str = "v6_pipeline_hybrid"
+    name: str = "V6多维融合"
     description: str = "V6超卖信号 × 多维评分融合精选"
     source: str = "v6_reversal + ScorerRegistry 多维评分管线"
 
@@ -283,3 +283,8 @@ class V6PipelineHybridStrategy(V6ReversalSelectionStrategy):
         # 按融合分排序
         ranked = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)
         return [code for code, _ in ranked[:self.n_stocks]]
+
+
+# ── 业务名别名 (LIVE_TRADING_ROADMAP.md 命名规范化) ─────────
+# 兼容旧引用: V6MultiDimStrategy = V6PipelineHybridStrategy
+V6MultiDimStrategy = V6PipelineHybridStrategy

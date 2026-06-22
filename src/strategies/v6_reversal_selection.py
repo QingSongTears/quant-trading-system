@@ -44,7 +44,7 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
     _class_cache: dict = {}
     _own_cache: bool = False
 
-    name: str = "v6_reversal"
+    name: str = "V6超卖反转"
     description: str = (
         "V6 超卖反转 — RSI超卖+BB挤压+60日深回撤 → 反转确认 "
         "+ 连续阳线 + 量价过滤 + ATR波动率评价"
@@ -515,3 +515,8 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
         if close[-1] > 0:
             return atr / close[-1] * 100
         return 2.0
+
+
+# ── 业务名别名 (LIVE_TRADING_ROADMAP.md 命名规范化) ─────────
+# 兼容旧引用: V6ReversalStrategy = V6ReversalSelectionStrategy
+V6ReversalStrategy = V6ReversalSelectionStrategy
