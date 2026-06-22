@@ -13,7 +13,7 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).parent.parent
-STOCKS_CSV = ROOT / "A股全市场数据" / "stock_profile.csv"
+STOCKS_CSV = ROOT / "market_data" / "stock_profile.csv"
 DATE = "2026-06-18"
 BATCH = 500
 
@@ -63,7 +63,7 @@ def parse_stdout(stdout):
 
 def update_margin():
     print("\n■ margin_trading.csv")
-    dst = ROOT / "A股全市场数据" / "margin_trading.csv"
+    dst = ROOT / "market_data" / "margin_trading.csv"
     old = pd.read_csv(dst, encoding="utf-8-sig")
     print(f"  旧记录: {len(old)}")
 
@@ -119,7 +119,7 @@ def update_margin():
 
 def update_block():
     print("\n■ block_trade.csv")
-    dst = ROOT / "A股全市场数据" / "block_trade.csv"
+    dst = ROOT / "market_data" / "block_trade.csv"
     old = pd.read_csv(dst, encoding="utf-8-sig")
     print(f"  旧记录: {len(old)}")
 
@@ -175,7 +175,7 @@ def update_block():
 
 def update_lhb():
     print("\n■ dragon_tiger.csv")
-    dst = ROOT / "A股全市场数据" / "dragon_tiger.csv"
+    dst = ROOT / "market_data" / "dragon_tiger.csv"
     old = pd.read_csv(dst, encoding="utf-8-sig")
     print(f"  旧记录: {len(old)}")
 

@@ -19,7 +19,7 @@ from src.config import get_config, get_db_url
 
 
 def main():
-    csv_path = Path(__file__).parent.parent / "A股全市场数据" / "fund_flow_120d.csv"
+    csv_path = Path(__file__).parent.parent / "market_data" / "fund_flow_120d.csv"
     print(f"加载: {csv_path}")
 
     # 检查是否为 LFS 指针

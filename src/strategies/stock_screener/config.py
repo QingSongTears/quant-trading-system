@@ -28,10 +28,10 @@ __all_risk_constants__ = [
 ROOT_DIR = Path(__file__).resolve().parent
 # 项目根目录：从 src/strategies/stock_screener/ 向上三级到 quant-trading-system/
 PROJECT_ROOT = ROOT_DIR.parent.parent.parent
-# 数据文件的实际位置（优先用 A股全市场数据/raw/，fallback 到 data/raw/）
-RAW_DATA_DIR = PROJECT_ROOT / "A股全市场数据" / "raw"
-REFERENCE_DATA_DIR = PROJECT_ROOT / "A股全市场数据" / "reference"
-IMPORTED_DATA_DIR = PROJECT_ROOT / "A股全市场数据" / "imported"
+# 数据文件的实际位置（优先用 market_data/raw/，fallback 到 data/raw/）
+RAW_DATA_DIR = PROJECT_ROOT / "market_data" / "raw"
+REFERENCE_DATA_DIR = PROJECT_ROOT / "market_data" / "reference"
+IMPORTED_DATA_DIR = PROJECT_ROOT / "market_data" / "imported"
 if RAW_DATA_DIR.exists():
     DATA_DIR = RAW_DATA_DIR
 else:

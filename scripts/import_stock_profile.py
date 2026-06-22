@@ -1,7 +1,7 @@
 """
 导入 stock_profile.csv → quant.db + 补充 stock_basic
 ====================================================
-从 A股全市场数据/stock_profile.csv 导入股票概况，
+从 market_data/stock_profile.csv 导入股票概况，
 并将 industry/list_date 回填到 stock_basic 表的缺失行。
 
 用法: python scripts/import_stock_profile.py
@@ -17,7 +17,7 @@ from src.config import get_config, get_db_url
 
 
 def main():
-    csv_path = Path(__file__).parent.parent / "A股全市场数据" / "stock_profile.csv"
+    csv_path = Path(__file__).parent.parent / "market_data" / "stock_profile.csv"
     print(f"加载: {csv_path}")
 
     df = pd.read_csv(csv_path, on_bad_lines='skip', low_memory=False)

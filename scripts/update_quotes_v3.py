@@ -14,8 +14,8 @@ from pathlib import Path
 import pandas as pd
 
 REPO_ROOT = Path(__file__).parent.parent
-STOCK_PROFILE = REPO_ROOT / "A股全市场数据" / "stock_profile.csv"
-QUOTES_CSV = REPO_ROOT / "A股全市场数据" / "tencent_quotes.csv"
+STOCK_PROFILE = REPO_ROOT / "market_data" / "stock_profile.csv"
+QUOTES_CSV = REPO_ROOT / "market_data" / "tencent_quotes.csv"
 DATE = "2026-06-18"
 BATCH_SIZE = 500
 

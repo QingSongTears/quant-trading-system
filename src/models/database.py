@@ -199,7 +199,7 @@ class DataSourceMeta(Base):
 class TechnicalIndicator(Base):
     """
     技术指标预计算表
-    数据来源: A股全市场数据/technical_indicators.csv — 预计算技术指标
+    数据来源: market_data/technical_indicators.csv — 预计算技术指标
     避免每次回测重复计算相同指标，加速回测速度。
 
     注意: MACD/RSI/KDJ 等指标需要一定的数据长度才能准确，
@@ -242,7 +242,7 @@ class TechnicalIndicator(Base):
 class FinanceSummary(Base):
     """
     季度财务摘要表（真实财报数据）
-    数据来源: A股全市场数据/finance_summary.csv — 东方财富季度财报
+    数据来源: market_data/finance_summary.csv — 东方财富季度财报
     替代旧的 finance_snapshot_v2，提供 100+ 字段的专业财报数据。
     当前保留 34 个量化核心字段，均为最新季度数据。
     """
@@ -310,7 +310,7 @@ class FinanceSummary(Base):
 class StockProfile(Base):
     """
     股票概况表
-    数据来源: A股全市场数据/stock_profile.csv — 包含行业/板块/上市日期/注册资本等
+    数据来源: market_data/stock_profile.csv — 包含行业/板块/上市日期/注册资本等
     """
     __tablename__ = "stock_profile"
     __table_args__ = (

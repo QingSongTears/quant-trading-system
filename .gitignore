@@ -41,8 +41,7 @@ data/quant.db
 data/all_7d_scores.json
 data/xgb_*.json
 data/xgb_scaler.pkl
-A股全市场数据/**/*.csv
-A股全市场数据/imported/
+market_data/imported/
 .workbuddy/
 .tmp_*.json
 *.tmp

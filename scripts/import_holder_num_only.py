@@ -14,7 +14,7 @@ from src.config import get_config, get_db_url
 
 
 def main():
-    csv_path = Path(__file__).parent.parent / "A股全市场数据" / "holder_num.csv"
+    csv_path = Path(__file__).parent.parent / "market_data" / "holder_num.csv"
     print(f"加载: {csv_path}")
 
     engine = create_engine(get_db_url(get_config()), echo=False)

@@ -8,7 +8,7 @@
   - KDJ (K/D/J)
   - Bollinger Bands (MID/UPPER/LOWER)
 
-数据源: A股全市场数据/technical_indicators.csv (301 万行, 5206 只股票)
+数据源: market_data/technical_indicators.csv (301 万行, 5206 只股票)
 数据范围: 2024-01-02 ~ 2026-06-16
 
 用法:
@@ -39,7 +39,7 @@ CSV_PATH = os.environ.get(
     "CSV_PATH",
     os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "A股全市场数据",
+        "market_data",
         "technical_indicators.csv"
     )
 )

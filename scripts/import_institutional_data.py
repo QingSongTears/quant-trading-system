@@ -33,7 +33,7 @@ from src.config import get_config, get_db_url
 # ============================================================
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "A股全市场数据"
+    "market_data"
 )
 BATCH_SIZE = 50000
 
