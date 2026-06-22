@@ -1,0 +1,88 @@
+{
+  "strategy_name": "V6ReversalSelectionStrategy",
+  "config": {
+    "train_months": 6,
+    "test_months": 2,
+    "step_months": 2,
+    "start_date": "2023-06-01",
+    "end_date": "2024-08-31"
+  },
+  "windows": [
+    {
+      "window_id": 0,
+      "train_start": "2023-06-01",
+      "train_end": "2023-12-01",
+      "test_start": "2023-12-01",
+      "test_end": "2024-02-01",
+      "best_params": {
+        "MAX_RSI_14": 30.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.1,
+        "MAX_DRAWDOWN_60D": -15.0
+      },
+      "in_sample_sharpe": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_annual_return": 0.0,
+      "oos_max_drawdown": 0.0,
+      "oos_total_trades": 0,
+      "oos_win_rate": 0.0
+    },
+    {
+      "window_id": 1,
+      "train_start": "2023-08-01",
+      "train_end": "2024-02-01",
+      "test_start": "2024-02-01",
+      "test_end": "2024-04-01",
+      "best_params": {
+        "MAX_RSI_14": 30.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.1,
+        "MAX_DRAWDOWN_60D": -15.0
+      },
+      "in_sample_sharpe": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_annual_return": 0.0,
+      "oos_max_drawdown": 0.0,
+      "oos_total_trades": 0,
+      "oos_win_rate": 0.0
+    },
+    {
+      "window_id": 2,
+      "train_start": "2023-10-01",
+      "train_end": "2024-04-01",
+      "test_start": "2024-04-01",
+      "test_end": "2024-06-01",
+      "best_params": {
+        "MAX_RSI_14": 30.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.1,
+        "MAX_DRAWDOWN_60D": -15.0
+      },
+      "in_sample_sharpe": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_annual_return": 0.0,
+      "oos_max_drawdown": 0.0,
+      "oos_total_trades": 0,
+      "oos_win_rate": 0.0
+    },
+    {
+      "window_id": 3,
+      "train_start": "2023-12-01",
+      "train_end": "2024-06-01",
+      "test_start": "2024-06-01",
+      "test_end": "2024-08-01",
+      "best_params": {
+        "MAX_RSI_14": 30.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.1,
+        "MAX_DRAWDOWN_60D": -15.0
+      },
+      "in_sample_sharpe": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_annual_return": 0.0,
+      "oos_max_drawdown": 0.0,
+      "oos_total_trades": 0,
+      "oos_win_rate": 0.0
+    }
+  ]
+}
