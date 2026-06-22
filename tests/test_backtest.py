@@ -273,9 +273,11 @@ class TestBacktestEngineCalculations:
         """波动率计算"""
         np.random.seed(42)
         prices = 100 + np.random.randn(100).cumsum()
-        df = pd.DataFrame({"Close": prices})
+        # _calc_annual_volatility 需要 stats dict 且包含 _equity_curve
+        equity_series = pd.Series(prices, name="Equity")
+        stats = {"_equity_curve": equity_series}
         engine = mock_backtest_engine
-        vol = engine._calc_annual_volatility(df)
+        vol = engine._calc_annual_volatility(stats)
         assert vol > 0, "波动率应为正数"
 
 

@@ -96,9 +96,55 @@ class FundFlowScorer(BaseScorer):
         return df
 
     def _load_market_cap(self, code: str) -> float:
-        """获取流通市值 — 待 #64 补充流通股本数据后恢复"""
-        # TODO: 需要 stock_basic 或 finance_summary 增加 shares(流通股本) 字段
-        # 当前退化：返回 NaN，触发绝对金额判断逻辑（>1亿=2分，>1千万=1分）
+        """获取流通市值 — 优先级: DB > API > 绝对金额兜底
+        
+        1. 先查 stock_profile.circulating_shares (本地DB)
+        2. 若没有, 尝试从东方财富API实时获取
+        3. 都失败, 返回 NaN (触发绝对金额判断)
+        """
+        try:
+            # 1. 查 DB
+            df = read_sql(
+                "SELECT circulating_shares FROM stock_profile WHERE code = :code",
+                self.engine, {"code": code}
+            )
+            if not df.empty:
+                shares = df.iloc[0, 0]
+                if pd.notna(shares) and shares > 0:
+                    return float(shares)
+        except Exception:
+            pass
+        
+        # 2. 尝试 API 实时获取
+        try:
+            import requests as _req
+            market = 1 if code.startswith("6") else 0
+            url = (
+                f"https://push2.eastmoney.com/api/qt/stock/get"
+                f"?secid={market}.{code}"
+                f"&fields=f57,f58,f84,f85,f86"
+            )
+            resp = _req.get(url, headers={
+                "User-Agent": "Mozilla/5.0"
+            }, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("data") and data["data"].get("f85"):
+                    shares = float(data["data"]["f85"])
+                    # 异步保存到DB
+                    try:
+                        with self.engine.connect() as _c:
+                            _c.execute(
+                                text("UPDATE stock_profile SET circulating_shares = :s WHERE code = :c"),
+                                {"s": shares, "c": code}
+                            )
+                            _c.commit()
+                    except Exception:
+                        pass
+                    return shares
+        except Exception:
+            pass
+        
         return np.nan
 
     def _load_bulk_flow_data(
