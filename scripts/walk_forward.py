@@ -165,6 +165,7 @@ class WalkForwardValidator:
         test_months: int = 6,
         step_months: Optional[int] = None,
         initial_capital: float = 1_000_000,
+        n_optimize_samples: int = 20,
     ):
         self.strategy_class = strategy_class
         self.strategy_params = strategy_params
@@ -175,6 +176,11 @@ class WalkForwardValidator:
         self.test_months = test_months
         self.step_months = step_months or test_months  # 默认步长=测试窗口
         self.initial_capital = initial_capital
+        self.n_optimize_samples = n_optimize_samples
+
+        self.windows: List[WindowResult] = []
+
+
 
         self.windows: List[WindowResult] = []
 
@@ -262,33 +268,100 @@ class WalkForwardValidator:
         """
         训练窗口内参数搜索, 返回 (best_params, best_in_sample_sharpe)
 
-        实现建议:
-          - 网格搜索: 遍历 param_grid 笛卡尔积
-          - 随机搜索: 100 次采样
-          - 贝叶斯: optuna
+        算法: 随机搜索（覆盖主要 V6 参数）
+          - MAX_RSI_14 ∈ [30, 35, 38, 42]
+          - MAX_RSI_6  ∈ [20, 23, 26]
+          - MAX_BB_POSITION ∈ [0.06, 0.08, 0.10, 0.12]
+          - MAX_DRAWDOWN_60D ∈ [-20, -15, -10, -8]
+        默认 n_samples=20 (随机组合)
         """
-        # TODO: 实现, 复用 PortfolioBacktestEngine
-        raise NotImplementedError(
-            "参数优化待实现 — 依赖 PortfolioBacktestEngine"
+        from src.backtest.portfolio_engine import PortfolioBacktestEngine
+        # 默认参数搜索空间 (V6 优化范围, 来自 #54 参数扫描)
+        param_space = self.param_grid or {
+            "MAX_RSI_14":        [30.0, 35.0, 38.0, 42.0],
+            "MAX_RSI_6":         [20.0, 23.0, 26.0],
+            "MAX_BB_POSITION":   [0.06, 0.08, 0.10, 0.12],
+            "MAX_DRAWDOWN_60D":  [-20.0, -15.0, -10.0, -8.0],
+        }
+        n_samples = self.n_optimize_samples
+
+        import random
+        rng = random.Random(42)
+        samples = []
+        keys = list(param_space.keys())
+        for _ in range(n_samples):
+            sample = {k: rng.choice(param_space[k]) for k in keys}
+            samples.append(sample)
+
+        engine = PortfolioBacktestEngine()
+        best_params: Dict[str, Any] = {}
+        best_sharpe = float("-inf")
+
+        for i, params in enumerate(samples):
+            try:
+                strategy = self.strategy_class(
+                    **{**self.strategy_params, **params}
+                )
+                report = engine.run(
+                    strategy=strategy,
+                    start_date=train_start,
+                    end_date=train_end,
+                    initial_capital=self.initial_capital,
+                )
+                sharpe = report.sharpe_ratio or 0.0
+                if sharpe > best_sharpe:
+                    best_sharpe = sharpe
+                    best_params = params
+                log.debug(
+                    f"  [optimize {i+1}/{n_samples}] "
+                    f"params={params} sharpe={sharpe:.2f}"
+                )
+            except Exception as e:
+                log.debug(f"  [optimize {i+1}/{n_samples}] failed: {e}")
+                continue
+
+        if not best_params:
+            log.warning(
+                f"[optimize] 训练窗口 {train_start}~{train_end} 无有效结果, "
+                f"使用默认参数"
+            )
+            best_params = {k: param_space[k][0] for k in keys}
+
+        log.info(
+            f"[optimize] {train_start}~{train_end}: "
+            f"best_sharpe={best_sharpe:.2f}, params={best_params}"
         )
+        return best_params, best_sharpe
 
     def _backtest(
         self, test_start: date, test_end: date, params: dict,
     ) -> Dict[str, float]:
         """
         OOS 测试窗口回测, 返回指标 dict
+
+        复用 PortfolioBacktestEngine
         """
-        # TODO: 实现
-        # from src.backtest.portfolio_engine import PortfolioBacktestEngine
-        # strategy = self.strategy_class(**{**self.strategy_params, **params})
-        # engine = PortfolioBacktestEngine()
-        # report = engine.run(strategy, test_start, test_end, self.initial_capital)
-        # return {
-        #     "sharpe": report.sharpe_ratio,
-        #     "annual_return": report.annual_return,
-        #     ...
-        # }
-        raise NotImplementedError("OOS 回测待实现")
+        from src.backtest.portfolio_engine import PortfolioBacktestEngine
+
+        strategy = self.strategy_class(
+            **{**self.strategy_params, **params}
+        )
+        engine = PortfolioBacktestEngine()
+        report = engine.run(
+            strategy=strategy,
+            start_date=test_start,
+            end_date=test_end,
+            initial_capital=self.initial_capital,
+        )
+        return {
+            "sharpe":         report.sharpe_ratio or 0.0,
+            "annual_return":  report.annual_return or 0.0,
+            "max_drawdown":   report.max_drawdown or 0.0,
+            "total_return":   report.total_return or 0.0,
+            "total_trades":   report.total_trades or 0,
+            "win_rate":       report.win_rate or 0.0,
+            "profit_factor":  report.profit_factor or 0.0,
+        }
 
     # ================================================================
     #  主入口
@@ -383,6 +456,172 @@ def yaml_dump(obj: dict) -> str:
     return "\n".join(lines)
 
 
+# ── 合成数据生成 (smoke test 用) ─────────────────
+
+
+def generate_synthetic_data(
+    n_stocks: int = 50,
+    days: int = 504,        # 约 2 年交易日
+    start_date: date = None,
+    db_path: Path = None,
+    seed: int = 42,
+) -> None:
+    """
+    用几何布朗运动 (GBM) 生成合成 A 股行情, 灌入 quant.db 用于 pipeline 测试。
+
+    ⚠️ 警告: 会向真实 quant.db 写入数据, 仅用于空 DB 或 smoke test。
+    真实数据请用 `python run.py --download`。
+
+    Args:
+        n_stocks: 股票数量
+        days: 交易日数量
+        start_date: 数据起始日期 (默认 2023-01-01)
+        db_path: SQLite 路径 (默认 PROJECT_ROOT/database/quant.db)
+        seed: 随机种子
+    """
+    import sqlite3
+    import numpy as np
+
+    if start_date is None:
+        start_date = date(2023, 1, 1)
+    if db_path is None:
+        db_path = PROJECT_ROOT / "database" / "quant.db"
+
+    rng = np.random.default_rng(seed)
+
+    # 生成每个股票的参数: 起始价 + 漂移率 + 波动率
+    # 故意让 30% 股票是"强势股" (高漂移高波动), 70% 是普通股
+    n_strong = int(n_stocks * 0.3)
+    drift = np.concatenate([
+        rng.normal(0.002, 0.001, n_strong),       # 强势: +0.2%/日
+        rng.normal(-0.0002, 0.0005, n_stocks - n_strong),  # 普通: -0.02%/日
+    ])
+    vol = np.concatenate([
+        rng.uniform(0.025, 0.040, n_strong),       # 强势: 高波动
+        rng.uniform(0.015, 0.025, n_stocks - n_strong),
+    ])
+    start_prices = rng.uniform(5.0, 50.0, n_stocks)
+
+    # 生成交易日序列 (跳过周末)
+    from datetime import timedelta
+    dates: list = []
+    d = start_date
+    while len(dates) < days:
+        if d.weekday() < 5:  # 周一到周五
+            dates.append(d)
+        d += timedelta(days=1)
+
+    # 生成价格矩阵
+    log_returns = rng.normal(
+        drift[:, None],
+        vol[:, None],
+        size=(n_stocks, len(dates)),
+    )
+    log_prices = np.log(start_prices)[:, None] + np.cumsum(log_returns, axis=1)
+    prices = np.exp(log_prices)
+
+    # 生成 OHLCV
+    log.info(f"生成合成数据: {n_stocks} 股票 × {len(dates)} 交易日")
+
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.cursor()
+
+    # 创建 stock_basic + daily_price 表 (若不存在)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS stock_basic (
+            code TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            market TEXT NOT NULL,
+            list_date DATE,
+            delist_date DATE,
+            industry TEXT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS daily_price (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL,
+            trade_date DATE NOT NULL,
+            open REAL NOT NULL,
+            high REAL NOT NULL,
+            low REAL NOT NULL,
+            close REAL NOT NULL,
+            volume INTEGER NOT NULL,
+            amount REAL,
+            pct_change REAL,
+            turnover REAL,
+            UNIQUE(code, trade_date)
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS benchmark_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            index_code TEXT NOT NULL,
+            trade_date DATE NOT NULL,
+            close REAL NOT NULL,
+            pct_change REAL,
+            UNIQUE(index_code, trade_date)
+        )
+    """)
+    # 清空旧数据
+    cur.execute("DELETE FROM daily_price")
+    cur.execute("DELETE FROM stock_basic")
+    cur.execute("DELETE FROM benchmark_data")
+
+    # 插入股票
+    for i in range(n_stocks):
+        code = f"{600000 + i:06d}"
+        cur.execute(
+            "INSERT OR REPLACE INTO stock_basic (code, name, market) "
+            "VALUES (?, ?, ?)",
+            (code, f"测试股{i:03d}", "SH"),
+        )
+
+    # 插入价格 + 沪深 300 基准
+    rows: list = []
+    bench_rows: list = []
+    for t, dt in enumerate(dates):
+        # 基准 (沪深 300 模拟)
+        bench_close = 4000 * np.exp(np.cumsum(rng.normal(0.0003, 0.012, len(dates)))[t])
+        bench_rows.append(("sh000300", dt.strftime("%Y-%m-%d"), bench_close, 0.0))
+
+        for i in range(n_stocks):
+            close = float(prices[i, t])
+            open_ = float(prices[i, max(0, t - 1)]) if t > 0 else close
+            high = close * (1 + abs(rng.normal(0, 0.005)))
+            low = close * (1 - abs(rng.normal(0, 0.005)))
+            volume = int(rng.uniform(5e7, 2e8))  # 提高到 5000万-2亿股, 满足日均成交额 > 3000万
+            amount = close * volume
+            pct = (close - open_) / open_ * 100 if open_ > 0 else 0.0
+            rows.append((
+                f"{600000 + i:06d}",
+                dt.strftime("%Y-%m-%d"),
+                round(open_, 2),
+                round(high, 2),
+                round(low, 2),
+                round(close, 2),
+                volume,
+                round(amount, 2),
+                round(pct, 2),
+                3.0,  # turnover 3% (满足大多数 A 股换手率)
+            ))
+
+    cur.executemany(
+        "INSERT INTO daily_price (code, trade_date, open, high, low, close, "
+        "volume, amount, pct_change, turnover) VALUES (?, ?, ?, ?, ?, ?, "
+        "?, ?, ?, ?)",
+        rows,
+    )
+    cur.executemany(
+        "INSERT INTO benchmark_data (index_code, trade_date, close, pct_change) "
+        "VALUES (?, ?, ?, ?)",
+        bench_rows,
+    )
+    conn.commit()
+    conn.close()
+    log.info(f"合成数据已写入: {db_path} ({n_stocks} 股票, {len(dates)} 交易日)")
+
+
 # ── CLI ─────────────────────────────────────────
 
 
@@ -416,10 +655,34 @@ def main():
         help="滚动步长月数 (默认 = test-months)",
     )
     parser.add_argument(
+        "--n-optimize-samples", type=int, default=20,
+        help="每窗口随机参数采样数 (默认 20)",
+    )
+    parser.add_argument(
         "--output", default="docs/oos_validation_report.md",
         help="报告输出路径",
     )
+    parser.add_argument(
+        "--smoke", action="store_true",
+        help="smoke test: 生成合成数据 + 跑 walk_forward",
+    )
+    parser.add_argument(
+        "--smoke-stocks", type=int, default=50,
+        help="smoke test 合成股票数 (默认 50)",
+    )
+    parser.add_argument(
+        "--smoke-days", type=int, default=504,
+        help="smoke test 合成交易日数 (默认 504 ≈ 2 年)",
+    )
     args = parser.parse_args()
+
+    # Smoke test: 先生成合成数据
+    if args.smoke:
+        log.info("🔧 Smoke test: 生成合成数据")
+        generate_synthetic_data(
+            n_stocks=args.smoke_stocks,
+            days=args.smoke_days,
+        )
 
     # 动态加载策略类
     import importlib
@@ -436,15 +699,25 @@ def main():
         train_months=args.train_months,
         test_months=args.test_months,
         step_months=args.step_months,
+        n_optimize_samples=args.n_optimize_samples,
     )
 
     try:
         report = validator.run()
         validator.save_report(report, Path(args.output))
+        passed, reasons = report.passes_gate()
+        if passed:
+            log.info("✅ OOS 门禁通过")
+        else:
+            log.warning("⚠️ OOS 门禁未通过:")
+            for r in reasons:
+                log.warning(f"  {r}")
     except NotImplementedError as e:
-        log.error(f"⚠️ 骨架阶段, 待实现: {e}")
-        log.error("提示: 实现 _optimize / _backtest 后即可跑通")
+        log.error(f"⚠️ 实现未完成: {e}")
         sys.exit(1)
+    except Exception as e:
+        log.error(f"❌ walk_forward 失败: {e}")
+        raise
 
 
 if __name__ == "__main__":
