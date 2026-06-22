@@ -150,6 +150,11 @@
                             <i class="bi bi-tools"></i> 工作台
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.url.path == '/simulate' %}active{% endif %}" href="/simulate">
+                            <i class="bi bi-graph-up-arrow"></i> 模拟交易
+                        </a>
+                    </li>
                 </ul>
                 <span class="navbar-text text-light small">
                     <i class="bi bi-info-circle"></i> 

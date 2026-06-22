@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>模拟交易 · 量化系统</title>
+<script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.1/chart.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--red:#ef5350;--green:#4caf50;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:1.1rem;font-weight:600}
+header .nav-links{margin-left:auto;display:flex;gap:12px}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem}
+header a:hover{color:var(--accent)}
+.container{max-width:1400px;margin:0 auto;padding:16px;display:grid;grid-template-columns:320px 1fr;gap:16px}
+@media(max-width:960px){.container{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px}
+.card-title{font-size:0.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px}
+label{display:block;font-size:0.75rem;color:var(--dim);margin:8px 0 4px}
+select,input{width:100%;padding:8px 10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.8rem}
+select option{background:var(--card)}
+.btn{width:100%;padding:10px;background:var(--accent);color:#000;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:0.85rem;margin-top:12px}
+.btn:hover{opacity:0.9}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
+.stat-card{text-align:center;padding:10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid var(--border)}
+.stat-val{font-size:1.2rem;font-weight:700}
+.stat-label{font-size:0.65rem;color:var(--dim);margin-top:2px}
+.chart-wrap{height:260px;position:relative}
+table{width:100%;border-collapse:collapse;font-size:0.78rem}
+th{padding:6px;border-bottom:2px solid var(--border);color:var(--dim);font-weight:600;font-size:0.68rem;text-transform:uppercase;text-align:center;position:sticky;top:0;background:var(--card)}
+td{padding:5px;border-bottom:1px solid rgba(42,45,58,0.3);text-align:center;font-size:0.74rem}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.pos{color:var(--red)}
+.neg{color:var(--green)}
+.table-wrap{max-height:350px;overflow-y:auto}
+.loading{text-align:center;padding:40px;color:var(--dim)}
+.progress-bar{height:4px;background:var(--border);border-radius:2px;margin:10px 0;overflow:hidden;display:none}
+.progress-fill{height:100%;background:var(--accent);width:0%;transition:width 0.3s}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:600px){.grid-2{grid-template-columns:1fr}}
+.section-done{opacity:0.5}
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 模拟交易工作台</h1>
+  <span style="font-size:0.75rem;color:var(--dim)" id="statusText">就绪</span>
+  <div class="nav-links"><a href="/">← 返回首页</a><a href="/workbench">回测工作台</a></div>
+</header>
+<div class="container">
+  <!-- 左侧: 配置面板 -->
+  <div class="left-panel">
+    <div class="card">
+      <div class="card-title">📋 信号与标的</div>
+      <label>信号模型</label>
+      <select id="modelSelect">
+        <option value="6">七维共振牛股 (推荐)</option>
+        <option value="1">七维评分穿越</option>
+        <option value="2">均线金叉</option>
+        <option value="3">趋势跟踪</option>
+        <option value="4">布林突破</option>
+        <option value="5">超卖反转</option>
+        <option value="7">综合多信号</option>
+      </select>
+      <label>股票代码（逗号分隔）</label>
+      <input id="codesInput" value="000001,600519,000858" placeholder="如: 000001,600519">
+      <label>起始日期</label>
+      <input id="startDate" type="date">
+      <label>结束日期</label>
+      <input id="endDate" type="date">
+    </div>
+    <div class="card">
+      <div class="card-title">💰 资金与仓位</div>
+      <label>初始资金 (元)</label>
+      <input id="capitalInput" type="number" value="100000">
+      <label>仓位管理</label>
+      <select id="positionMethod">
+        <option value="atr">ATR动态 (推荐)</option>
+        <option value="fixed">固定比例</option>
+        <option value="kelly">凯利公式</option>
+        <option value="turtle">海龟法则</option>
+      </select>
+      <label>单笔风险</label>
+      <select id="riskPerTrade">
+        <option value="0.01">1%</option>
+        <option value="0.02">2%</option>
+        <option value="0.03">3%</option>
+        <option value="0.05">5%</option>
+      </select>
+      <label>最多持仓数</label>
+      <select id="maxPositions">
+        <option value="3">3只</option>
+        <option value="5" selected>5只</option>
+        <option value="10">10只</option>
+      </select>
+    </div>
+    <div class="card">
+      <div class="card-title">🛡️ 风控设置</div>
+      <label>止损方式</label>
+      <select id="stopMethod">
+        <option value="atr">ATR动态</option>
+        <option value="both">ATR+固定(取大)</option>
+        <option value="fixed">固定比例</option>
+      </select>
+      <label>止盈方式</label>
+      <select id="tpMethod">
+        <option value="trailing_atr">移动止盈 (推荐)</option>
+        <option value="fixed">固定比例</option>
+      </select>
+      <label>时间止损</label>
+      <select id="timeStop">
+        <option value="true">启用</option>
+        <option value="false">禁用</option>
+      </select>
+    </div>
+    <button class="btn" id="runBtn" onclick="runSimulation()">▶ 开始模拟</button>
+    <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+
+  <!-- 右侧: 结果面板 -->
+  <div class="right-panel">
+    <div class="loading" id="loadingState">等待运行...</div>
+    <div id="content" style="display:none">
+      <!-- 绩效指标 -->
+      <div class="card">
+        <div class="card-title">📈 绩效指标 <span class="badge" id="statusBadge"></span></div>
+        <div class="stats-grid" id="perfGrid"></div>
+      </div>
+      <!-- 资金曲线 -->
+      <div class="card">
+        <div class="card-title">💹 资金曲线</div>
+        <div class="chart-wrap"><canvas id="equityChart"></canvas></div>
+      </div>
+      <!-- 交易明细 -->
+      <div class="card">
+        <div class="card-title">📋 交易明细 <span class="badge" id="tradeCount"></span></div>
+        <div class="table-wrap">
+          <table><thead><tr>
+            <th>代码</th><th>方向</th><th>买入日</th><th>买入价</th><th>股数</th>
+            <th>卖出日</th><th>卖出价</th><th>盈亏</th><th>收益率</th><th>原因</th><th>持有</th>
+          </tr></thead><tbody id="tradeBody"></tbody></table>
+        </div>
+      </div>
+      <!-- 历史记录 -->
+      <div class="card">
+        <div class="card-title">🕐 历史模拟</div>
+        <div class="table-wrap" style="max-height:200px">
+          <table><thead><tr>
+            <th>时间</th><th>模型</th><th>收益</th><th>夏普</th><th>回撤</th><th>胜率</th><th>交易</th>
+          </tr></thead><tbody id="historyBody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 初始化日期 ──
+const today = new Date();
+document.getElementById('startDate').value = new Date(today.getTime()-365*86400000).toISOString().slice(0,10);
+document.getElementById('endDate').value = today.toISOString().slice(0,10);
+
+let lastRunId = '';
+let equityChart = null;
+
+// ── 运行模拟 ──
+async function runSimulation() {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true; btn.textContent = '⏳ 运行中...';
+  document.getElementById('progressBar').style.display = 'block';
+
+  const body = {
+    codes: document.getElementById('codesInput').value.split(',').map(s=>s.trim()).filter(Boolean),
+    start_date: document.getElementById('startDate').value,
+    end_date: document.getElementById('endDate').value,
+    strategy_id: parseInt(document.getElementById('modelSelect').value),
+    initial_capital: parseFloat(document.getElementById('capitalInput').value),
+    strategy: {
+      position_method: document.getElementById('positionMethod').value,
+      risk_per_trade: parseFloat(document.getElementById('riskPerTrade').value),
+      max_positions: parseInt(document.getElementById('maxPositions').value),
+      stop_loss_method: document.getElementById('stopMethod').value,
+      take_profit_method: document.getElementById('tpMethod').value,
+      time_stop_enabled: document.getElementById('timeStop').value === 'true',
+    }
+  };
+
+  try {
+    const r = await fetch('/api/simulate/run', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const result = await r.json();
+    lastRunId = result.run_id;
+
+    if (result.error) throw new Error(result.error);
+
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+    document.getElementById('statusText').textContent = `✅ 完成 (${result.run_id})`;
+
+    renderPerformance(result);
+    loadEquity(result.run_id);
+    loadTrades(result.run_id);
+    loadHistory();
+
+    // 进度动画
+    const fill = document.getElementById('progressFill');
+    fill.style.width = '100%';
+    setTimeout(() => { document.getElementById('progressBar').style.display = 'none'; fill.style.width = '0%'; }, 1000);
+  } catch(e) {
+    document.getElementById('statusText').textContent = '❌ ' + e.message;
+    alert('运行失败: ' + e.message);
+  }
+  btn.disabled = false; btn.textContent = '▶ 开始模拟';
+}
+
+function renderPerformance(r) {
+  const cols = [
+    {v: r.total_return?.toFixed(2)+'%', l: '总收益', c: r.total_return>0?'var(--red)':'var(--green)'},
+    {v: r.sharpe_ratio||'--', l: '夏普'},
+    {v: r.max_drawdown?.toFixed(2)+'%', l: '最大回撤', c: 'var(--green)'},
+    {v: r.win_rate?.toFixed(1)+'%', l: '胜率'},
+    {v: r.total_trades||0, l: '交易次数'},
+    {v: '¥'+(r.final_capital?.toFixed(0)||'--'), l: '最终资金'},
+  ];
+  document.getElementById('perfGrid').innerHTML = cols.map(c =>
+    `<div class="stat-card"><div class="stat-val" style="${c.c?'color:'+c.c:''}">${c.v}</div><div class="stat-label">${c.l}</div></div>`
+  ).join('');
+}
+
+async function loadEquity(runId) {
+  const r = await fetch(`/api/simulate/equity?run_id=${runId}`);
+  const d = await r.json();
+  const eq = d.equity || [];
+  if (!eq.length) return;
+
+  const labels = eq.map(p => p.date.slice(5));
+  const values = eq.map(p => p.total);
+  const base = values[0] || 100000;
+
+  if (equityChart) equityChart.destroy();
+  equityChart = new Chart(document.getElementById('equityChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: '总资产',
+        data: values,
+        borderColor: '#4fc3f7',
+        backgroundColor: 'rgba(79,195,247,0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#888', font: {size:11} } } },
+      scales: {
+        x: { ticks: { color: '#666', font: {size:10}, maxTicksLimit: 10 } },
+        y: { ticks: { color: '#666', font: {size:10}, callback: v => '¥'+v.toFixed(0) } }
+      }
+    }
+  });
+}
+
+async function loadTrades(runId) {
+  const r = await fetch(`/api/simulate/trades?run_id=${runId}&page=1&page_size=100`);
+  const d = await r.json();
+  document.getElementById('tradeCount').textContent = d.total + ' 笔';
+  document.getElementById('tradeBody').innerHTML = (d.trades||[]).map(t =>
+    `<tr>
+      <td style="font-family:monospace">${t.code}</td>
+      <td><span class="${t.direction==='BUY'?'pos':'neg'}">${t.direction}</span></td>
+      <td>${t.entry_date||'--'}</td>
+      <td>${t.entry_price?.toFixed(2)||'--'}</td>
+      <td>${t.entry_size||0}</td>
+      <td>${t.exit_date||'--'}</td>
+      <td>${t.exit_price?.toFixed(2)||'--'}</td>
+      <td class="${(t.net_pnl||0)>=0?'pos':'neg'}">${(t.net_pnl||0)>=0?'+':''}${(t.net_pnl||0).toFixed(0)}</td>
+      <td class="${(t.pnl_pct||0)>=0?'pos':'neg'}">${(t.pnl_pct||0)>=0?'+':''}${(t.pnl_pct||0).toFixed(2)}%</td>
+      <td style="font-size:0.65rem;color:var(--dim)">${t.exit_reason||'--'}</td>
+      <td>${t.holding_days||'--'}天</td>
+    </tr>`
+  ).join('');
+}
+
+async function loadHistory() {
+  const r = await fetch('/api/simulate/list?limit=20');
+  const d = await r.json();
+  document.getElementById('historyBody').innerHTML = (d.simulations||[]).map(s =>
+    `<tr onclick="loadRun('${s.run_id}')" style="cursor:pointer">
+      <td style="font-size:0.65rem">${s.created_at||'--'}</td>
+      <td>${s.model||'--'}</td>
+      <td class="${(s.total_return||0)>=0?'pos':'neg'}">${(s.total_return||0).toFixed(2)}%</td>
+      <td>${(s.sharpe_ratio||0).toFixed(2)}</td>
+      <td class="neg">${(s.max_drawdown||0).toFixed(2)}%</td>
+      <td>${(s.win_rate||0).toFixed(1)}%</td>
+      <td>${s.total_trades||0}</td>
+    </tr>`
+  ).join('');
+}
+
+async function loadRun(runId) {
+  lastRunId = runId;
+  document.getElementById('loadingState').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+  document.getElementById('statusText').textContent = `📂 载入: ${runId}`;
+
+  const perf = await (await fetch(`/api/simulate/performance?run_id=${runId}`)).json();
+  renderPerformance(perf);
+  loadEquity(runId);
+  loadTrades(runId);
+}
+
+loadHistory();
+</script>
+</body>
+</html>
