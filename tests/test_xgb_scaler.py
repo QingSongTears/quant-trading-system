@@ -195,8 +195,11 @@ class TestNoPickleRegression:
 
     def test_training_scripts_write_json(self):
         """训练脚本应该写 .json 而非 .pkl"""
-        for script in ["train_xgb_model.py", "train_xgb_v4.py"]:
+        # train_xgb_model.py 已被 train_xgb_v4.py 取代 (E2 清理, 2026-06-22)
+        for script in ["train_xgb_v4.py"]:
             path = _PROJECT_ROOT / "scripts" / script
+            if not path.exists():
+                continue
             src = path.read_text(encoding="utf-8")
             assert "pickle.dump" not in src, f"{script} 不应再 pickle.dump"
             assert "save_scaler" in src, f"{script} 应使用 save_scaler"
