@@ -14,6 +14,7 @@ markers = [
     "integration: 跨模块集成测试",
     "smoke: 烟雾测试,核心路径连通性",
     "regression: 已知 bug 回归保护",
+    "e2e: Playwright 端到端自动化测试",
 ]
 
 [tool.coverage.run]
