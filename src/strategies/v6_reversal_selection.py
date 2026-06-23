@@ -224,7 +224,16 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
             return []
 
         # 只保留 universe 中的股票
-        # 注: _compute_indicators 返回的 df 用 "code" 列而非索引 (与 precompute_all set_index 不同)
+        # 注: precompute_all 路径返回的 df 是 set_index("code") (无 "code" 列),
+        #     _compute_indicators 路径返回的 df 是普通 RangeIndex (有 "code" 列)
+        #     这里统一把 "code" 还原成列后再用 isin
+        if "code" not in indicators_df.columns:
+            if indicators_df.index.name == "code":
+                indicators_df = indicators_df.reset_index()
+            else:
+                # 既无列又无索引名,说明路径异常,放弃
+                logger.warning("indicators_df 无 'code' 列且 index.name != 'code', 返回空")
+                return []
         universe_codes = set(universe_df["code"].tolist())
         mask = indicators_df["code"].isin(universe_codes)
         indicators_df = indicators_df[mask].reset_index(drop=True)
