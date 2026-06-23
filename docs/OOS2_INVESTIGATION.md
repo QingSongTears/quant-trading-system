@@ -3,23 +3,145 @@
 **报告人**: 代码助手
 **排查日期**: 2026-06-23
 **commit 起点**: `f7c9e18`
+**commit 终结**: `403633c`
 
 ---
 
-## 0. 排查结论（一句话）
+## 0. 排查结论（更新版）
 
-**OOS-2 不是回测引擎 bug**。
+**OOS-2 排查发现 2 个真 bug + 1 个非 bug**：
 
-之前怀疑 `src/backtest/portfolio_engine.py::_simulate_portfolio` 计算 max_dd 有问题；实际复现发现：
+| # | 类别 | 内容 | 修复 commit |
+|---|---|---|---|
+| 1 | ✅ **真 bug** | `_max_drawdown` 单位未 ×100（portfolio_engine + technical_voting）| `403633c` |
+| 2 | ✅ **真 bug** | `V6ReversalSelectionStrategy.select` 的 `_compute_indicators` 路径 index 用错（.index vs .code）| `403633c` |
+| 3 | ⚠️ **非 bug** | V6 信号在 2024-07~09 OOS 窗口零命中（市场风格不匹配反转策略）| 已用 V6WithFallback 缓解 |
 
-| 项 | 真实情况 | 之前错误印象 |
+**之前 anchor summary 里"sharpe=3.67 + 36% + max_dd=-0.09%"是错的**——真实数据下全是 0（零交易）。
+
+---
+
+## 1. Bug #1: max_drawdown 单位换算缺失（**真 bug**）
+
+### 1.1 现象
+
+`src/metrics/performance.py::_max_drawdown()` 约定：**返回 ratio（-0.25 表示 25%）**
+
+但 `BacktestReport.max_drawdown` 字段语义为 **%**（参见 `src/backtest/engine.py L45` + `src/models/database.py L139`）。
+
+### 1.2 根因
+
+| 模块 | 是否 ×100 | max_drawdown 实际值 | 字段值 |
+|---|---|---|---|
+| `src/strategies/stock_screener/backtest/engine.py L443` | ✅ `* 100` | -0.11 | **-11.00** |
+| `src/backtest/portfolio_engine.py L484` | ❌ **没 ×100** | -0.11 | **-0.11** ❌ |
+| `src/models/technical_voting.py L571` | ❌ **没 ×100** | -0.11 | **-0.11** ❌ |
+
+### 1.3 修复
+
+```python
+# portfolio_engine.py L484
+max_drawdown = _max_drawdown(equity_series.values) * 100  # 转百分比
+```
+
+```python
+# technical_voting.py L571
+max_drawdown = _max_drawdown(equity_series.values) * 100  # 转百分比
+```
+
+### 1.4 验证（2024-07-01 ~ 2024-08-01, V6WithFallback）
+
+| 指标 | 修复前 | 修复后 |
 |---|---|---|
-| Window 0 OOS max_dd | **0.00%** | -0.09%（被怀疑的异常值）|
-| Window 0 OOS sharpe | **0.00** | 3.67（虚构）|
-| Window 0 OOS 总收益 | **0.00%** | +36.10%（虚构）|
-| Window 0 OOS 交易笔数 | **0** | - |
+| max_drawdown | -0.11% | **-11.10%** ✓ |
+| 独立验证 `(arr - peak)/peak).min() * 100` | -11.10% | -11.10% |
 
-> 旧 anchor summary 里"sharpe=3.67 + 36%"是错误的。**docs/oos_smoke_report.md** 实际记录全部窗口都是 0。
+完全一致。
+
+### 1.5 影响范围
+
+所有走 `PortfolioBacktestEngine.run()` 和 `TechnicalVotingModel.run_backtest()` 的 max_drawdown 显示都受此 bug 影响。修复后端口 (web/api) 透传值从 -0.11 变为 -11.10，前端显示从 "-0.11%" 变为 "-11.10%"。
+
+---
+
+## 2. Bug #2: V6.select 用错 index（**真 bug**）
+
+### 2.1 现象
+
+`_compute_indicators()` 返回的 df **没有 `set_index("code")`**（普通 RangeIndex 0/1/2...）。
+`select()` L228 却用 `indicators_df.index.isin(universe_codes)` 永远 False → indicators_df 为空 → 返回 []。
+
+### 2.2 根因
+
+`precompute_all()` L177 用 `set_index("code")` 缓存，所以 cache 路径正常工作。
+但 cache miss 时 fallback 到 `_compute_indicators()`（L221）走错路径。
+
+### 2.3 修复
+
+```python
+# v6_reversal_selection.py L226-229
+universe_codes = set(universe_df["code"].tolist())
+mask = indicators_df["code"].isin(universe_codes)  # 用列名而非 index
+indicators_df = indicators_df[mask].reset_index(drop=True)
+```
+
+### 2.4 验证
+
+修复前：1 个月 OOS → `total_trades=0`
+修复后：1 个月 OOS → `total_trades=2`, `select 返回 4 只`
+
+---
+
+## 3. V6 信号稀疏（非 bug，已用 fallback 缓解）
+
+### 3.1 根因
+
+V6 是**极端反转**策略，4 条件超卖同时命中概率本就低。2024-07~09 A 股整体上行（小盘反弹 + 大盘震荡），反转策略不利。
+
+### 3.2 缓解方案
+
+新建 `src/strategies/v6_with_fallback.py` — `V6ReversalWithFallback`：
+- 主策略命中 → 用主策略
+- 主策略无信号 → 回退单条件 `RSI14 ≤ 50` 且 `60日最大回撤 ≤ -20%`
+- 仍无信号 → 空仓
+
+### 3.3 验证（2024-07-01 ~ 2024-08-01, V6WithFallback）
+
+| 指标 | 修复前 | 修复后 |
+|---|---|---|
+| main_used_count | 0 | 4 |
+| fallback_used_count | 0 | 0 (主策略足够) |
+| total_trades | 0 | **2** |
+| total_return | 0% | -4.16% |
+| sharpe_ratio | 0 | -1.24 |
+| max_drawdown | 0% | **-11.10%** |
+
+（1 个月样本太小、参数未优化，仅作框架验证，不代表策略实际表现）
+
+---
+
+## 4. 之前的判断修正
+
+之前 OOS2_INVESTIGATION.md（commit 8e2c82a）我下过"不是引擎 bug"的结论。**错了**。进一步排查发现：
+1. select 路径有 index bug → 所有 select 走 fallback 路径都返回 []
+2. max_dd 单位差 100 倍 → 即使有交易，max_dd 也看不出真实回撤
+
+**真实阻塞路径**：select bug 让所有窗口 0 交易 → 净值曲线平 → max_dd 看起来正常（=0），掩盖了 max_dd 单位 bug。
+
+修复后，OOS-1 阻塞解除，可重新跑 walk_forward。
+
+---
+
+## 5. 后续
+
+- [x] Bug #1 + Bug #2 + Fallback 修复（commit `403633c`）
+- [ ] 重跑 walk_forward 真实数据（fallback 策略，5 窗口 × 5 样本 ~17 min）
+- [ ] 跑完写 `docs/oos_real_baseline.md` 报告
+- [ ] 如 fallback 在多窗口仍表现差，考虑 V 龙头 / 多策略并行
+
+---
+
+*最后更新: 2026-06-23 (fix #1+#2 完成后)*
 
 **根因**: V6 超卖反转策略在真实数据下 OOS 窗口（2024-07-01 ~ 2024-09-30）**零信号命中**，导致回测期间无任何调仓 → 无持仓变动 → 净值曲线平 → max_dd=0, sharpe=0, return=0。
 
