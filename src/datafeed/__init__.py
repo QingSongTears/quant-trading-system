@@ -15,5 +15,6 @@ vnpy 4.4 设计:
 """
 from .base import BaseDatafeed, Interval
 from .local import LocalDatafeed
+from .parquet import ParquetDatafeed
 
-__all__ = ["BaseDatafeed", "Interval", "LocalDatafeed"]
+__all__ = ["BaseDatafeed", "Interval", "LocalDatafeed", "ParquetDatafeed"]
