@@ -224,9 +224,10 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
             return []
 
         # 只保留 universe 中的股票
+        # 注: _compute_indicators 返回的 df 用 "code" 列而非索引 (与 precompute_all set_index 不同)
         universe_codes = set(universe_df["code"].tolist())
-        mask = indicators_df.index.isin(universe_codes)
-        indicators_df = indicators_df[mask].reset_index()
+        mask = indicators_df["code"].isin(universe_codes)
+        indicators_df = indicators_df[mask].reset_index(drop=True)
 
         if indicators_df.empty:
             return []

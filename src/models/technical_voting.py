@@ -568,7 +568,8 @@ class TechnicalVotingModel:
         daily_returns = equity_series.pct_change().dropna()
         # PR2.2: 委托给 metrics.performance (消除硬编码 risk_free=0.02 等)
         sharpe = _sharpe_ratio(daily_returns.values, risk_free=0.02)
-        max_drawdown = _max_drawdown(equity_series.values)
+        # BacktestReport.max_drawdown 字段语义为 %, 故 ×100 转百分比 (与 stock_screener 对齐)
+        max_drawdown = _max_drawdown(equity_series.values) * 100
         annual_vol = _volatility(daily_returns.values)
         win_rate = _win_rate(daily_returns.values)
         profit_factor = _profit_factor(daily_returns.values)
