@@ -51,13 +51,14 @@ A 股 50-100w 实盘化目标。当前阶段：**Vnpy 4.4 架构对齐 + 模拟�
 
 | ID | 任务 | 现状 | 阻塞点 |
 |---|---|---|---|
-| OOS-1 | walk_forward 真实数据 OOS | 框架就绪 | 单窗口 precompute ~9min，2 窗口超时 |
-| OOS-2 | Window 0 OOS max_dd=-0.09% 异常 | OOS sharpe=3.67 / 收益+36.10% | max_dd 几乎无回撤，疑似回测 bug |
+| OOS-1 | walk_forward 真实数据 OOS | 框架就绪 | V6 信号稀疏导致所有窗口 0 交易；引擎 ~40s/窗口 |
+| ~~OOS-2~~ | ~~Window 0 OOS max_dd=-0.09% 异常~~ | ✅ **已关闭 — 非 bug** | 详见 `docs/OOS2_INVESTIGATION.md` |
 
-**OOS-2 排查方向**:
-- `src/backtest/portfolio_engine.py::_simulate_portfolio`
-- 持仓变更与 `daily_price.pct_change` 衔接逻辑
-- 可能是未成交 / 持仓未变 / 净值为常数
+**OOS-1 真实根因（2026-06-23 排查）**:
+- V6 超卖反转策略在 2024-07~09 OOS 窗口零信号命中
+- 5 组参数扫描全部 0 交易 → 不是阈值问题
+- 回测引擎本身正常（max_dd 公式无 bug，0 交易导致曲线平 → max_dd=0）
+- **修复方向**: 缩窗口 / 多策略并行 / V6 加 fallback（详见 OOS2_INVESTIGATION.md §3）
 
 ### 🟡 P1 — Vnpy 落地剩余
 
