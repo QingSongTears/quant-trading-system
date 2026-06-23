@@ -1,0 +1,88 @@
+{
+  "strategy_name": "V6ReversalWithFallback",
+  "config": {
+    "train_months": 2,
+    "test_months": 1,
+    "step_months": 1,
+    "start_date": "2024-01-01",
+    "end_date": "2024-07-31"
+  },
+  "windows": [
+    {
+      "window_id": 0,
+      "train_start": "2024-01-01",
+      "train_end": "2024-03-01",
+      "test_start": "2024-03-01",
+      "test_end": "2024-04-01",
+      "best_params": {
+        "MAX_RSI_14": 35.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.06,
+        "MAX_DRAWDOWN_60D": -20.0
+      },
+      "in_sample_sharpe": -1.37,
+      "oos_sharpe": 1.7,
+      "oos_annual_return": 59.85,
+      "oos_max_drawdown": -8.62,
+      "oos_total_trades": 22,
+      "oos_win_rate": 52.38
+    },
+    {
+      "window_id": 1,
+      "train_start": "2024-02-01",
+      "train_end": "2024-04-01",
+      "test_start": "2024-04-01",
+      "test_end": "2024-05-01",
+      "best_params": {
+        "MAX_RSI_14": 35.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.06,
+        "MAX_DRAWDOWN_60D": -20.0
+      },
+      "in_sample_sharpe": 2.24,
+      "oos_sharpe": -1.09,
+      "oos_annual_return": -36.25,
+      "oos_max_drawdown": -8.44,
+      "oos_total_trades": 20,
+      "oos_win_rate": 47.37
+    },
+    {
+      "window_id": 2,
+      "train_start": "2024-03-01",
+      "train_end": "2024-05-01",
+      "test_start": "2024-05-01",
+      "test_end": "2024-06-01",
+      "best_params": {
+        "MAX_RSI_14": 30.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.1,
+        "MAX_DRAWDOWN_60D": -15.0
+      },
+      "in_sample_sharpe": 0.36,
+      "oos_sharpe": -10.97,
+      "oos_annual_return": -96.8,
+      "oos_max_drawdown": -26.23,
+      "oos_total_trades": 20,
+      "oos_win_rate": 21.05
+    },
+    {
+      "window_id": 3,
+      "train_start": "2024-04-01",
+      "train_end": "2024-06-01",
+      "test_start": "2024-06-01",
+      "test_end": "2024-07-01",
+      "best_params": {
+        "MAX_RSI_14": 30.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.1,
+        "MAX_DRAWDOWN_60D": -15.0
+      },
+      "in_sample_sharpe": -3.84,
+      "oos_sharpe": -7.33,
+      "oos_annual_return": -92.07,
+      "oos_max_drawdown": -19.19,
+      "oos_total_trades": 20,
+      "oos_win_rate": 42.11
+    }
+  ]
+}
