@@ -42,6 +42,9 @@ data/all_7d_scores.json
 data/xgb_*.json
 data/xgb_scaler.pkl
 market_data/imported/
+# 派生层 (本地生成, 不入 git)
+market_data/parquet/
+market_data/dataset/
 .workbuddy/
 .tmp_*.json
 *.tmp
