@@ -481,12 +481,15 @@ class PortfolioBacktestEngine:
 
         # PR2.2: 夏普 / 最大回撤 / 波动率 / 胜率 / 盈亏比 全部委托给 metrics.performance
         sharpe = _sharpe_ratio(daily_returns.values, risk_free=self.risk_free_rate)
-        max_drawdown = _max_drawdown(equity_series.values)  # 负数或0
+        # PR2.2: max_drawdown 委托 metrics.performance, 但 *_max_drawdown 返回 ratio (-0.25 表示 25%),
+        # 而 BacktestReport.max_drawdown 字段语义为 %, 故 ×100 转百分比 (与 stock_screener 对齐)
+        max_drawdown = _max_drawdown(equity_series.values) * 100  # 转百分比
         annual_vol = _volatility(daily_returns.values)
         win_rate = _win_rate(daily_returns.values)
         profit_factor = _profit_factor(daily_returns.values)
 
         # 卡玛比率 (依赖上面算出的 annual_return 和 max_drawdown)
+        # 卡玛比率: annual_return 是 % 数, max_drawdown 也是 % 数 (已 *100)
         calmar = annual_return / abs(max_drawdown) if max_drawdown != 0 else 0
 
         # 基准收益
