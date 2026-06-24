@@ -47,24 +47,63 @@ def setup_logging(level: str = "INFO", file_log: bool = True):
         return False
 
 
-def check_database():
-    """检查数据库状态"""
+def check_database(auto_fix: bool = True):
+    """检查数据库状态 (PR-fix Step 2 H: 启动自动修复)
+
+    Args:
+        auto_fix: True 时缺表自动 init_database() (Step 2 新增)
+
+    Returns:
+        bool: True=数据库就绪可启动 Web; False=需用户手动导入数据
+    """
     from src.models.repository import DataRepository
     db_path = PROJECT_ROOT / "database" / "quant.db"
     repo = DataRepository()
     try:
-        # 如果 DB 不存在,提示从 CSV 构建
+        # 1. DB 文件不存在 → 尝试自动 init
         if not db_path.exists():
             print("\n📊 数据库状态检查")
             print("=" * 50)
             print(f"  ❌ 数据库文件不存在: {db_path}")
-            print(f"  数据库文件:   {db_path}")
             print("=" * 50)
-            print("\n💡 DB 文件已 gitignore, 需要从 market_data/ 下的 CSV 构建:")
-            print("   python scripts/build_db.py")
-            print("   (或 python scripts/build_db.py --incremental 仅增量)")
+            if auto_fix:
+                print("  🔧 自动初始化表结构 (create_all)...")
+                try:
+                    repo.init_database()
+                    print("  ✅ 表结构已创建 (空库)")
+                    print("\n💡 数据库已就绪 (无数据), 请选择:")
+                    print("   python run.py --download       # 从 AKShare 拉数据")
+                    print("   python scripts/build_db.py      # 从 market_data/ CSV 构建")
+                except Exception as e:
+                    print(f"  ❌ 自动 init 失败: {e}")
+                    return False
+                return False  # 仍需用户导入数据
+            print("\n💡 修复: python run.py --init")
             return False
 
+        # 2. 检查关键表是否存在 (stock_basic / daily_price)
+        existing_tables = set(repo.list_tables())
+        critical_tables = {"stock_basic", "daily_price"}
+        missing = critical_tables - existing_tables
+        if missing:
+            print("\n📊 数据库状态检查")
+            print("=" * 50)
+            print(f"  ⚠️  缺失关键表: {missing}")
+            print(f"  当前表数:   {len(existing_tables)}")
+            print("=" * 50)
+            if auto_fix:
+                print("  🔧 自动创建缺失表 (create_all)...")
+                try:
+                    repo.init_database()
+                    print("  ✅ 表结构已修复")
+                except Exception as e:
+                    print(f"  ❌ 自动 init 失败: {e}")
+                    return False
+            else:
+                print("\n💡 修复: python run.py --init")
+                return False
+
+        # 3. 检查数据量
         coverage = repo.get_data_coverage()
         print("\n📊 数据库状态检查")
         print("=" * 50)
@@ -76,8 +115,10 @@ def check_database():
         print("=" * 50)
 
         if coverage["total_records"] == 0:
-            print("\n⚠️  数据库为空，请先下载数据:")
-            print("   python run.py --download")
+            print("\n⚠️  数据库表结构已就绪但无数据，请选择导入方式:")
+            print("   python run.py --download        # 从 AKShare 拉数据 (慢,需联网)")
+            print("   python scripts/build_db.py       # 从 market_data/ CSV 构建 (快)")
+            return False
         return True
     except Exception as e:
         print(f"\n❌ 数据库检查失败: {e}")
@@ -108,6 +149,44 @@ def run_health_check():
         return False
 
 
+def init_data_from_csv():
+    """PR-fix Step 2 H: 从 market_data/ CSV 构建数据库 (无网络,快速)
+
+    调用 scripts/build_db.py 的核心逻辑 — 从已下载的 CSV 导入到 quant.db
+    """
+    print("\n📦 从 market_data/ CSV 构建数据库...")
+    try:
+        # 优先调用项目里已有的 build_db 脚本
+        import subprocess
+        script = PROJECT_ROOT / "scripts" / "build_db.py"
+        if script.exists():
+            print(f"   调用: python {script.name}")
+            result = subprocess.run(
+                [sys.executable, str(script), "--incremental"],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True, text=True,
+                timeout=600,
+            )
+            print(result.stdout[-2000:] if result.stdout else "")
+            if result.returncode == 0:
+                print("✅ CSV 数据导入完成")
+                return True
+            else:
+                print(f"⚠️ build_db 退出码 {result.returncode}")
+                print(result.stderr[-1000:] if result.stderr else "")
+        # 备用:直接调 internal importer
+        print("   (script 不存在, 直接调 importer)")
+        from scripts.build_db import build_db
+        build_db(incremental=True)
+        print("✅ CSV 数据导入完成")
+        return True
+    except Exception as e:
+        print(f"❌ CSV 导入失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="A股量化交易模型系统",
@@ -133,6 +212,10 @@ def main():
     parser.add_argument("--check", action="store_true", help="检查数据库状态")
     parser.add_argument("--health", action="store_true", help="数据质量全面检查")
     parser.add_argument("--init", action="store_true", help="初始化数据库表结构")
+    parser.add_argument("--init-data", action="store_true",
+                        help="从 market_data/ CSV 导入数据 (无需网络,Step2 H 新增)")
+    parser.add_argument("--check-only", action="store_true",
+                        help="仅检查数据库,不启动 Web (Step2 H 新增, 用于 CI/Docker)")
     parser.add_argument("--debug", action="store_true", help="调试模式")
 
     args = parser.parse_args()
@@ -146,9 +229,9 @@ def main():
     setup_logging(level=log_level, file_log=not args.check and not args.health)
 
     # 仅检查数据库
-    if args.check:
-        check_database()
-        return
+    if args.check or args.check_only:
+        ok = check_database(auto_fix=False)
+        sys.exit(0 if ok else 1)
 
     # 数据质量全面检查
     if args.health:
@@ -163,6 +246,11 @@ def main():
         repo.init_database()
         print("✅ 数据库表结构初始化完成")
         return
+
+    # 从 CSV 导入数据 (PR-fix Step 2 H 新增, 无需网络)
+    if args.init_data:
+        ok = init_data_from_csv()
+        sys.exit(0 if ok else 1)
 
     # 仅下载数据
     if args.download or args.download_incr:
@@ -191,8 +279,14 @@ def main():
 ╚══════════════════════════════════════════════════╝
 """)
 
-    # 启动前检查数据库
-    check_database()
+    # 启动前检查数据库 (PR-fix Step 2 H: 自动修复缺表)
+    ok = check_database(auto_fix=True)
+    if not ok:
+        print("\n❌ 数据库未就绪,无法启动 Web 服务")
+        print("\n💡 推荐操作 (选一):")
+        print("   python run.py --download      # 从 AKShare 下载 (慢,需联网)")
+        print("   python run.py --init-data     # 从 market_data/ CSV 导入 (快,无需网络)")
+        sys.exit(1)
 
     # Graceful shutdown: 捕获 SIGINT/SIGTERM，让 uvicorn 有机会清理资源
     def _signal_handler(sig, frame):
