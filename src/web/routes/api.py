@@ -24,6 +24,7 @@ from ...data.westock_downloader import WestockDownloader
 from ...backtest.engine import BacktestEngine
 from ...backtest.portfolio_engine import PortfolioBacktestEngine
 from ..app import download_status as _download_status
+from ..app import update_download_status, get_download_status as _get_status
 from ..auth import safe_import_strategy, verify_api_key
 
 # 所有 /api/* 端点统一要求 Bearer token
@@ -157,6 +158,96 @@ async def search_stocks(q: str = Query(..., min_length=1)):
         return {"success": False, "error": "搜索服务异常"}
 
 
+# ===== 数据接口统一: 兼容旧版路径 (screener.html 用 /api/stock/* 而非 /api/data/*) =====
+
+@router.get("/stock/search")
+async def stock_search_alias(q: str = Query(..., min_length=1)):
+    """兼容别名: /api/stock/search → /api/data/search (数据接口统一)
+    旧版 screener.html 与 param_server.py 用的是 /api/stock/search,新路径 /api/data/search"""
+    return await search_stocks(q)
+
+
+@router.get("/sector")
+async def get_sector_distribution(
+    sort_by: str = Query("stock_count"),
+    min_stocks: int = Query(1, ge=1),
+):
+    """行业板块分布 — 兼容 param_server.py /api/sector
+
+    数据接口统一: 基于 stock_basic.industry 字段聚合,前端可直接使用
+    """
+    repo = DataRepository()
+    try:
+        df = repo.get_stock_list()
+        if df.empty or "industry" not in df.columns:
+            return {"success": True, "data": []}
+
+        # 按行业聚合
+        industry_counts = (
+            df["industry"]
+            .fillna("其他")
+            .value_counts()
+            .reset_index()
+        )
+        industry_counts.columns = ["industry", "stock_count"]
+
+        # 按请求排序
+        if sort_by == "name":
+            industry_counts = industry_counts.sort_values("industry")
+        else:  # 默认按 stock_count 降序
+            industry_counts = industry_counts.sort_values("stock_count", ascending=False)
+
+        # 过滤最小股票数
+        industry_counts = industry_counts[industry_counts["stock_count"] >= min_stocks]
+
+        return {"success": True, "data": industry_counts.to_dict("records")}
+    except Exception as e:
+        logger.error("sector 失败: %s\n%s", e, traceback.format_exc())
+        return {"success": False, "error": "行业数据服务异常"}
+
+
+@router.get("/stock/screener")
+async def stock_screener(
+    industry: str | None = Query(None),
+    exclude_st: bool = Query(True),
+    max_stocks: int = Query(100, ge=1, le=500),
+):
+    """股票筛选 — 兼容 param_server.py /api/stock/screener
+
+    数据接口统一: 行业筛选 + 排除 ST/退市,返回基础数据
+    注: 完整评分筛选需要 scoring 管线,这里只做基础筛选
+    """
+    repo = DataRepository()
+    try:
+        df = repo.get_stock_list()
+        if df.empty:
+            return {"success": True, "data": []}
+
+        if exclude_st and "name" in df.columns:
+            df = df[~df["name"].str.contains("ST|退市", na=False)]
+
+        if industry and industry != "全部" and "industry" in df.columns:
+            df = df[df["industry"] == industry]
+
+        df = df.head(max_stocks)
+
+        # 安全序列化
+        results = []
+        for _, row in df.iterrows():
+            results.append({
+                "code": str(row.get("code", "")),
+                "name": " ".join(str(row.get("name", "")).split()),  # 清洗双空格
+                "industry": str(row.get("industry", "") or ""),
+                "market": str(row.get("market", "") or ""),
+                "list_date": str(row.get("list_date", "") or ""),
+            })
+
+        return {"success": True, "total": len(results), "data": results}
+    except Exception as e:
+        logger.error("stock/screener 失败: %s\n%s", e, traceback.format_exc())
+        return {"success": False, "error": "筛选服务异常"}
+
+
 # ===== 下载 API =====
 
 @router.post("/data/download")
@@ -170,17 +261,18 @@ async def trigger_download(mode: str = "incremental"):
     from datetime import datetime as dt
 
     # 检查是否有正在运行的下载
-    if _download_status["running"]:
+    current_status = get_download_status()
+    if current_status["running"]:
         return {
             "success": False,
             "error": "下载任务正在运行中，请等待完成",
-            "current": _download_status["current"],
-            "progress": _download_status["progress"],
-            "total": _download_status["total"],
+            "current": current_status["current"],
+            "progress": current_status["progress"],
+            "total": current_status["total"],
         }
 
     # 重置全局状态
-    _download_status.update({
+    update_download_status({
         "running": True, "mode": mode, "progress": 0,
         "total": 0, "current": "准备中...", "error": None,
         "result": None, "started_at": dt.now().isoformat(),
@@ -201,27 +293,25 @@ async def trigger_download(mode: str = "incremental"):
                 downloader = DataDownloader()
                 source_name = "AKShare"
 
-            _download_status["current"] = f"使用 {source_name} 下载中..."
+            update_download_status({"current": f"使用 {source_name} 下载中..."})
 
             if mode == "full":
                 result = downloader.download_full(
-                    progress_callback=lambda c, t, code, name: _download_status.update(
+                    progress_callback=lambda c, t, code, name: update_download_status(
                         {"progress": c, "total": t, "current": f"{code} {name}"}
                     )
                 )
             else:
                 result = downloader.download_incremental(
-                    progress_callback=lambda c, t, code, name: _download_status.update(
+                    progress_callback=lambda c, t, code, name: update_download_status(
                         {"progress": c, "total": t, "current": f"{code} {name}"}
                     )
                 )
             result["source"] = result.get("source", source_name)
-            _download_status["running"] = False
-            _download_status["result"] = result
+            update_download_status({"running": False, "result": result})
         except Exception as e:
             logger.error("data/download 失败: %s\n%s", e, traceback.format_exc())
-            _download_status["running"] = False
-            _download_status["error"] = "下载失败，详查日志"
+            update_download_status({"running": False, "error": "下载失败，详查日志"})
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
@@ -231,17 +321,11 @@ async def trigger_download(mode: str = "incremental"):
 
 @router.get("/data/download/status")
 async def get_download_status():
-    """查询下载进度（使用全局状态管理器）"""
+    """查询下载进度（使用线程安全的状态管理器）"""
+    status = _get_status()
     return {
         "success": True,
-        "running": _download_status["running"],
-        "mode": _download_status["mode"],
-        "progress": _download_status["progress"],
-        "total": _download_status["total"],
-        "current": _download_status["current"],
-        "error": _download_status["error"],
-        "result": _download_status["result"],
-        "started_at": _download_status["started_at"],
+        **status,
     }
 
 
@@ -523,17 +607,64 @@ async def get_strategies():
     return {"success": True, "data": config.get("strategies", [])}
 
 
+@router.get("/strategy/compare")
+async def get_strategy_compare(
+    stock_code: str | None = Query(None, min_length=6, max_length=6),
+    start_date: str | None = Query(None),
+    end_date: str | None = Query(None),
+):
+    """策略对比数据 — 兼容 dashboard.html 的 fetch
+
+    数据接口统一 (PR-fix 2026-06-24):
+    - 如果传 stock_code,返回该股票的所有模型摘要 (与 /api/models/summary 一致)
+    - 如果不传,返回所有最近回测结果 (按 strategy_name 分组)
+    """
+    from ...config import load_strategies
+
+    repo = DataRepository()
+
+    if stock_code:
+        # 单股多模型对比 (与 models/summary 行为一致)
+        strategies_config = load_strategies()
+        models = strategies_config.get("strategies", [])
+        summaries = repo.get_models_summary_for_stock(models, stock_code)
+        return {"success": True, "data": summaries}
+
+    # 无 stock_code: 返回所有策略的最新回测
+    results = repo.get_recent_backtests(limit=100)
+    data = []
+    for r in results:
+        mdd = r.max_drawdown
+        if mdd is not None and mdd > 0:
+            mdd = -mdd
+        data.append({
+            "id": r.id,
+            "strategy_name": r.strategy.name if r.strategy else "未知",
+            "stock_code": r.stock_code,
+            "stock_name": r.stock_name,
+            "total_return": _safe_float(r.total_return),
+            "sharpe_ratio": _safe_float(r.sharpe_ratio),
+            "max_drawdown": mdd,
+            "win_rate": _safe_float(r.win_rate),
+            "created_at": str(r.created_at),
+        })
+    return {"success": True, "data": data}
+
+
 # ===== 模型汇总 API =====
 
 @router.get("/models/summary")
 async def get_models_summary(
     stock_code: str = Query(..., min_length=6, max_length=6),
-    start_date: str = Query(...),
-    end_date: str = Query(...),
+    start_date: str | None = Query(None),  # 数据接口统一: 改为可选,与 repo.get_models_summary_for_stock 一致
+    end_date: str | None = Query(None),
 ):
     """
     对指定股票+区间，返回所有模型最近回测结果摘要。
     用于工作台"一键对比"功能。
+
+    注: start_date/end_date 当前由 repo.get_models_summary_for_stock 忽略(取最新结果),
+    保留参数仅为 API 向后兼容,前端可不传。
     """
     from ...config import load_strategies
     strategies_config = load_strategies()
@@ -549,11 +680,22 @@ async def get_models_summary(
 
 @router.get("/backtest/results")
 async def get_backtest_results(limit: int = 20):
-    """获取最近的回测结果"""
+    """获取最近的回测结果
+
+    数据接口统一 (PR-fix 2026-06-24):
+    - max_drawdown 永远输出**负数**(与 PR2.2 metrics.performance 约定一致)
+      旧数据 (PR2.2 前) 存的是正数,在此处统一转负值
+    - 所有 None 字段转 None (前端可直接判断)
+    """
     repo = DataRepository()
     results = repo.get_recent_backtests(limit)
     data = []
     for r in results:
+        # PR2.2 符号约定:max_drawdown 永远 ≤ 0
+        # 旧数据可能存的是绝对值(>0),在此处归一化
+        mdd = r.max_drawdown
+        if mdd is not None and mdd > 0:
+            mdd = -mdd
         data.append({
             "id": r.id,
             "strategy_name": r.strategy.name if r.strategy else "未知",
@@ -561,7 +703,7 @@ async def get_backtest_results(limit: int = 20):
             "stock_name": r.stock_name,
             "total_return": r.total_return,
             "sharpe_ratio": r.sharpe_ratio,
-            "max_drawdown": r.max_drawdown,
+            "max_drawdown": mdd,
             "created_at": str(r.created_at),
         })
     return {"success": True, "data": data}
@@ -710,9 +852,17 @@ async def get_stock_pool(
     industry: str | None = Query(None),
     min_mcap: float | None = Query(None),
     max_mcap: float | None = Query(None),
-    max_stocks: int | None = Query(None),
+    max_stocks: int | None = Query(None),  # 旧参数名,保留兼容
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),  # 新分页参数
 ):
-    """获取符合条件的股票池"""
+    """获取符合条件的股票池
+
+    数据接口统一 (PR-fix 2026-06-24):
+    - 字段: code / name / industry / market (新增)
+    - 分页: 支持 page+page_size (新) 和 max_stocks (旧,二选一)
+    - 名称清洗: 全角空格 / 连续空格 → 单空格
+    """
     repo = DataRepository()
     df = repo.get_stock_list()
 
@@ -728,13 +878,12 @@ async def get_stock_pool(
     if max_mcap and "mcap_yi" in df.columns:
         df = df[df["mcap_yi"] <= max_mcap]
 
-    codes = df["code"].tolist()
-    names = df["name"].tolist()
-    industries = df["industry"].tolist() if "industry" in df.columns else []
-
-    if max_stocks:
-        codes = codes[:max_stocks]
-        names = names[:max_stocks]
+    # max_stocks 优先 (旧参数),否则 page+page_size 分页
+    if max_stocks is not None:
+        df = df.head(max_stocks)
+    else:
+        start_idx = (page - 1) * page_size
+        df = df.iloc[start_idx:start_idx + page_size]
 
     # 安全序列化:NaN/None 一律转 "" (NaN 不可 JSON)
     def _safe_str(v):
@@ -746,16 +895,26 @@ async def get_stock_pool(
                 return ""
         except (TypeError, ValueError):
             pass
-        return str(v)
+        s = str(v)
+        # 清洗名称: 多余空格 (e.g. "万  科Ａ" → "万科Ａ")
+        s = " ".join(s.split())
+        return s
+
+    data = []
+    for _, row in df.iterrows():
+        data.append({
+            "code": _safe_str(row.get("code")),
+            "name": _safe_str(row.get("name")),
+            "industry": _safe_str(row.get("industry")),
+            "market": _safe_str(row.get("market")),  # 新增字段 (数据接口统一)
+        })
 
     return {
         "success": True,
-        "total": len(codes),
-        "data": [
-            {"code": _safe_str(c), "name": _safe_str(n),
-             "industry": _safe_str(industries[i]) if industries else ""}
-            for i, (c, n) in enumerate(zip(codes, names))
-        ],
+        "total": len(df),
+        "page": page,
+        "page_size": page_size,
+        "data": data,
     }
 
 
@@ -766,42 +925,52 @@ async def get_stock_pool(
 @router.post("/simulate/run")
 async def api_simulate_run(body: dict):
     """运行模拟交易"""
-    from ...strategies.trading.config import TradingConfig
-    from ...strategies.simulator import Simulator
+    try:
+        from ...strategies.trading.config import TradingConfig
+        from ...strategies.simulator import Simulator
 
-    config = TradingConfig.from_dict(body.get("strategy", {}))
-    if body.get("initial_capital"):
-        config.initial_capital = body["initial_capital"]
+        config = TradingConfig.from_dict(body.get("strategy", {}))
+        if body.get("initial_capital"):
+            config.initial_capital = body["initial_capital"]
 
-    codes = body.get("codes", [])
-    if not codes:
-        raise HTTPException(400, "codes 不能为空")
+        codes = body.get("codes", [])
+        if not codes:
+            raise HTTPException(400, "codes 不能为空")
 
-    start_date = body.get("start_date", "")
-    end_date = body.get("end_date", "")
-    strategy_id = body.get("strategy_id", 6)
+        start_date = body.get("start_date", "")
+        end_date = body.get("end_date", "")
+        strategy_id = body.get("strategy_id", 6)
 
-    sim = Simulator(config)
-    result = sim.run(codes, start_date, end_date, strategy_id)
-    return {
-        "run_id": result.run_id,
-        "status": result.status,
-        "total_return": result.total_return,
-        "total_trades": result.total_trades,
-        "win_rate": result.win_rate,
-        "sharpe_ratio": result.sharpe_ratio,
-        "max_drawdown": result.max_drawdown,
-        "initial_capital": result.initial_capital,
-        "final_capital": result.final_capital,
-        "error": result.error,
-    }
+        sim = Simulator(config)
+        result = sim.run(codes, start_date, end_date, strategy_id)
+        return {
+            "run_id": result.run_id,
+            "status": result.status,
+            "total_return": result.total_return,
+            "total_trades": result.total_trades,
+            "win_rate": result.win_rate,
+            "sharpe_ratio": result.sharpe_ratio,
+            "max_drawdown": result.max_drawdown,
+            "initial_capital": result.initial_capital,
+            "final_capital": result.final_capital,
+            "error": result.error,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("simulate/run 失败: %s\n%s", e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail="模拟交易服务异常")
 
 
 @router.get("/simulate/positions")
 async def api_simulate_positions(run_id: str = Query(...)):
     """获取持仓状态（运行中或已完成）"""
-    from src.data import data_mgr
-    return {"positions": data_mgr.simulation.get_positions(run_id)}
+    try:
+        from src.data import data_mgr
+        return {"positions": data_mgr.simulation.get_positions(run_id)}
+    except Exception as e:
+        logger.error("simulate/positions 失败: %s\n%s", e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail="查询持仓失败")
 
 
 @router.get("/simulate/trades")
@@ -811,29 +980,47 @@ async def api_simulate_trades(
     page_size: int = Query(50, ge=1, le=200),
 ):
     """获取交易明细"""
-    from src.data import data_mgr
-    return data_mgr.simulation.get_trades(run_id, page=page, page_size=page_size)
+    try:
+        from src.data import data_mgr
+        return data_mgr.simulation.get_trades(run_id, page=page, page_size=page_size)
+    except Exception as e:
+        logger.error("simulate/trades 失败: %s\n%s", e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail="查询交易明细失败")
 
 
 @router.get("/simulate/performance")
 async def api_simulate_performance(run_id: str = Query(...)):
     """获取绩效指标"""
-    from src.data import data_mgr
-    perf = data_mgr.simulation.get_performance(run_id)
-    if not perf:
-        raise HTTPException(404, f"run_id {run_id} 不存在")
-    return perf
+    try:
+        from src.data import data_mgr
+        perf = data_mgr.simulation.get_performance(run_id)
+        if not perf:
+            raise HTTPException(404, f"run_id {run_id} 不存在")
+        return perf
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("simulate/performance 失败: %s\n%s", e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail="查询绩效失败")
 
 
 @router.get("/simulate/list")
 async def api_simulate_list(limit: int = Query(20, ge=1, le=100)):
     """列出所有模拟运行记录"""
-    from src.data import data_mgr
-    return {"simulations": data_mgr.simulation.list_runs(limit=limit)}
+    try:
+        from src.data import data_mgr
+        return {"simulations": data_mgr.simulation.list_runs(limit=limit)}
+    except Exception as e:
+        logger.error("simulate/list 失败: %s\n%s", e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail="查询模拟列表失败")
 
 
 @router.get("/simulate/equity")
 async def api_simulate_equity(run_id: str = Query(...)):
     """获取净值曲线"""
-    from src.data import data_mgr
-    return {"equity": data_mgr.simulation.get_equity(run_id)}
+    try:
+        from src.data import data_mgr
+        return {"equity": data_mgr.simulation.get_equity(run_id)}
+    except Exception as e:
+        logger.error("simulate/equity 失败: %s\n%s", e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail="查询净值曲线失败")
