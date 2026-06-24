@@ -771,9 +771,14 @@ class TestSmokeRegression:
         from sqlalchemy import create_engine
         from src.models.database import Base
         import tempfile
+        import os
 
-        with tempfile.NamedTemporaryFile(suffix=".db") as f:
-            engine = create_engine(f"sqlite:///{f.name}")
+        # 修 2026-06-25: 不用 NamedTemporaryFile (Windows 关闭后文件被删, sqlite 找不到)
+        # 改用 mkstemp 创建并保留, 测完清理
+        fd, db_path = tempfile.mkstemp(suffix=".db", prefix="e2e_db_")
+        os.close(fd)  # 立刻关 fd, 留给 sqlite
+        try:
+            engine = create_engine(f"sqlite:///{db_path}")
             Base.metadata.create_all(engine)
             from sqlalchemy import inspect
             inspector = inspect(engine)
@@ -781,6 +786,15 @@ class TestSmokeRegression:
             assert "stock_basic" in tables
             assert "daily_price" in tables
             assert "backtest_result" in tables
+        finally:
+            # 清理
+            for ext in ("", "-journal", "-wal", "-shm"):
+                p = db_path + ext
+                if os.path.exists(p):
+                    try:
+                        os.unlink(p)
+                    except OSError:
+                        pass
 
     def test_all_test_files_present(self):
         """验证测试文件完整"""
