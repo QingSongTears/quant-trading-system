@@ -344,6 +344,14 @@ async def simulate_page(request: Request):
     return templates.TemplateResponse(request, "simulate.html", ctx)
 
 
+@router.get("/stock/{code}", response_class=HTMLResponse)
+async def stock_detail_page(request: Request, code: str):
+    """个股详情页 — leek-fund 风格 (大字当前价 + K线 + 分时 + 简况)"""
+    ctx = _get_global_context()
+    ctx["stock_code"] = code
+    return templates.TemplateResponse(request, "stock_detail.html", ctx)
+
+
 # ============================================================
 # 独立页面 (output/ 移植, 暗色主题, 不继承 base.html)
 # ============================================================
@@ -365,6 +373,7 @@ _STANDALONE_PAGES = {
     "/v6-compare": "v6-compare.html",
     "/dim-compare": "dim-compare.html",
     "/ic": "ic.html",
+    "/walk_forward": "walk_forward.html",
 }
 
 

@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Walk-Forward OOS 验证 · 量化系统</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--red:#ef5350;--green:#4caf50;--yellow:#ffa726;--pass:#66bb6a;--fail:#ef5350}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:1.1rem;font-weight:600}
+header .nav-links{margin-left:auto;display:flex;gap:12px}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem}
+header a:hover{color:var(--accent)}
+.container{max-width:1200px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+.card-title{font-size:0.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+.card-title .badge{font-size:0.65rem;text-transform:none;padding:2px 10px;border-radius:10px;background:rgba(79,195,247,0.15);color:var(--accent)}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:0}
+.stat-card{text-align:center;padding:14px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid var(--border)}
+.stat-val{font-size:1.5rem;font-weight:700}
+.stat-label{font-size:0.68rem;color:var(--dim);margin-top:2px;text-transform:uppercase}
+table{width:100%;border-collapse:collapse;font-size:0.82rem;margin-top:4px}
+th{padding:8px 6px;border-bottom:2px solid var(--border);color:var(--dim);font-weight:600;font-size:0.7rem;text-transform:uppercase;text-align:center;position:sticky;top:0;background:var(--card)}
+td{padding:8px 6px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.pos{color:var(--green)}
+.neg{color:var(--red)}
+.warn{color:var(--yellow)}
+.tag{display:inline-block;padding:1px 8px;border-radius:8px;font-size:0.7rem}
+.tag-pass{background:rgba(102,187,106,0.15);color:var(--pass)}
+.tag-fail{background:rgba(239,83,80,0.15);color:var(--fail)}
+.gate-card{padding:20px;border-radius:10px;border:1px solid var(--border)}
+.gate-pass{background:rgba(102,187,106,0.08);border-color:rgba(102,187,106,0.3)}
+.gate-fail{background:rgba(239,83,80,0.08);border-color:rgba(239,83,80,0.3)}
+.gate-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.gate-header h3{font-size:0.95rem;margin:0}
+.gate-list{list-style:none;font-size:0.82rem;color:var(--dim)}
+.gate-list li{padding:3px 0}
+.gate-list li.pass{color:var(--green)}
+.gate-list li.fail{color:var(--red)}
+.toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.toolbar select,.toolbar input{background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem}
+.toolbar button{background:var(--accent);color:#000;border:0;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.82rem;font-weight:600}
+.toolbar button:hover{filter:brightness(1.1)}
+.empty-state{text-align:center;padding:60px 20px;color:var(--dim)}
+.empty-state .icon{font-size:3rem;margin-bottom:14px}
+.empty-state a{color:var(--accent);text-decoration:none;margin-top:14px;display:inline-block;border:1px solid var(--accent);padding:8px 18px;border-radius:6px}
+.chart-container{position:relative;height:280px;margin-top:8px}
+.back-link{color:var(--dim);text-decoration:none;font-size:0.8rem}
+.back-link:hover{color:var(--accent)}
+.window-detail{display:none;margin-top:8px}
+.window-detail.show{display:table-row}
+.detail-row{background:rgba(79,195,247,0.05);font-size:0.78rem}
+.detail-row td{padding:8px 16px;text-align:left;border-bottom:1px dashed var(--border)}
+.params-grid{display:inline-grid;grid-template-columns:repeat(2,auto);gap:4px 16px;font-family:monospace;font-size:0.75rem;color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔁 Walk-Forward OOS 验证</h1>
+  <div class="nav-links">
+    <a href="/" class="back-link">← 返回首页</a>
+    <a href="/dashboard" class="back-link">📊 Dashboard</a>
+    <a href="/docs/oos_real_baseline.md" target="_blank" class="back-link">📄 报告</a>
+  </div>
+</header>
+
+<div class="container">
+  <!-- 顶部:Live 门禁汇总 -->
+  <div class="card">
+    <div class="card-title">
+      <span>LIVE_TRADING 门禁 (阶段 1)</span>
+      <span class="badge" id="gateBadge">—</span>
+    </div>
+    <div id="gateContent">加载中…</div>
+  </div>
+
+  <!-- 顶部:全局汇总卡片 -->
+  <div class="card">
+    <div class="card-title"><span>📊 验证汇总</span></div>
+    <div class="stats-grid" id="summaryGrid"></div>
+  </div>
+
+  <!-- Run 列表 + 详情 -->
+  <div class="card">
+    <div class="card-title">
+      <span>📋 Walk-Forward 运行记录</span>
+      <span class="badge"><span id="runsCount">0</span> 个</span>
+    </div>
+    <div class="toolbar">
+      <select id="sortBy">
+        <option value="created_at_desc">最新优先</option>
+        <option value="oos_sharpe_desc">OOS Sharpe 高 → 低</option>
+        <option value="oos_sharpe_asc">OOS Sharpe 低 → 高</option>
+        <option value="worst_dd_asc">最差回撤小 → 大</option>
+      </select>
+      <select id="filterPass">
+        <option value="all">全部</option>
+        <option value="pass">仅通过门禁</option>
+        <option value="fail">未通过门禁</option>
+      </select>
+    </div>
+    <div id="runsTable"></div>
+  </div>
+
+  <!-- OOS Sharpe 跨窗口趋势图 -->
+  <div class="card">
+    <div class="card-title">
+      <span>📈 OOS Sharpe 跨窗口趋势</span>
+      <span class="badge">点击 Run 切换</span>
+    </div>
+    <div class="chart-container"><canvas id="sharpeChart"></canvas></div>
+  </div>
+</div>
+
+{{ _api_auth_snippet|safe }}
+
+<script>
+const API_KEY = '';  // 由 Jinja2 globals 注入 Bearer
+const HEADERS = { 'Authorization': 'Bearer ' + API_KEY };
+let allRuns = [];
+let sharpeChart = null;
+let selectedRunId = null;
+
+// ── 数据加载 ─────────────────────────────────────────
+async function loadSummary() {
+  try {
+    const r = await fetch('/api/walk_forward/summary', { headers: HEADERS });
+    const d = await r.json();
+    if (!d.success) { document.getElementById('gateContent').innerHTML = `<div class="empty-state">⚠️ ${d.error || '暂无数据'}</div>`; return; }
+    const data = d.data;
+    if (!data.available) {
+      document.getElementById('gateContent').innerHTML = `
+        <div class="empty-state">
+          <div class="icon">📋</div>
+          <div>${data.message || '暂无 walk_forward 记录'}</div>
+          <a href="/docs/oos_real_baseline.md" target="_blank">查看已有报告</a>
+        </div>`;
+      return;
+    }
+    const passed = data.passed_runs, total = data.total_runs;
+    const passClass = passed === total ? 'gate-pass' : 'gate-fail';
+    document.getElementById('gateContent').innerHTML = `
+      <div class="gate-card ${passClass}">
+        <div class="gate-header">
+          <h3>${passed === total ? '✅ 通过' : '⚠️ 未通过'} (${passed}/${total})</h3>
+          <span style="color:var(--dim);font-size:0.75rem">总窗口数 ${data.total_windows}</span>
+        </div>
+        <ul class="gate-list">
+          <li class="pass">✓ OOS 夏普均值 ≥ 0.5</li>
+          <li class="pass">✓ OOS 夏普标准差 &lt; 0.3 (稳健)</li>
+          <li class="pass">✓ 最差窗口回撤 ≥ -25%</li>
+        </ul>
+      </div>`;
+    document.getElementById('gateBadge').textContent = passed === total ? 'PASS' : 'PARTIAL';
+  } catch (e) {
+    document.getElementById('gateContent').innerHTML = `<div class="empty-state">❌ ${e.message}</div>`;
+  }
+}
+
+async function loadRuns() {
+  try {
+    const r = await fetch('/api/walk_forward/runs', { headers: HEADERS });
+    const d = await r.json();
+    if (!d.success || !d.data || d.data.length === 0) {
+      document.getElementById('runsTable').innerHTML = `<div class="empty-state"><div class="icon">📂</div><div>暂无 walk_forward 运行记录</div></div>`;
+      document.getElementById('runsCount').textContent = '0';
+      return;
+    }
+    allRuns = d.data;
+    renderRuns();
+    document.getElementById('runsCount').textContent = allRuns.length;
+  } catch (e) {
+    document.getElementById('runsTable').innerHTML = `<div class="empty-state">❌ ${e.message}</div>`;
+  }
+}
+
+// ── 渲染 ─────────────────────────────────────────
+function renderRuns() {
+  const sortBy = document.getElementById('sortBy').value;
+  const filterPass = document.getElementById('filterPass').value;
+  let runs = [...allRuns];
+  if (filterPass === 'pass') runs = runs.filter(r => r.passes_gate);
+  if (filterPass === 'fail') runs = runs.filter(r => !r.passes_gate);
+  if (sortBy === 'oos_sharpe_desc') runs.sort((a,b) => (b.oos_sharpe_mean||-999) - (a.oos_sharpe_mean||-999));
+  else if (sortBy === 'oos_sharpe_asc') runs.sort((a,b) => (a.oos_sharpe_mean||999) - (b.oos_sharpe_mean||999));
+  else if (sortBy === 'worst_dd_asc') runs.sort((a,b) => (a.worst_max_drawdown||0) - (b.worst_max_drawdown||0));
+  else runs.sort((a,b) => (b.id||0) - (a.id||0));
+
+  if (runs.length === 0) {
+    document.getElementById('runsTable').innerHTML = `<div class="empty-state">无匹配 run</div>`;
+    return;
+  }
+
+  // 全局汇总卡片
+  const totals = runs.reduce((acc, r) => ({
+    runs: acc.runs + 1,
+    windows: acc.windows + (r.n_windows||0),
+    passed: acc.passed + (r.passes_gate?1:0),
+    avgSharpe: acc.avgSharpe + (r.oos_sharpe_mean||0),
+    worstDD: Math.min(acc.worstDD, r.worst_max_drawdown||0),
+  }), { runs:0, windows:0, passed:0, avgSharpe:0, worstDD: 0 });
+  totals.avgSharpe = (totals.avgSharpe / Math.max(runs.length,1)).toFixed(2);
+
+  document.getElementById('summaryGrid').innerHTML = `
+    <div class="stat-card"><div class="stat-val">${totals.runs}</div><div class="stat-label">Run 总数</div></div>
+    <div class="stat-card"><div class="stat-val">${totals.windows}</div><div class="stat-label">窗口总数</div></div>
+    <div class="stat-card"><div class="stat-val pos">${totals.passed}</div><div class="stat-label">通过门禁</div></div>
+    <div class="stat-card"><div class="stat-val">${totals.avgSharpe}</div><div class="stat-label">OOS Sharpe 均值</div></div>
+    <div class="stat-card"><div class="stat-val ${totals.worstDD<-25?'neg':''}">${totals.worstDD.toFixed(1)}%</div><div class="stat-label">最差回撤</div></div>
+  `;
+
+  // Run 表格
+  let html = '<table><thead><tr>';
+  html += '<th></th><th>ID</th><th>策略</th><th>配置</th><th>窗口</th><th>OOS Sharpe<br>(mean±std)</th><th>最差回撤</th><th>OOS 年化</th><th>门禁</th>';
+  html += '</tr></thead><tbody>';
+  for (const r of runs) {
+    const cfg = `${r.train_months}m train / ${r.test_months}m test${r.step_months && r.step_months!==r.test_months ? ` / ${r.step_months}m step`:''}`;
+    const passTag = r.passes_gate
+      ? '<span class="tag tag-pass">✓ PASS</span>'
+      : '<span class="tag tag-fail">✗ FAIL</span>';
+    html += `<tr style="cursor:pointer" onclick="toggleRun(${r.id})">
+      <td><span id="arrow-${r.id}">▸</span></td>
+      <td>#${r.id}</td>
+      <td style="text-align:left;font-weight:600">${r.strategy_name}</td>
+      <td>${cfg}<br><span style="color:var(--dim);font-size:0.7rem">${r.start_date} ~ ${r.end_date}</span></td>
+      <td>${r.n_windows}</td>
+      <td class="${(r.oos_sharpe_mean||0)>=0.5?'pos':'neg'}">${(r.oos_sharpe_mean||0).toFixed(2)}<br><span style="color:var(--dim);font-size:0.7rem">±${(r.oos_sharpe_std||0).toFixed(2)}</span></td>
+      <td class="${(r.worst_max_drawdown||0)<-25?'neg':'pos'}">${(r.worst_max_drawdown||0).toFixed(1)}%</td>
+      <td class="${(r.avg_oos_annual_return||0)>=0?'pos':'neg'}">${(r.avg_oos_annual_return||0).toFixed(1)}%</td>
+      <td>${passTag}</td>
+    </tr>`;
+    html += `<tr class="window-detail" id="detail-${r.id}"><td colspan="9"><div id="windows-${r.id}">点击展开…</div></td></tr>`;
+  }
+  html += '</tbody></table>';
+  document.getElementById('runsTable').innerHTML = html;
+
+  // 默认选中第一个 run, 渲染图表
+  if (runs.length > 0) {
+    selectedRunId = runs[0].id;
+    renderChart(runs[0]);
+    loadWindows(runs[0].id);
+  }
+}
+
+async function toggleRun(id) {
+  const detailRow = document.getElementById(`detail-${id}`);
+  const arrow = document.getElementById(`arrow-${id}`);
+  if (detailRow.classList.contains('show')) {
+    detailRow.classList.remove('show');
+    arrow.textContent = '▸';
+    return;
+  }
+  detailRow.classList.add('show');
+  arrow.textContent = '▾';
+  await loadWindows(id);
+}
+
+async function loadWindows(id) {
+  try {
+    const r = await fetch(`/api/walk_forward/runs/${id}`, { headers: HEADERS });
+    const d = await r.json();
+    if (!d.success) { document.getElementById(`windows-${id}`).innerHTML = `<div style="color:var(--red)">${d.error}</div>`; return; }
+    const run = d.data;
+    const wins = run.windows || [];
+    let html = `<table style="margin-top:8px"><thead><tr>
+      <th>窗口</th><th>训练段</th><th>测试段</th><th>最优参数</th><th>IS Sharpe</th><th>OOS Sharpe</th><th>OOS 年化</th><th>OOS 回撤</th><th>胜率</th>
+    </tr></thead><tbody>`;
+    for (const w of wins) {
+      const params = w.best_params ? JSON.stringify(w.best_params).replace(/[{}"]/g,'').replace(/,/g,', ') : '—';
+      const oosSR = w.oos_sharpe ?? 0;
+      const oosRet = w.oos_annual_return ?? 0;
+      const oosDD = w.oos_max_drawdown ?? 0;
+      const oosWR = w.oos_win_rate ?? 0;
+      html += `<tr>
+        <td>#${w.window_id}</td>
+        <td>${w.train_start} ~ ${w.train_end}</td>
+        <td>${w.test_start} ~ ${w.test_end}</td>
+        <td style="text-align:left"><span class="params-grid">${params}</span></td>
+        <td class="${(w.in_sample_sharpe||0)>=0?'pos':'neg'}">${(w.in_sample_sharpe||0).toFixed(2)}</td>
+        <td class="${oosSR>=0.5?'pos':'neg'}">${oosSR.toFixed(2)}</td>
+        <td class="${oosRet>=0?'pos':'neg'}">${oosRet.toFixed(1)}%</td>
+        <td class="${oosDD<-25?'neg':'pos'}">${oosDD.toFixed(1)}%</td>
+        <td class="${oosWR>=50?'pos':'warn'}">${oosWR.toFixed(1)}%</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    document.getElementById(`windows-${id}`).innerHTML = html;
+    renderChart(run);
+    selectedRunId = id;
+  } catch (e) {
+    document.getElementById(`windows-${id}`).innerHTML = `<div style="color:var(--red)">❌ ${e.message}</div>`;
+  }
+}
+
+function renderChart(run) {
+  const wins = run.windows || [];
+  const labels = wins.map(w => `#${w.window_id}<br>${w.test_start.slice(5)}`);
+  const oosSharpe = wins.map(w => w.oos_sharpe ?? 0);
+  const oosReturn = wins.map(w => w.oos_annual_return ?? 0);
+  const ctx = document.getElementById('sharpeChart').getContext('2d');
+  if (sharpeChart) sharpeChart.destroy();
+  sharpeChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'OOS Sharpe', data: oosSharpe, backgroundColor: oosSharpe.map(v => v>=0.5?'#66bb6a':'#ef5350'), borderRadius: 4, yAxisID: 'y' },
+        { label: 'OOS 年化 %', data: oosReturn, backgroundColor: oosReturn.map(v => v>=0?'rgba(79,195,247,0.6)':'rgba(255,167,38,0.6)'), borderRadius: 4, yAxisID: 'y1', type: 'line', tension: 0.3, pointRadius: 5 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#aaa' } },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw.toFixed(2)}` } },
+      },
+      scales: {
+        x: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        y:  { position: 'left', title: { text: 'Sharpe', display: true, color: '#aaa' }, ticks: { color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        y1: { position: 'right', title: { text: '年化 %', display: true, color: '#aaa' }, ticks: { color: '#aaa' }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+// ── 事件绑定 ─────────────────────────────────────────
+document.getElementById('sortBy').addEventListener('change', renderRuns);
+document.getElementById('filterPass').addEventListener('change', renderRuns);
+
+// ── 入口 ─────────────────────────────────────────
+loadSummary();
+loadRuns();
+</script>
+</body>
+</html>

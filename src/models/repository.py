@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..config import get_config
 from ..db.engine import get_engine
 from ..db.sql_utils import read_sql
-from .database import Base, StockBasic, DailyPrice, BenchmarkData, StrategyConfig, BacktestResult, DataSourceMeta, TechnicalIndicator, FinanceSummary, StockProfile, FundFlowData
+from .database import Base, StockBasic, DailyPrice, BenchmarkData, StrategyConfig, BacktestResult, DataSourceMeta, TechnicalIndicator, FinanceSummary, StockProfile, FundFlowData, WalkForwardRun, WalkForwardWindow
 
 
 class DataRepository:
@@ -907,3 +907,160 @@ class DataRepository:
                 session.add(record)
                 session.flush()
                 return int(record.id)
+
+    # ============================================================
+    # Walk-Forward (PR-fix 2026-06-24, LIVE_TRADING_ROADMAP 阶段 1)
+    # ============================================================
+
+    def save_walk_forward_run(
+        self,
+        run_data: dict,
+        windows: list[dict],
+    ) -> int:
+        """保存一次 walk_forward 运行 + N 个窗口结果
+
+        Args:
+            run_data: 含 strategy_name/start_date/end_date/train_months/test_months
+                     /step_months/n_optimize_samples/n_windows/oos_sharpe_mean 等
+            windows: [{window_id, train_*, test_*, best_params (dict),
+                       in_sample_sharpe, oos_sharpe, ...}, ...]
+        Returns:
+            int: run_id
+        """
+        import json as _json
+        from datetime import date as _date
+        session = self.get_session()
+        try:
+            # 规范化日期字段 (string → date)
+            rd = dict(run_data)
+            for k in ("start_date", "end_date"):
+                if k in rd and isinstance(rd[k], str):
+                    rd[k] = _date.fromisoformat(rd[k])
+            wf_run = WalkForwardRun(**rd)
+            session.add(wf_run)
+            session.flush()
+            run_id = int(wf_run.id)
+            for w in windows:
+                wd = dict(w)
+                params = wd.pop("best_params", None)
+                wd["best_params_json"] = _json.dumps(params, ensure_ascii=False) if params else None
+                wd["run_id"] = run_id
+                # 规范化窗口日期
+                for k in ("train_start", "train_end", "test_start", "test_end"):
+                    if k in wd and isinstance(wd[k], str):
+                        wd[k] = _date.fromisoformat(wd[k])
+                session.add(WalkForwardWindow(**wd))
+            session.flush()
+            session.commit()  # PR-fix: 必须 commit 否则 with 退出时 rollback
+            return run_id
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def list_walk_forward_runs(self, limit: int = 50) -> list[dict]:
+        """列出所有 walk_forward 运行 (按创建时间倒序)"""
+        with self.get_session() as session:
+            runs = (
+                session.query(WalkForwardRun)
+                .order_by(WalkForwardRun.created_at.desc())
+                .limit(int(limit))
+                .all()
+            )
+            return [
+                {
+                    "id": r.id,
+                    "strategy_name": r.strategy_name,
+                    "start_date": str(r.start_date),
+                    "end_date": str(r.end_date),
+                    "train_months": r.train_months,
+                    "test_months": r.test_months,
+                    "step_months": r.step_months,
+                    "n_optimize_samples": r.n_optimize_samples,
+                    "n_windows": r.n_windows,
+                    "oos_sharpe_mean": r.oos_sharpe_mean,
+                    "oos_sharpe_std": r.oos_sharpe_std,
+                    "worst_max_drawdown": r.worst_max_drawdown,
+                    "avg_oos_annual_return": r.avg_oos_annual_return,
+                    "avg_oos_win_rate": r.avg_oos_win_rate,
+                    "passes_gate": bool(r.passes_gate),
+                    "created_at": str(r.created_at)[:19] if r.created_at else None,
+                }
+                for r in runs
+            ]
+
+    def get_walk_forward_run(self, run_id: int) -> dict | None:
+        """获取 walk_forward 运行详情 (含所有窗口)"""
+        import json as _json
+        with self.get_session() as session:
+            r = session.query(WalkForwardRun).filter_by(id=run_id).first()
+            if not r:
+                return None
+            windows = (
+                session.query(WalkForwardWindow)
+                .filter_by(run_id=run_id)
+                .order_by(WalkForwardWindow.window_id)
+                .all()
+            )
+            return {
+                "id": r.id,
+                "strategy_name": r.strategy_name,
+                "start_date": str(r.start_date),
+                "end_date": str(r.end_date),
+                "train_months": r.train_months,
+                "test_months": r.test_months,
+                "step_months": r.step_months,
+                "n_optimize_samples": r.n_optimize_samples,
+                "n_windows": r.n_windows,
+                "oos_sharpe_mean": r.oos_sharpe_mean,
+                "oos_sharpe_std": r.oos_sharpe_std,
+                "worst_max_drawdown": r.worst_max_drawdown,
+                "avg_oos_annual_return": r.avg_oos_annual_return,
+                "avg_oos_win_rate": r.avg_oos_win_rate,
+                "passes_gate": bool(r.passes_gate),
+                "created_at": str(r.created_at)[:19] if r.created_at else None,
+                "windows": [
+                    {
+                        "window_id": w.window_id,
+                        "train_start": str(w.train_start),
+                        "train_end": str(w.train_end),
+                        "test_start": str(w.test_start),
+                        "test_end": str(w.test_end),
+                        "best_params": _json.loads(w.best_params_json) if w.best_params_json else None,
+                        "in_sample_sharpe": w.in_sample_sharpe,
+                        "oos_sharpe": w.oos_sharpe,
+                        "oos_annual_return": w.oos_annual_return,
+                        "oos_max_drawdown": w.oos_max_drawdown,
+                        "oos_total_trades": w.oos_total_trades,
+                        "oos_win_rate": w.oos_win_rate,
+                    }
+                    for w in windows
+                ],
+            }
+
+    def get_walk_forward_summary(self) -> dict:
+        """汇总 walk_forward 全局状态 (跨 run)"""
+        with self.get_session() as session:
+            runs = session.query(WalkForwardRun).all()
+            if not runs:
+                return {
+                    "total_runs": 0, "total_windows": 0,
+                    "passed_runs": 0, "available": False,
+                    "message": "暂无 walk_forward 记录,请先运行 scripts/walk_forward.py",
+                }
+            total_windows = sum(r.n_windows for r in runs)
+            passed_runs = sum(1 for r in runs if r.passes_gate)
+            best_run = max(runs, key=lambda r: (r.oos_sharpe_mean or -999))
+            return {
+                "total_runs": len(runs),
+                "total_windows": total_windows,
+                "passed_runs": passed_runs,
+                "best_run": {
+                    "id": best_run.id,
+                    "strategy_name": best_run.strategy_name,
+                    "oos_sharpe_mean": best_run.oos_sharpe_mean,
+                    "worst_max_drawdown": best_run.worst_max_drawdown,
+                },
+                "available": True,
+            }

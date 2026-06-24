@@ -1068,3 +1068,355 @@ async def api_simulate_equity(run_id: str = Query(...)):
     except Exception as e:
         logger.warning("simulate/equity 失败 (返回空): %s", e)
         return {"equity": [], "available": False}
+
+
+# ============================================================
+# 独立模板专用端点 (data-monitor / backtest-lab / v5)
+# 这些模板从 output/ 移植过来,前端硬编码了 URL,后端补齐
+# ============================================================
+
+@router.get("/status")
+async def api_status():
+    """通用服务状态 — data-monitor.html 用"""
+    from datetime import datetime
+    repo = DataRepository()
+    try:
+        coverage = repo.get_data_coverage()
+        return {
+            "success": True,
+            "status": "ok",
+            "time": datetime.now().isoformat(timespec="seconds"),
+            "coverage": coverage,
+            "service": "quant-trading-system",
+            "version": "v2.0",
+        }
+    except Exception as e:
+        return {"success": False, "status": "degraded", "error": str(e)[:200]}
+
+
+@router.get("/data/db-status")
+async def api_data_db_status():
+    """数据库健康度 — data-monitor.html 用"""
+    repo = DataRepository()
+    try:
+        return {"success": True, "available": True, "data": repo.get_db_status()}
+    except Exception as e:
+        return {"success": False, "available": False, "error": str(e)[:200]}
+
+
+# ===== Walk-Forward OOS 验证 API (PR-fix 2026-06-24, LIVE_TRADING 阶段 1) =====
+
+@router.get("/walk_forward/runs")
+async def api_walk_forward_runs(limit: int = Query(50, ge=1, le=200)):
+    """列出所有 walk_forward OOS 验证运行 (按创建时间倒序)"""
+    repo = DataRepository()
+    try:
+        runs = repo.list_walk_forward_runs(limit=limit)
+        return {"success": True, "available": True, "total": len(runs), "data": runs}
+    except Exception as e:
+        logger.warning("walk_forward/runs 失败: %s", e)
+        return {"success": False, "available": False, "error": str(e)[:200]}
+
+
+@router.get("/walk_forward/runs/{run_id}")
+async def api_walk_forward_run_detail(run_id: int):
+    """单次 walk_forward 运行详情 (含 N 个窗口明细)"""
+    repo = DataRepository()
+    try:
+        detail = repo.get_walk_forward_run(int(run_id))
+        if detail is None:
+            return {"success": False, "error": f"run_id {run_id} 不存在"}
+        return {"success": True, "data": detail}
+    except Exception as e:
+        logger.warning("walk_forward/runs/%s 失败: %s", run_id, e)
+        return {"success": False, "error": str(e)[:200]}
+
+
+@router.get("/walk_forward/summary")
+async def api_walk_forward_summary():
+    """Walk-Forward 全局汇总 (跨 run) — dashboard 顶部卡片用"""
+    repo = DataRepository()
+    try:
+        summary = repo.get_walk_forward_summary()
+        return {"success": True, "data": summary}
+    except Exception as e:
+        logger.warning("walk_forward/summary 失败: %s", e)
+        return {"success": False, "error": str(e)[:200]}
+
+
+@router.get("/backtest/history")
+async def api_backtest_history(limit: int = Query(50, ge=1, le=500)):
+    """回测历史列表 — backtest-lab.html 用 (兼容旧 URL 命名)"""
+    repo = DataRepository()
+    try:
+        rows = repo.get_recent_backtests(limit=limit)
+        out = []
+        for r in rows:
+            out.append({
+                "id": r.id,
+                "stock_code": r.stock_code,
+                "stock_name": r.stock_name,
+                "strategy_name": r.strategy.name if r.strategy else "未知",
+                "start_date": str(r.start_date) if r.start_date else None,
+                "end_date": str(r.end_date) if r.end_date else None,
+                "total_return": _safe_float(r.total_return),
+                "sharpe_ratio": _safe_float(r.sharpe_ratio),
+                "max_drawdown": _safe_float(r.max_drawdown),
+                "win_rate": _safe_float(r.win_rate),
+                "trade_count": getattr(r, "trade_count", None),
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            })
+        return {"success": True, "data": out, "total": len(out)}
+    except Exception as e:
+        return {"success": False, "data": [], "error": str(e)[:200]}
+
+
+@router.get("/v5/scan-results")
+async def api_v5_scan_results(limit: int = Query(20, ge=1, le=200)):
+    """v5 扫描结果 — v5.html 用 (兼容旧版移植)"""
+    repo = DataRepository()
+    try:
+        # 复用 get_recent_backtests 拿最新回测, 前端按 strategy='v5_hybrid' 过滤
+        rows = repo.get_recent_backtests(limit=limit * 4)
+        out = []
+        for r in rows:
+            strat_name = r.strategy.name if r.strategy else ""
+            if "v5" not in strat_name.lower() and "hybrid" not in strat_name.lower():
+                continue
+            out.append({
+                "id": r.id,
+                "stock_code": r.stock_code,
+                "stock_name": r.stock_name,
+                "strategy": strat_name,
+                "total_return": _safe_float(r.total_return),
+                "sharpe_ratio": _safe_float(r.sharpe_ratio),
+                "max_drawdown": _safe_float(r.max_drawdown),
+                "win_rate": _safe_float(r.win_rate),
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            })
+            if len(out) >= limit:
+                break
+        return {"success": True, "data": out, "total": len(out), "available": True}
+    except Exception as e:
+        return {"success": True, "data": [], "total": 0, "available": False, "reason": str(e)[:100]}
+
+
+# ===== 个股详情页数据接口 (leek-fund 风格) =====
+
+def _parse_md_table(text: str) -> list[dict]:
+    """westock CLI 返回 markdown 表格 → list[dict]
+    格式: | col1 | col2 |... \\n | --- | --- |...\\n | v1 | v2 |...
+    """
+    if not text or not isinstance(text, str):
+        return []
+    lines = [ln.strip() for ln in text.strip().splitlines() if ln.strip()]
+    if len(lines) < 2:
+        return []
+    header = [c.strip() for c in lines[0].strip("|").split("|")]
+    rows = []
+    for ln in lines[2:]:  # 跳过分隔行
+        cells = [c.strip() for c in ln.strip("|").split("|")]
+        if len(cells) < len(header):
+            cells += [""] * (len(header) - len(cells))
+        rows.append({h: cells[i] for i, h in enumerate(header)})
+    return rows
+
+
+def _to_westock_code(code: str) -> str:
+    """600519 → sh600519, 000001 → sz000001, 6 位 sh/sz/bj 自动加前缀"""
+    code = code.strip().lower()
+    if code.startswith(("sh", "sz", "bj")):
+        return code
+    if len(code) == 6:
+        if code.startswith(("5", "6", "9")):
+            return "sh" + code
+        if code.startswith(("0", "1", "2", "3")):
+            return "sz" + code
+        if code.startswith(("4", "8")):
+            return "bj" + code
+    return code
+
+
+def _f(v):
+    try:
+        return float(str(v).replace(",", ""))
+    except (ValueError, TypeError):
+        return None
+
+
+@router.get("/stock/quote")
+async def stock_quote(code: str = Query(..., min_length=4, max_length=10)):
+    """个股行情快照 — leek-fund 风格当前价+今开+最高+最低+成交量"""
+    from ...data.westock import get_kline
+    wcode = _to_westock_code(code)
+    try:
+        r = get_kline(wcode, "day", 5, "qfq")
+        rows = _parse_md_table(r.get("raw", "")) if "raw" in r else r.get("data", [])
+        if not rows:
+            return {"success": False, "error": "无行情数据"}
+        latest = rows[0]
+        prev = rows[1] if len(rows) > 1 else None
+
+        price = _f(latest.get("last") or latest.get("close"))
+        prev_close = _f(prev.get("last") or prev.get("close")) if prev else None
+        open_ = _f(latest.get("open"))
+        high = _f(latest.get("high"))
+        low = _f(latest.get("low"))
+        volume = _f(latest.get("volume"))
+        amount = _f(latest.get("amount"))
+        change = (price - prev_close) if (price is not None and prev_close is not None) else None
+        change_pct = (change / prev_close * 100) if (change is not None and prev_close) else None
+
+        return {
+            "success": True,
+            "data": {
+                "code": wcode,
+                "name": latest.get("name", code),
+                "date": latest.get("date"),
+                "price": price,
+                "prev_close": prev_close,
+                "open": open_,
+                "high": high,
+                "low": low,
+                "volume": volume,
+                "amount": amount,
+                "change": change,
+                "change_pct": change_pct,
+                "exchange": latest.get("exchange"),
+            },
+        }
+    except Exception as e:
+        logger.error("stock/quote 失败: %s", e)
+        return {"success": False, "error": str(e)[:200]}
+
+
+@router.get("/stock/kline")
+async def stock_kline(
+    code: str = Query(..., min_length=4, max_length=10),
+    period: str = Query("day", pattern="^(day|week|month)$"),
+    limit: int = Query(120, ge=1, le=500),
+    fq: str = Query("qfq", pattern="^(qfq|hfq|bfq)$"),
+):
+    """K线 — 前端 ECharts 直接画"""
+    from ...data.westock import get_kline
+    wcode = _to_westock_code(code)
+    try:
+        r = get_kline(wcode, period, limit, fq)
+        rows = _parse_md_table(r.get("raw", "")) if "raw" in r else r.get("data", [])
+        if not rows:
+            return {"success": False, "error": "无K线数据", "data": {"candles": [], "volumes": []}}
+
+        candles, volumes = [], []
+        for r0 in reversed(rows):  # 旧的在前
+            o = _f(r0.get("open"))
+            c = _f(r0.get("last") or r0.get("close"))
+            h = _f(r0.get("high"))
+            l = _f(r0.get("low"))
+            v = _f(r0.get("volume"))
+            d = r0.get("date", "")
+            if o is None or c is None or h is None or l is None:
+                continue
+            candles.append([d, o, c, l, h])
+            if v is not None:
+                volumes.append({"date": d, "value": v, "dir": 1 if c >= o else -1})
+        return {"success": True, "data": {"candles": candles, "volumes": volumes}}
+    except Exception as e:
+        logger.error("stock/kline 失败: %s", e)
+        return {"success": False, "error": str(e)[:200], "data": {"candles": [], "volumes": []}}
+
+
+@router.get("/stock/minute")
+async def stock_minute(
+    code: str = Query(..., min_length=4, max_length=10),
+    days: int = Query(1, ge=1, le=5),
+):
+    """分时数据 — 当日 1 分钟切片"""
+    from ...data.westock import _run_westock
+    wcode = _to_westock_code(code)
+    try:
+        r = _run_westock(["minute", wcode, "--days", str(days)])
+        rows = _parse_md_table(r.get("raw", "")) if "raw" in r else r.get("data", [])
+        if not rows:
+            return {"success": False, "error": "无分时数据", "data": []}
+        out = []
+        for r0 in rows:
+            price = _f(r0.get("price"))
+            if price is None:
+                continue
+            out.append({
+                "time": r0.get("time", ""),
+                "price": price,
+                "volume": _f(r0.get("volume")) or 0,
+                "amount": _f(r0.get("amount")) or 0,
+            })
+        return {"success": True, "data": out, "total": len(out)}
+    except Exception as e:
+        logger.error("stock/minute 失败: %s", e)
+        return {"success": False, "error": str(e)[:200], "data": []}
+
+
+@router.get("/stock/profile")
+async def stock_profile(code: str = Query(..., min_length=4, max_length=10)):
+    """公司简况 — 行业、概念、上市日期、注册资本"""
+    from ...data.westock import get_profile
+    wcode = _to_westock_code(code)
+    try:
+        r = get_profile(wcode)
+        rows = _parse_md_table(r.get("raw", "")) if "raw" in r else r.get("data", [])
+        if not rows:
+            return {"success": False, "error": "无公司信息", "data": {}}
+        p = rows[0]
+        return {
+            "success": True,
+            "data": {
+                "code": p.get("code", wcode),
+                "name": p.get("name", code),
+                "industry": p.get("industry", ""),
+                "sector": p.get("sector", ""),
+                "listedDate": p.get("listedDate", ""),
+                "business": p.get("business", ""),
+                "website": p.get("website", ""),
+                "issuePrice": p.get("issuePrice", ""),
+                "regCapital": p.get("regCapital", ""),
+                "chairman": p.get("chairman", ""),
+                "regAddress": p.get("regAddress", ""),
+            },
+        }
+    except Exception as e:
+        logger.error("stock/profile 失败: %s", e)
+        return {"success": False, "error": str(e)[:200], "data": {}}
+
+
+@router.get("/stock/finance")
+async def stock_finance(
+    code: str = Query(..., min_length=4, max_length=10),
+    type_: str = Query("", pattern="^$|^(lrb|zcfz|xjll)$"),
+    num: int = Query(4, ge=1, le=10),
+):
+    """财务数据 — 利润表/资产负债表/现金流量表"""
+    from ...data.westock import get_finance
+    wcode = _to_westock_code(code)
+    try:
+        r = get_finance(wcode, type_, num)
+        rows = _parse_md_table(r.get("raw", "")) if "raw" in r else r.get("data", [])
+        return {"success": True, "data": rows, "total": len(rows)}
+    except Exception as e:
+        logger.error("stock/finance 失败: %s", e)
+        return {"success": False, "error": str(e)[:200], "data": []}
+
+
+@router.get("/stock/technical")
+async def stock_technical(
+    code: str = Query(..., min_length=4, max_length=10),
+    group: str = Query("all", pattern="^(ma|macd|kdj|rsi|boll|bias|wr|dmi|all)$"),
+):
+    """技术指标 — 均线/MACD/KDJ/RSI/布林"""
+    from ...data.westock import get_technical
+    wcode = _to_westock_code(code)
+    try:
+        r = get_technical(wcode, group)
+        rows = _parse_md_table(r.get("raw", "")) if "raw" in r else r.get("data", [])
+        return {"success": True, "data": rows, "total": len(rows)}
+    except Exception as e:
+        logger.error("stock/technical 失败: %s", e)
+        return {"success": False, "error": str(e)[:200], "data": []}

@@ -196,6 +196,102 @@ class DataSourceMeta(Base):
     error_log: Mapped[str | None] = mapped_column(Text, nullable=True, comment="错误日志")
 
 
+class WalkForwardRun(Base):
+    """
+    Walk-Forward 滚动验证运行记录 (LIVE_TRADING_ROADMAP 阶段 1 门禁依据)
+
+    一次 walk_forward 验证 = 一个 run,包含多个 train/test 窗口的 OOS 表现。
+    关键指标:
+    - oos_sharpe_mean / oos_sharpe_std: OOS 夏普均值/标准差 (稳健性核心)
+    - worst_max_drawdown: 最差窗口回撤 (门禁 -25%)
+    - passes_gate: 是否通过 LIVE 门禁 (mean>=0.5, std<0.3, dd>=-25)
+    """
+    __tablename__ = "walk_forward_run"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    strategy_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="策略类名")
+    start_date: Mapped[date] = mapped_column(Date, nullable=False, comment="数据起始")
+    end_date: Mapped[date] = mapped_column(Date, nullable=False, comment="数据结束")
+    train_months: Mapped[int] = mapped_column(Integer, nullable=False, comment="训练窗口月数")
+    test_months: Mapped[int] = mapped_column(Integer, nullable=False, comment="测试窗口月数")
+    step_months: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="滚动步长月数")
+    n_optimize_samples: Mapped[int] = mapped_column(Integer, default=20, comment="每窗口参数采样数")
+
+    # 汇总指标 (PR-fix 2026-06-24 walk_forward web 可视化)
+    n_windows: Mapped[int] = mapped_column(Integer, default=0, comment="窗口总数")
+    oos_sharpe_mean: Mapped[float | None] = mapped_column(Float, nullable=True, comment="OOS 夏普均值")
+    oos_sharpe_std: Mapped[float | None] = mapped_column(Float, nullable=True, comment="OOS 夏普标准差")
+    worst_max_drawdown: Mapped[float | None] = mapped_column(Float, nullable=True, comment="最差窗口回撤")
+    avg_oos_annual_return: Mapped[float | None] = mapped_column(Float, nullable=True, comment="OOS 年化收益均值")
+    avg_oos_win_rate: Mapped[float | None] = mapped_column(Float, nullable=True, comment="OOS 胜率均值")
+    passes_gate: Mapped[int] = mapped_column(Integer, default=0, comment="是否通过门禁 0/1")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, comment="创建时间"
+    )
+
+    # 关系
+    windows = relationship(
+        "WalkForwardWindow", back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="WalkForwardWindow.window_id",
+    )
+
+    def __repr__(self):
+        return (
+            f"<WalkForwardRun(id={self.id}, strategy={self.strategy_name}, "
+            f"oos_sharpe={self.oos_sharpe_mean}, gate={self.passes_gate})>"
+        )
+
+
+class WalkForwardWindow(Base):
+    """
+    Walk-Forward 单窗口 OOS 表现
+    每个 run 含 N 个窗口,每窗口独立记录训练段/测试段/最优参数/OOS 指标。
+    """
+    __tablename__ = "walk_forward_window"
+    __table_args__ = (
+        UniqueConstraint("run_id", "window_id", name="uq_wf_run_window"),
+        Index("idx_wf_run", "run_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("walk_forward_run.id"), nullable=False, comment="所属 run"
+    )
+    window_id: Mapped[int] = mapped_column(Integer, nullable=False, comment="窗口序号 (0-based)")
+
+    # 训练段
+    train_start: Mapped[date] = mapped_column(Date, nullable=False)
+    train_end: Mapped[date] = mapped_column(Date, nullable=False)
+
+    # 测试段 (OOS)
+    test_start: Mapped[date] = mapped_column(Date, nullable=False)
+    test_end: Mapped[date] = mapped_column(Date, nullable=False)
+
+    # 最优参数 (JSON 字符串,SQLite 无 JSONB)
+    best_params_json: Mapped[str | None] = mapped_column(Text, nullable=True, comment="JSON 格式最优参数")
+
+    # IS 指标 (训练段)
+    in_sample_sharpe: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # OOS 指标 (测试段)
+    oos_sharpe: Mapped[float | None] = mapped_column(Float, nullable=True)
+    oos_annual_return: Mapped[float | None] = mapped_column(Float, nullable=True)
+    oos_max_drawdown: Mapped[float | None] = mapped_column(Float, nullable=True)
+    oos_total_trades: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    oos_win_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # 关系
+    run = relationship("WalkForwardRun", back_populates="windows")
+
+    def __repr__(self):
+        return (
+            f"<WalkForwardWindow(id={self.id}, window={self.window_id}, "
+            f"oos_sharpe={self.oos_sharpe})>"
+        )
+
+
 class TechnicalIndicator(Base):
     """
     技术指标预计算表
