@@ -121,6 +121,61 @@
 
 ---
 
+## 阶段六: vnpy 借鉴深度补齐（2026-06-23 调研产出）
+
+> 📋 详细差距清单见 [`docs/vnpy_vs_ours_deep_diff.md`](./docs/vnpy_vs_ours_deep_diff.md)（15 项 + 10 个代码修复 + 10 个测试缺口）。  
+> 本节仅列**Top 5 高 ROI 任务**，按 ROI 排序。
+
+### T6.1 🔴 P0-3 借鉴模块单测补齐（9.5h ⭐⭐⭐）
+- **问题**: `src/event + src/gateway + src/strategy + src/datafeed` 共 13 个借鉴模块，**0 个单元测试**。EventEngine 线程 race、BaseGateway 缓存无锁、EquityStrategy.on_bars 状态机、ParquetDatafeed OOM 风险都无人测。
+- **行动**: 补 10 个测试文件（`tests/test_event_engine.py` / `test_gateway_object.py` / `test_base_gateway.py` / `test_main_engine.py` / `test_alpha_strategy.py` / `test_equity_strategy.py` / `test_datafeed_base.py` / `test_local_datafeed.py` / `test_parquet_datafeed.py` / `test_engine_integration.py`），总估时 9.5 小时，分 2-3 个 PR。
+- **依赖**: 无（最高优先级）
+
+### T6.2 🔴 P0-4 让基类真有人用（3-4h ⭐⭐⭐）
+- **问题**: `src/strategy/alpha_strategy.py`（158 行）+ `equity_strategy.py`（143 行）完整复刻 vnpy `AlphaStrategy`，但 `grep` 在 `src/strategies/` + `src/models/` **零消费者**。所有主推策略（V6/V龙头/三因子/盾矛）走老路 `BaseSelectionStrategy.select() → list[str]`，根本不下单。"形似神不似"的核心。
+- **行动**:
+  1. `MainEngine` 实现 `StrategyEngine` Protocol 6 个方法（send_order/cancel_order/write_log/get_cash_available/get_holding_value/get_signal）
+  2. 选 V6 改造继承 `EquityStrategy`，让 `select → set_target → execute_trading` 走通
+  3. 回测侧构造 `Dict[str, BarData]` 喂给 `on_bars`
+- **依赖**: 改 `src/gateway/main_engine.py` + `src/strategies/v6_reversal_selection.py`
+
+### T6.3 🟡 P1-9 utils 工具集补齐（1-2d ⭐⭐⭐）
+- **问题**: `src/utils/` 仅 keys.py + market.py，缺 `BarGenerator`（tick→bar）/ `ArrayManager`（TA-Lib 30+ 指标滚动数组）/ `round_to/floor_to/ceil_to`（价格规整）/ `get_digits`。影响 24KB 的 `technical_voting.py` + 其它评分模型。
+- **行动**:
+  1. 新建 `src/utils/bar_generator.py`（参考 vnpy BarGenerator）
+  2. 新建 `src/utils/array_manager.py`（numpy 滚动数组 + talib/pandas-ta 指标）
+  3. 新建 `src/utils/pricing.py`（round_to/floor_to/get_digits 共 30 行）
+  4. 用 ArrayManager 重构 `src/models/technical_voting.py` 作为示范
+- **依赖**: 确认 pandas-ta 还是 talib 依赖策略
+
+### T6.4 🔴 代码质量 Top10 修复（6h ⭐⭐⭐）
+- **问题**: 调研发现 EventEngine put 未启动时丢弃事件 + 缓存无锁 + 定时器用 bool flag，BaseGateway 缓存字典读写无锁，MainEngine 类型注解 `Type` 未参数化，ParquetDatafeed `_dataset_cache` 无内存上限（5K parquet 一次性 ~223 MB）+ 多线程并发加载无锁。
+- **行动**: 详见 `docs/vnpy_vs_ours_deep_diff.md` §3 高优先级修复清单（10 条）。
+- **依赖**: T6.1 单测补齐后同步修复
+
+### T6.5 🟡 P0-1 研究层三件套（6-8h ⭐⭐）
+- **问题**: vnpy 的 AlphaLab/AlphaDataset/AlphaModel 三件套本项目全缺。XGBoost 训练散落在 `scripts/train_xgb_v4.py`，特征工程硬编码不可复用，无 model zoo（只有 XGBoost，缺 LGB/MLP/Lasso）。
+- **行动**:
+  1. 新建 `src/research/lab.py`（仿 `vnpy.alpha.lab`，save/load/list 三件套）
+  2. 新建 `src/research/dataset.py` + `processor.py`（9 个预处理算子：cs_norm/cs_rank_norm/ts_norm/drop_na/fill_na...）
+  3. 新建 `src/research/model/base.py`（`fit/predict/detail` 抽象）
+  4. 把 `train_xgb_v4.py` 包成 `XgbModel(AlphaModel)`
+- **依赖**: 决策 pandas-ta vs talib 依赖
+
+### 阶段六优先级表
+
+| 顺序 | 任务 | 估时 | ROI | 备注 |
+|------|------|------|-----|------|
+| 1 | T6.1 单测补齐（10 个测试文件） | 9.5 h | ⭐⭐⭐ | 上线前必修 |
+| 2 | T6.4 代码质量 Top10 | 6 h | ⭐⭐⭐ | 与 T6.1 同步 |
+| 3 | T6.2 让基类真有人用 | 3-4 h | ⭐⭐⭐ | 回测→实盘桥梁 |
+| 4 | T6.3 utils 工具集（BarGenerator/ArrayManager） | 1-2 d | ⭐⭐⭐ | 重构 24KB |
+| 5 | T6.5 研究层三件套（AlphaLab/Dataset/Model） | 6-8 h | ⭐⭐ | ML 演进 |
+
+> 阶段六总计 ~5 人天，建议分 2-3 周完成。
+
+---
+
 ## 优先级排序 (v1.1 数据升级后)
 
 | 优先级 | Issue | 任务 | 预期夏普提升 | 工作量 | 备注 |
