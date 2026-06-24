@@ -142,19 +142,32 @@ class ArrayManager:
         """检查是否有足够数据计算 n 周期指标"""
         return self.count >= n
 
+    def _need_window_or_none(self, n: int, method: str):
+        """数据不足时返 None, 并打 debug 日志 (修 2026-06-25: 之前静默返 None)
+
+        之前 17 个指标方法都直接 `if not self._check_window(n): return None`,
+        缺数据时上游拿 None 不知道原因。现在统一通过这个 helper 打 debug log。
+        """
+        if not self._check_window(n):
+            logger.debug(
+                f"ArrayManager.{method}: 数据不足 (count={self.count}, need={n}), 返 None"
+            )
+            return None
+        return True
+
     # ─────────────────────────────────────────
     #  趋势指标 (5)
     # ─────────────────────────────────────────
 
     def sma(self, n: int) -> Optional[float]:
         """简单移动平均 (Simple Moving Average)"""
-        if not self._check_window(n):
+        if self._need_window_or_none(n, "sma") is None:
             return None
         return float(self.close[-n:].mean())
 
     def ema(self, n: int) -> Optional[float]:
         """指数移动平均 (Exponential Moving Average), 用 pandas-style 平滑"""
-        if not self._check_window(n):
+        if self._need_window_or_none(n, "ema") is None:
             return None
         alpha = 2.0 / (n + 1)
         # 从最早一根开始递归
@@ -174,7 +187,7 @@ class ArrayManager:
         MACD = 2 * (DIF - DEA)
         """
         need = slow + signal
-        if not self._check_window(need):
+        if self._need_window_or_none(need, "macd") is None:
             return None
 
         close = self.close[-need:]
@@ -208,7 +221,7 @@ class ArrayManager:
         self, n: int = 20, dev: float = 2.0,
     ) -> Optional[Tuple[float, float, float]]:
         """布林带: (mid, upper, lower) — 修 2026-06-25: 用 ddof=1 (样本标准差, 跟 vnpy/TradingView 一致)"""
-        if not self._check_window(n):
+        if self._need_window_or_none(n, "boll") is None:
             return None
         mid = float(self.close[-n:].mean())
         std = float(self.close[-n:].std(ddof=1))  # 修: 样本标准差 (原 ddof=0 偏窄)
@@ -220,7 +233,7 @@ class ArrayManager:
         self, n: int = 20,
     ) -> Optional[Tuple[float, float]]:
         """唐奇安通道: (upper, lower) - 期间内最高/最低"""
-        if not self._check_window(n):
+        if self._need_window_or_none(n, "donchian") is None:
             return None
         return (float(self.high[-n:].max()), float(self.low[-n:].min()))
 
@@ -230,7 +243,7 @@ class ArrayManager:
 
     def rsi(self, n: int = 14) -> Optional[float]:
         """相对强弱指数 (Relative Strength Index) 0-100"""
-        if not self._check_window(n + 1):
+        if self._need_window_or_none(n + 1, "rsi") is None:
             return None
         diffs = np.diff(self.close[-(n + 1):])
         gains = np.where(diffs > 0, diffs, 0)
@@ -251,7 +264,7 @@ class ArrayManager:
         D = SMA(K, m2)
         J = 3K - 2D
         """
-        if not self._check_window(n):
+        if self._need_window_or_none(n, "kdj") is None:
             return None
         # 取最近 n 根
         _, hh, ll, cc = self._last_n(n)
@@ -270,7 +283,7 @@ class ArrayManager:
 
     def wr(self, n: int = 14) -> Optional[float]:
         """Williams %R: -100 ~ 0, 越接近 0 越超买"""
-        if not self._check_window(n):
+        if self._need_window_or_none(n, "wr") is None:
             return None
         _, hh, ll, cc = self._last_n(n)
         high_n = float(hh.max())
@@ -281,7 +294,7 @@ class ArrayManager:
 
     def cci(self, n: int = 14) -> Optional[float]:
         """CCI (Commodity Channel Index)"""
-        if not self._check_window(n):
+        if self._need_window_or_none(n, "cci") is None:
             return None
         o, h, l, c = self._last_n(n)
         tp = (h + l + c) / 3  # typical price
@@ -294,7 +307,7 @@ class ArrayManager:
 
     def roc(self, n: int = 12) -> Optional[float]:
         """变动率 (Rate of Change) %"""
-        if not self._check_window(n + 1):
+        if self._need_window_or_none(n + 1, "roc") is None:
             return None
         prev = self.close[-(n + 1)]
         curr = self.close[-1]
@@ -308,14 +321,14 @@ class ArrayManager:
 
     def atr(self, n: int = 14) -> Optional[float]:
         """平均真实波幅 (Average True Range)"""
-        if not self._check_window(n + 1):
+        if self._need_window_or_none(n + 1, "atr") is None:
             return None
         tr = self._tr_series()
         return float(tr[-n:].mean())
 
     def std(self, n: int = 20) -> Optional[float]:
         """close 的 N 周期标准差 — 修 2026-06-25: ddof=1 样本标准差"""
-        if not self._check_window(n):
+        if self._need_window_or_none(n, "std") is None:
             return None
         return float(self.close[-n:].std(ddof=1))
 
@@ -345,7 +358,7 @@ class ArrayManager:
 
     def mfi(self, n: int = 14) -> Optional[float]:
         """资金流量指标 (Money Flow Index) 0-100"""
-        if not self._check_window(n + 1):
+        if self._need_window_or_none(n + 1, "mfi") is None:
             return None
         o, h, l, c, v = (
             self.open[-(n + 1):], self.high[-(n + 1):], self.low[-(n + 1):],

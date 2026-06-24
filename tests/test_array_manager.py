@@ -470,3 +470,120 @@ def test_array_manager_with_bars_from_lower():
     assert am.count == 6
     sma5 = am.sma(5)
     assert sma5 is not None
+
+
+# ── 精确值断言 (2026-06-25 加固) ──────────────────────────
+
+
+def test_sma_exact_value():
+    """SMA 精确值: 1,2,3,4,5 5 根 → 3.0"""
+    am = ArrayManager(size=5)
+    am.update_bars([
+        _make_bar(0, c=1.0), _make_bar(1, c=2.0), _make_bar(2, c=3.0),
+        _make_bar(3, c=4.0), _make_bar(4, c=5.0),
+    ])
+    assert am.sma(5) == 3.0  # 精确等于, 不容忍误差
+
+
+def test_ema_exact_value():
+    """EMA 精确值: close=1 持续 5 根, EMA=1 (alpha=2/6)"""
+    am = ArrayManager(size=10)
+    am.update_bars([_make_bar(i, c=1.0) for i in range(5)])
+    assert am.ema(5) == 1.0  # 持续不变 → EMA 也不变
+
+
+def test_rsi_exact_for_constant():
+    """RSI 持续不变 → 50 (中立)"""
+    am = ArrayManager(size=20)
+    am.update_bars([_make_bar(i, c=10.0) for i in range(20)])
+    assert am.rsi(14) == 50.0
+
+
+def test_boll_exact_values():
+    """布林带精确值: close=10 持续 5 根, mid=10, std=0 → upper=lower=mid"""
+    am = ArrayManager(size=5)
+    am.update_bars([_make_bar(i, c=10.0) for i in range(5)])
+    mid, upper, lower = am.boll(5, 2.0)
+    assert mid == 10.0
+    assert upper == 10.0
+    assert lower == 10.0
+
+
+def test_atr_exact_for_constant_bars():
+    """持续不变 (h=l=c): TR=0, ATR=0"""
+    am = ArrayManager(size=20)
+    am.update_bars([_make_bar(i, o=10.0, h=10.0, l=10.0, c=10.0) for i in range(20)])
+    assert am.atr(14) == 0.0
+
+
+def test_kdj_exact_for_first_call():
+    """首次 KDJ: K=50, D=50, J=50 (无前值)
+    修 2026-06-25: 之前因为用 '假设历史 K=50, D=50' 每次重算, 现在持续状态从初始值算
+    """
+    am = ArrayManager(size=20)
+    # 第 1 根: high=low=c=10 → RSV=50 → K = (2/3)*50 + (1/3)*50 = 50, D=50
+    am.update_bar(_make_bar(0, o=10.0, h=10.0, l=10.0, c=10.0))
+    am.update_bars([_make_bar(i, o=10.0, h=10.0, l=10.0, c=10.0) for i in range(1, 9)])
+    k, d, j = am.kdj(9, 3, 3)
+    # 持续不变 → RSV=50 → K/D 始终从 50 出发
+    # 第 1 步: K = (2/3)*50 + (1/3)*50 = 50
+    # 持续 9 步 K=50, D 跟随 K → D=50
+    assert abs(k - 50.0) < 0.01
+    assert abs(d - 50.0) < 0.01
+    assert abs(j - 50.0) < 0.01
+
+
+def test_macd_exact_for_constant_close():
+    """持续不变 close: EMA = close, DIF=0, DEA=0, MACD柱=0"""
+    am = ArrayManager(size=50)
+    am.update_bars([_make_bar(i, c=10.0) for i in range(40)])
+    dif, dea, macd_val = am.macd(12, 26, 9)
+    assert abs(dif) < 1e-9
+    assert abs(dea) < 1e-9
+    assert abs(macd_val) < 1e-9
+
+
+def test_std_exact_for_constant():
+    """持续不变 close: std=0"""
+    am = ArrayManager(size=20)
+    am.update_bars([_make_bar(i, c=10.0) for i in range(15)])
+    assert am.std(10) == 0.0
+
+
+# ── 缺数据 warning 日志 (2026-06-25) ──────────────────────────
+
+
+def test_local_datafeed_logs_warning_for_null_fields(caplog):
+    """local._bar_from_row: 缺字段时打 warning 日志"""
+    import logging
+    from src.data.datafeed.local import _bar_from_row
+    caplog.set_level(logging.WARNING, logger="src.data.datafeed.local")
+    # 模拟 close=None 的行
+    row = ("2024-01-01", 10.0, 11.0, 9.5, None, 1000.0, 10500.0)
+    _bar_from_row("000001.SZ", row)
+    assert any("close" in r.message and "None" in r.message for r in caplog.records)
+    assert any(r.levelno == logging.ERROR for r in caplog.records)  # close 是 ERROR
+
+
+def test_local_datafeed_logs_warning_for_non_critical_null(caplog):
+    """local._bar_from_row: 非关键字段 (volume) None 时 warning (非 error)"""
+    import logging
+    from src.data.datafeed.local import _bar_from_row
+    caplog.set_level(logging.WARNING, logger="src.data.datafeed.local")
+    # close 有值, volume=None
+    row = ("2024-01-01", 10.0, 11.0, 9.5, 10.5, None, 10500.0)
+    _bar_from_row("000001.SZ", row)
+    assert any("volume" in r.message for r in caplog.records)
+    # 不应是 ERROR
+    assert not any(r.levelno == logging.ERROR for r in caplog.records)
+
+
+def test_array_manager_logs_debug_for_insufficient_data(caplog):
+    """ArrayManager 指标数据不足时打 debug 日志"""
+    import logging
+    am = ArrayManager(size=5)
+    am.update_bars([_make_bar(i) for i in range(3)])
+    caplog.set_level(logging.DEBUG, logger="src.indicator.array_manager")
+    result = am.sma(20)  # count=3 < 20
+    assert result is None
+    assert any("数据不足" in r.message and "sma" in r.message for r in caplog.records)

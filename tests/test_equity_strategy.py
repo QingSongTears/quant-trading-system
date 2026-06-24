@@ -235,19 +235,28 @@ def test_on_bars_triggers_at_rebalance_days():
 
 
 def test_on_bars_skips_when_universe_smaller_than_top_k():
-    """可用股票 < top_k 跳过"""
+    """可用股票 < top_k 跳过, 加 2026-06-25: 验证 write_log + 无 target"""
     engine = _MockEngine()
+    called = [0]
     def factory():
+        called[0] += 1
         return pd.DataFrame({"vt_symbol": ["000001.SZ"], "signal": [1.0]})
     strat = _TestEquityStrat(engine, "x", ["000001.SZ"], signals_factory=factory)
-    # 默认 top_k=30, universe=1 < 30 → 跳过
+    # 默认 top_k=30, universe=1 < 30 → 跳过, 不调 generate_signals
     for _ in range(20):
         strat.on_bars({"000001.SZ": _bar("000001", "SZ")})
+    # 加固 (2026-06-25): generate_signals 不应被调, 写日志应含"跳过"
+    assert called[0] == 0
+    assert any("跳过" in log for log in engine.logs)
+    # target_data 应保持空
+    assert len(strat.target_data) == 0
 
 
 def test_on_bars_skips_when_signals_empty():
     engine = _MockEngine()
+    called = [0]
     def factory():
+        called[0] += 1
         return pd.DataFrame()  # 空
     strat = _TestEquityStrat(
         engine, "x",
@@ -258,11 +267,17 @@ def test_on_bars_skips_when_signals_empty():
     for _ in range(20):
         bars = {f"00000{i}.SZ": _bar(f"00000{i}", "SZ") for i in range(30)}
         strat.on_bars(bars)
+    # 加固 (2026-06-25): generate_signals 应被调 (走到第 4 步), 但因空返 None 跳过
+    assert called[0] == 1
+    # 触发过再平衡, 但因 signals 空, 不应调 execute_trading (target 为空)
+    assert len(strat.target_data) == 0
 
 
 def test_on_bars_skips_when_signals_none():
     engine = _MockEngine()
+    called = [0]
     def factory():
+        called[0] += 1
         return None
     strat = _TestEquityStrat(
         engine, "x",
@@ -273,6 +288,9 @@ def test_on_bars_skips_when_signals_none():
     for _ in range(20):
         bars = {f"00000{i}.SZ": _bar(f"00000{i}", "SZ") for i in range(30)}
         strat.on_bars(bars)
+    # 加固 (2026-06-25): generate_signals 应被调, 但因 None 跳过
+    assert called[0] == 1
+    assert len(strat.target_data) == 0
 
 
 def test_on_bars_raises_when_signals_missing_required_columns():

@@ -68,7 +68,12 @@ class _DB:
 
 
 def _bar_from_row(code: str, row) -> BarData:
-    """row = (trade_date, open, high, low, close, volume, amount)"""
+    """row = (trade_date, open, high, low, close, volume, amount)
+
+    修 2026-06-25: 缺数据时 (None) 改 warning 日志 (原静默转 0)
+    - 仍转 0 (兼容调用方期望 float), 但打 warning 让用户/上游感知
+    - 关键字段 (close) 为 None 时, 额外打更高 level (error)
+    """
     trade_date, o, h, l, c, vol, amount = row
     if isinstance(trade_date, str):
         trade_date = datetime.strptime(trade_date, "%Y-%m-%d").date()
@@ -76,6 +81,35 @@ def _bar_from_row(code: str, row) -> BarData:
         trade_date = trade_date.date()
 
     exchange = code_to_market(code)
+
+    # 修 2026-06-25: 检测 None, 打 warning (而非静默转 0)
+    none_fields = []
+    if o is None:
+        none_fields.append("open")
+    if h is None:
+        none_fields.append("high")
+    if l is None:
+        none_fields.append("low")
+    if c is None:
+        none_fields.append("close")
+    if vol is None:
+        none_fields.append("volume")
+    if amount is None:
+        none_fields.append("amount")
+
+    if none_fields:
+        # close 是最关键字段, 单独 error
+        if "close" in none_fields:
+            logger.error(
+                f"data_feed.local: {code} @ {trade_date} close 为 None, "
+                f"转 0 (下游可能拿到假报价)"
+            )
+        else:
+            logger.warning(
+                f"data_feed.local: {code} @ {trade_date} 缺字段 {none_fields}, "
+                f"转 0"
+            )
+
     return BarData(
         gateway_name="LOCAL",
         symbol=code,
