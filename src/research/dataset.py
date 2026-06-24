@@ -27,6 +27,18 @@ Dataset — 研究层数据抽象 (借鉴 vnpy.alpha.dataset, 2026-06-24)
   - _fetch_features(date_range)  → 拉特征矩阵
   - _make_labels(close_series, horizon)  → 计算 label (e.g. 未来 N 日收益)
   - _build_X(date, lookback)  → 构造某日特征
+
+⚠️ 重要 (2026-06-25): AStockDataset 是占位/示例实现
+─────────────────────────────────────────────────────
+当前 _fetch_features 用 hash-based mock 数据 (不真接 data_mgr)。
+生产替换为:
+    from src.data import data_mgr
+    def _fetch_features(self, start, end, vt_symbols=None):
+        df = data_mgr.datafeed.get_bars_batch(...)
+        # 接 v_leader_features.FeatureBuilder 算 74 维特征
+        ...
+返回真实 (X, y) 之前, 单测外的实际使用会拿到 fake 数据, 请勿直接用生产。
+TODO: 接入 v_leader_features.FeatureBuilder (见 src/strategies/v_leader_features.py)
 """
 from __future__ import annotations
 
@@ -203,6 +215,9 @@ def _add_days(d: date, n: int) -> date:
 
 class AStockDataset(BaseDataset):
     """
+    ⚠️ 占位实现 (2026-06-25): _fetch_features 是 hash-based mock, 不是真接 data_mgr
+    见模块顶部 ⚠️ 重要 段说明。
+
     A 股特化 Dataset (对接 data_mgr)
 
     _fetch_features 默认从 data_mgr.datafeed 拉日 K + 简单技术指标

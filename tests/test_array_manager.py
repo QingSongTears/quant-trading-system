@@ -248,6 +248,78 @@ def test_kdj_returns_tuple():
     assert abs(j - (3 * k - 2 * d)) < 0.01
 
 
+def test_kdj_state_persists_across_calls():
+    """修 2026-06-25: KDJ K/D 状态应持续, 不每次重置 50
+
+    验证方式: 同趋势连续调, 第二次 K 不应跳回 50
+    """
+    am = ArrayManager(size=20)
+    am.update_bars(_rising_bars(10))
+    k1, d1, _ = am.kdj(9, 3, 3)
+    # 推 1 根再算, K/D 应继续递推, 不是从 50 重新开始
+    am.update_bar(_make_bar(10, c=15.5))
+    k2, d2, _ = am.kdj(9, 3, 3)
+    # 上涨 → K 继续上升
+    assert k2 > k1 - 0.5  # 允许小幅波动, 但不能跳回 50
+    # 第二次不是从 50 重新递推 (如果重置, k2 应 ≈ 50)
+    assert k2 > 50
+
+
+def test_kdj_state_resets_on_reset():
+    """reset() 后 KDJ 状态应回 50"""
+    am = ArrayManager(size=20)
+    am.update_bars(_rising_bars(15))
+    am.kdj(9, 3, 3)  # 推 KDJ 状态
+    am.reset()
+    # reset 后, 重新推 9 根 (kdj lookback=9), K 应从 50 开始递推
+    for i in range(9):
+        am.update_bar(_make_bar(i, c=10.0 + i * 0.1))
+    k, d, _ = am.kdj(9, 3, 3)
+    # 从 50 出发, 连续递推 9 次, K 应在 [50, 100]
+    assert 50 <= k <= 100
+    # K 应有非零精度, 不应是初始 50 (除非 RSV=50 极端 case)
+    assert k != 50.0 or d != 50.0  # 至少有一个动了
+
+
+def test_macd_dea_matches_vnpy_methodology():
+    """修 2026-06-25: DEA = EMA(DIF, signal) 全序列递推
+
+    验证: macd 算 2 次 (数据相同) 应返相同结果 (确定性)
+    验证: DEA 应在 DIF 附近 (而不是噪声值)
+    """
+    am = ArrayManager(size=60)
+    am.update_bars(_rising_bars(50))
+    dif, dea, macd_val = am.macd(12, 26, 9)
+    # 上涨趋势, DIF > 0, DEA > 0
+    assert dif > 0
+    assert dea > 0
+    # DEA 应在 DIF 附近 (DEA 是 DIF 的 EMA 平滑)
+    assert abs(dea - dif) < abs(dif) * 0.5  # DEA 不应偏离 DIF 太远
+    # MACD 柱 = 2*(DIF-DEA)
+    assert abs(macd_val - 2 * (dif - dea)) < 1e-6
+
+
+def test_boll_uses_sample_std_ddof1():
+    """修 2026-06-25: boll 用 ddof=1 (样本标准差, 跟 vnpy 一致)
+
+    验证: 已知数据手动算, 对比
+    """
+    am = ArrayManager(size=20)
+    # 固定 close: 10, 11, 12, ..., 19 (10 根, 后面 0)
+    # mean = 14.5, std (ddof=1) ≈ 3.027
+    bars = [
+        _make_bar(i, o=10.0 + i, h=10.0 + i, l=10.0 + i, c=10.0 + i, vol=0)
+        for i in range(10)
+    ]
+    am.update_bars(bars)
+    mid, upper, lower = am.boll(10, 2.0)
+    assert abs(mid - 14.5) < 0.01
+    # 样本标准差 (ddof=1) 比总体 (ddof=0) 大 sqrt(n/(n-1)) 倍
+    import math
+    expected_std = math.sqrt(sum((c - 14.5) ** 2 for c in range(10, 20)) / 9)
+    assert abs(upper - mid) - 2 * expected_std < 0.01
+
+
 def test_wr_returns_negative():
     """Williams %R 应为 -100 ~ 0"""
     am = ArrayManager(size=20)

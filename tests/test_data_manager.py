@@ -73,6 +73,32 @@ def test_westock_is_module():
     assert mgr.westock is westock if False else data_mgr.westock is westock
 
 
+def test_data_mgr_module_attr_is_lazy():
+    """修 2026-06-25: 之前模块级 data_mgr = get_data_manager() 立即创建,
+    现在用 __getattr__ 代理, 首次访问才创建。
+
+    验证: 通过 src.data.manager.data_mgr 访问触发 lazy 创建,
+    第二次返回同一实例, 内部 _lazy_data_mgr 已设置。
+    """
+    import importlib
+    import sys
+    # 强制重置 (如果之前 import 时已创建, 重新加载模块)
+    if "src.data.manager" in sys.modules:
+        mgr_mod = importlib.reload(sys.modules["src.data.manager"])
+    else:
+        mgr_mod = importlib.import_module("src.data.manager")
+    # 重置 lazy 状态
+    mgr_mod._lazy_data_mgr = None
+    # 通过模块属性访问触发 __getattr__
+    dm = mgr_mod.data_mgr
+    assert dm is not None
+    # 第二次访问应返回同一实例 (不再创建)
+    dm2 = mgr_mod.data_mgr
+    assert dm is dm2
+    # 内部 _lazy_data_mgr 应已设置
+    assert mgr_mod._lazy_data_mgr is dm
+
+
 def test_westock_module_has_expected_functions():
     """westock module 暴露 get_kline / get_technical 等"""
     from src.data import westock

@@ -245,7 +245,19 @@ def get_data_manager() -> DataManager:
 
 
 # 便捷别名: from src.data import data_mgr
-data_mgr = get_data_manager()
+# 修 2026-06-25: 之前模块级 data_mgr = get_data_manager() 立即创建实例,
+# 违背 "lazy 启动 0 开销" 承诺。现在用 __getattr__ 代理, 首次访问才创建。
+_lazy_data_mgr: Optional[DataManager] = None
+
+
+def __getattr__(name: str):
+    """模块级代理: data_mgr 首次访问才创建, 保持 lazy"""
+    global _lazy_data_mgr
+    if name == "data_mgr":
+        if _lazy_data_mgr is None:
+            _lazy_data_mgr = get_data_manager()
+        return _lazy_data_mgr
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [

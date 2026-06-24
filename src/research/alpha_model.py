@@ -109,6 +109,19 @@ class AStockAlphaModel(BaseAlphaModel):
         # 推理 (单例)
         loaded = AStockAlphaModel.load("data/xgb_v5.json", "data/xgb_v5_scaler.json")
         probs = loaded.predict_proba(X_live)
+
+    ⚠️ 占位实现 (2026-06-25): fit/predict/save/load 用 _MockXgbModel
+    ─────────────────────────────────────────────────────
+    真实 XGBoost 训练未实现, save() 只写字符串 'mock_xgb_model'。
+    生产替换:
+        from src.data import data_mgr
+        from src.data.xgb_loader import XgbV4Model
+        def fit(self, X, y, ...):
+            import xgboost as xgb
+            booster = xgb.train(...)
+            self._xgb_model = booster
+            self._scaler = data_mgr.load_scaler(...)
+    TODO: 接入 XgbV4Model.load() / save_model() (见 src/data/xgb_loader.py)
     """
 
     def __init__(self) -> None:
