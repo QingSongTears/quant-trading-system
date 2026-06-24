@@ -92,6 +92,29 @@ src/
 │   ├── base_strategy.py              信号策略基类
 │   └── base_selection_strategy.py    选股策略基类
 │
+├── data/                           ← 数据层 (2026-06-24 统一门面)
+│   ├── manager.py                    DataManager 统一入口 (5 类数据源 lazy)
+│   ├── downloader.py                 DataDownloader (akshare/baostock 历史下载)
+│   ├── westock.py                    实时行情 (npx westock-data-clawhub)
+│   ├── xgb_loader.py / xgb_scaler.py XGBoost 模型加载 / JsonScaler
+│   └── datafeed/                     vnpy 风格 Datafeed 抽象
+│       ├── base.py                   BaseDatafeed (ABC)
+│       ├── local.py                  LocalDatafeed (SQLite, 主用)
+│       └── parquet.py                ParquetDatafeed (全市场 scan 快)
+│
+├── indicator/                      ← 行情指标 (2026-06-24 借鉴 vnpy)
+│   ├── bar_generator.py              BarGenerator (低→高 K 线合成)
+│   └── array_manager.py              ArrayManager (17 指标 MA/EMA/MACD/...)
+│
+├── engine/                         ← 引擎层 (借鉴 vnpy 4.4, 2026-06-24)
+│   ├── base.py                       BaseEngine (ABC, 状态机)
+│   └── oms.py                        OmsEngine (订单管理 + 6 类事件订阅)
+│
+├── research/                       ← 研究层 (2026-06-24 借鉴 vnpy.alpha, ⚠️ 占位)
+│   ├── dataset.py                    BaseDataset + AStockDataset
+│   ├── alpha_model.py                BaseAlphaModel + AStockAlphaModel
+│   └── lab.py                        AlphaLab (train/predict 编排)
+│
 ├── strategies/                     ← 策略层
 │   ├── v6_reversal_selection.py      V6 超卖反转
 │   ├── v6_pipeline_hybrid.py         V6 多维融合
@@ -293,6 +316,11 @@ python scripts/train_xgb_v4.py      # V龙头 XGBoost v4
 | vnpy 差距分析（更新版） | [`docs/vnpy_vs_ours_deep_diff.md`](./docs/vnpy_vs_ours_deep_diff.md) ← 2026-06-23 重做 |
 | vnpy 差距分析（旧版） | [`docs/VNPY_GAP_ANALYSIS.md`](./docs/VNPY_GAP_ANALYSIS.md) |
 | vnpy 借鉴落地计划 | [`docs/Vnpy_Optimization_Notes.md`](./docs/Vnpy_Optimization_Notes.md) |
+| **DataManager 使用** | [`docs/data_manager_usage.md`](./docs/data_manager_usage.md) ← 2026-06-24 |
+| **BarGenerator 使用** | [`docs/bar_generator_usage.md`](./docs/bar_generator_usage.md) ← 2026-06-24 |
+| **ArrayManager 使用** | [`docs/array_manager_usage.md`](./docs/array_manager_usage.md) ← 2026-06-25 |
+| **Datafeed 使用** | [`docs/datafeed_usage.md`](./docs/datafeed_usage.md) ← 2026-06-25 |
+| **Research 使用** | [`docs/research_usage.md`](./docs/research_usage.md) ← 2026-06-25 |
 | 剩余任务清单 | [`TODO.md`](./TODO.md) |
 
 ---
