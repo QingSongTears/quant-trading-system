@@ -48,3 +48,12 @@ market_data/dataset/
 .workbuddy/
 .tmp_*.json
 *.tmp
+
+# 截图/审计产物 (本地生成, 不入 git)
+# 统一存到 screenshots/ 目录下, 按用途分子目录
+screenshots/
+# 兼容旧的散落截图位置
+output/*.png
+output/*.jpg
+output/*.jpeg
+output/*_audit/*.png
