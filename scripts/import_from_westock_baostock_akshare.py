@@ -102,34 +102,52 @@ def to_westock(code6: str, market: str) -> str:
 def parse_markdown_table(text: str) -> list[dict]:
     """通用 westock markdown 表格解析器
 
-    输入示例:
-        [Batch] 状态: success | 总数: 3 | 成功: 3 | 失败: 0
-        | code | name | listedDate | business | industry | ... |
-        | --- | --- | --- | --- |
-        | sh600000 | 浦发银行 | 1999-11-10 | ... | 银行 | ... |
+    支持两种 westock 输出格式:
+    1. 显式 header:  | code | name | ... |   data: | sh600000 | 浦发银行 | ... |
+    2. 隐式 symbol:  | date | open | last | ... |  data: | sh000300 | 2024-... | ... |
+       (westock kline 子命令格式, 数据行比 header 多 1 列, 首列是 symbol code)
 
-    返回: [{"code": "sh600000", "name": "浦发银行", "listedDate": "1999-11-10", ...}, ...]
+    返回: [{"code": "sh600000", ...}, ...] 或 [{"code": "sh000300", "date": "2024-...", ...}, ...]
     """
+    SYMBOL_RE = re.compile(r"^[a-z]{2}\d{6}$")
     rows: list[dict] = []
     headers: list[str] | None = None
+    has_implicit_symbol = False
     for line in text.splitlines():
         line = line.strip()
         if not line.startswith("|"):
             continue
-        # 跳过 [Batch] 元信息行
         if "[Batch]" in line or "总数" in line or "成功" in line or "失败" in line:
             continue
-        # 分隔行 | --- | --- |
         if re.match(r"^\|\s*-+(\s*\|\s*-+)*\s*\|?$", line):
             continue
         cells = [c.strip() for c in line.split("|")[1:-1]]
-        # header 行: 第一列是 code / symbol / date 之一
         if headers is None:
+            # header 行: 第一列是 code / symbol / date 之一
             if cells and cells[0] in ("code", "symbol", "date"):
                 headers = cells
+                # kline 子命令: header 第一列是 date 但实际数据首列是 symbol code
+                has_implicit_symbol = (cells[0] == "date"
+                                       and "open" in cells  # kline 标志
+                                       and len(cells) >= 7)
             continue
-        if len(cells) == len(headers):
-            rows.append(dict(zip(headers, cells)))
+        if not cells:
+            continue
+        # 检测隐式 symbol: 数据行比 header 多 1 列, 首列是 symbol 格式
+        if has_implicit_symbol and len(cells) == len(headers) + 1 and SYMBOL_RE.match(cells[0]):
+            # 把首列插入为 code, 剩余 cells 与 headers 对齐
+            row = {"code": cells[0]}
+            for h, v in zip(headers, cells[1:]):
+                row[h] = v
+            # kline 子命令额外重命名 last → close (与其他子命令一致)
+            if "last" in row and "close" not in row:
+                row["close"] = row.pop("last")
+            rows.append(row)
+        elif len(cells) == len(headers):
+            row = dict(zip(headers, cells))
+            if "last" in row and "close" not in row:
+                row["close"] = row.pop("last")
+            rows.append(row)
     return rows
 
 
@@ -251,9 +269,25 @@ def task_profile(batch_size: int, dry_run: bool, skip_existing: bool) -> None:
 # Task 2: finance_summary.csv ← baostock profit_data loop
 # ============================================================
 
-def task_finance(year: int, quarter: int, dry_run: bool, start_year: int | None) -> None:
+def task_finance(year: int, quarter: int, dry_run: bool, start_year: int | None,
+                 end_year: int | None, quarters: list[int] | None) -> None:
+    """财务 loop 入口
+
+    简单模式: --year Y --quarter Q (单次, 兼容旧行为)
+    多年模式: --start-year 2015 --end-year 2024 --quarters 1 2 3 4 (批量)
+    """
     import baostock as bs
 
+    # 计算要跑的所有 (year, quarter) 组合
+    if start_year is not None and end_year is not None and quarters:
+        jobs = [(y, q) for y in range(start_year, end_year + 1) for q in quarters]
+    else:
+        jobs = [(year, quarter)]
+
+    logger.info("[finance] 待跑任务: %d 个 (year x quarter): %s",
+                len(jobs), jobs[:3] + (["..."] if len(jobs) > 3 else []))
+
+    # baostock 一次登录即可 (整个 loop 期间复用)
     lg = bs.login()
     if lg.error_code != "0":
         logger.error("[finance] baostock 登录失败: %s", lg.error_msg)
@@ -261,46 +295,97 @@ def task_finance(year: int, quarter: int, dry_run: bool, start_year: int | None)
     logger.info("[finance] baostock 登录 OK")
 
     pairs = load_tradable_codes()
-    logger.info("[finance] 待采集股票: %d 只, year=%d Q%d", len(pairs), year, quarter)
-
-    # baostock code 格式: sh.600000
+    logger.info("[finance] 待采集股票: %d 只", len(pairs))
     bs_codes = [f"{m}.{c}" for c, m in pairs]
 
     if dry_run:
-        logger.info("[dry-run] 示例前 5: %s", bs_codes[:5])
+        logger.info("[dry-run] 任务数: %d, 示例前 5: %s", len(jobs), bs_codes[:5])
         bs.logout()
         return
 
+    # 增量: 读已有 finance_summary.csv, 跳过已存在的 (code, stat_date)
+    existing: set[tuple[str, str]] = set()
+    if FINANCE_CSV.exists():
+        try:
+            import csv as _csv
+            with open(FINANCE_CSV, "r", encoding="utf-8-sig") as f:
+                reader = _csv.DictReader(f)
+                for row in reader:
+                    code = row.get("code", "").strip()
+                    stat = row.get("statDate", "")[:10].strip()
+                    if code and stat:
+                        existing.add((code, stat))
+            logger.info("[finance] 已存在 (code, stat_date): %d 条, 增量跳过", len(existing))
+        except Exception as e:
+            logger.warning("读已有 finance CSV 失败: %s", e)
+
     all_rows: list[dict] = []
-    fail_codes: list[str] = []
-    t0 = time.time()
-    for i, bscode in enumerate(bs_codes):
-        rs = bs.query_profit_data(code=bscode, year=year, quarter=quarter)
-        if rs.error_code != "0":
-            fail_codes.append(bscode)
-            continue
-        if not rs.fields:
-            continue
-        rows_count = 0
-        while rs.next():
-            all_rows.append(dict(zip(rs.fields, rs.get_row_data())))
-            rows_count += 1
-        if rows_count == 0:
-            fail_codes.append(bscode)  # 该季度无数据
-        if (i + 1) % 200 == 0:
-            elapsed = time.time() - t0
-            rate = (i + 1) / elapsed if elapsed else 0
-            eta = (len(bs_codes) - i - 1) / rate if rate else 0
-            logger.info("  %d/%d  累计 %d 行  %.1f 股/s  ETA %.1fmin",
-                        i + 1, len(bs_codes), len(all_rows), rate, eta / 60)
+    grand_t0 = time.time()
+    for ji, (yy, qq) in enumerate(jobs):
+        logger.info("[finance] [%d/%d] year=%d Q%d 开始", ji + 1, len(jobs), yy, qq)
+        job_rows: list[dict] = []
+        fail_codes: list[str] = []
+        t0 = time.time()
+        for i, bscode in enumerate(bs_codes):
+            rs = bs.query_profit_data(code=bscode, year=yy, quarter=qq)
+            if rs.error_code != "0":
+                fail_codes.append(bscode)
+                continue
+            if not rs.fields:
+                continue
+            rows_count = 0
+            while rs.next():
+                row_dict = dict(zip(rs.fields, rs.get_row_data()))
+                stat_date = row_dict.get("statDate", "")[:10]
+                if (bscode, stat_date) in existing:
+                    continue
+                job_rows.append(row_dict)
+                rows_count += 1
+            if rows_count == 0:
+                fail_codes.append(bscode)
+            if (i + 1) % 500 == 0:
+                elapsed = time.time() - t0
+                rate = (i + 1) / elapsed if elapsed else 0
+                eta = (len(bs_codes) - i - 1) / rate if rate else 0
+                logger.info("    %d/%d  +%d 累计 %d  %.1f 股/s  ETA %.1fmin",
+                            i + 1, len(bs_codes), len(job_rows), len(all_rows) + len(job_rows),
+                            rate, eta / 60)
+
+        all_rows.extend(job_rows)
+        elapsed = time.time() - t0
+        logger.info("[finance] year=%d Q%d 完成: %d 行, 失败 %d, 耗时 %.1fmin",
+                    yy, qq, len(job_rows), len(fail_codes), elapsed / 60)
 
     bs.logout()
-    elapsed = time.time() - t0
-    logger.info("[finance] 总行数: %d  无数据/失败: %d  耗时: %.1fmin",
-                len(all_rows), len(fail_codes), elapsed / 60)
-    if fail_codes:
-        logger.info("[finance] 失败示例 (前 10): %s", fail_codes[:10])
-    write_csv(FINANCE_CSV, all_rows)
+    grand_elapsed = time.time() - grand_t0
+    logger.info("[finance] 全部完成: 新增 %d 行, 总耗时 %.1fmin",
+                len(all_rows), grand_elapsed / 60)
+
+    if not all_rows:
+        logger.warning("[finance] 无新数据, 不写 CSV")
+        return
+
+    # 追加模式 (a) 写到现有 CSV
+    if FINANCE_CSV.exists():
+        import csv as _csv
+        with open(FINANCE_CSV, "r", encoding="utf-8-sig", newline="") as f:
+            reader = _csv.DictReader(f)
+            old_fieldnames = reader.fieldnames or []
+            old_rows = list(reader)
+        merged_rows = old_rows + all_rows
+        # 字段合并
+        all_keys = list(old_fieldnames)
+        for r in all_rows:
+            for k in r.keys():
+                if k not in all_keys:
+                    all_keys.append(k)
+        with open(FINANCE_CSV, "w", encoding="utf-8-sig", newline="") as f:
+            w = _csv.DictWriter(f, fieldnames=all_keys, extrasaction="ignore")
+            w.writeheader()
+            w.writerows(merged_rows)
+        logger.info("[finance] 追加写 %s: 新增 %d, 总 %d 行", FINANCE_CSV, len(all_rows), len(merged_rows))
+    else:
+        write_csv(FINANCE_CSV, all_rows)
 
 
 # ============================================================
@@ -331,15 +416,15 @@ def task_benchmark(limit: int, dry_run: bool) -> None:
         if not _SYMBOLS_RE.match(sym):
             logger.warning("跳过非法 code: %s", sym)
             continue
-        # westock kline 是单股接口 (没有逗号批量语义), 参数顺序: code 在前, --period 在后
+        # westock kline 单股调用不返回 symbol 列 (批量调用才会返回), 需手动补 code
         r = westock_batch([sym], "kline", "--period", "day",
                           "--limit", str(limit), timeout=120)
-        # 改名: 加 name + symbol 列
         for row in r:
+            row["code"] = sym
             row["name"] = name
-            # 字段名标准化 (westock 用 symbol, 我们统一 code)
-            if "symbol" in row and "code" not in row:
-                row["code"] = row.pop("symbol")
+            # 统一字段: last → close (与 daily_price 一致)
+            if "last" in row and "close" not in row:
+                row["close"] = row.pop("last")
         all_rows.extend(r)
         logger.info("  %s (%s): %d 行", name, sym, len(r))
         time.sleep(0.6)
@@ -363,8 +448,14 @@ def main() -> int:
                    default="profile", help="要执行的任务 (默认 profile)")
     p.add_argument("--batch-size", type=int, default=100,
                    help="westock 批量大小 (默认 100, 调小可降低单批失败影响)")
-    p.add_argument("--year", type=int, default=2024, help="finance 年份 (默认 2024)")
-    p.add_argument("--quarter", type=int, default=4, help="finance 季度 (1-4, 默认 4)")
+    p.add_argument("--year", type=int, default=2024, help="finance 年份 (默认 2024, 简单模式)")
+    p.add_argument("--quarter", type=int, default=4, help="finance 季度 (1-4, 默认 4, 简单模式)")
+    p.add_argument("--start-year", type=int, default=None,
+                   help="finance 起始年份 (多年模式; 与 --end-year --quarters 配合)")
+    p.add_argument("--end-year", type=int, default=None,
+                   help="finance 结束年份 (含)")
+    p.add_argument("--quarters", type=int, nargs="+", default=None,
+                   help="finance 季度列表, 如 --quarters 1 2 3 4")
     p.add_argument("--limit", type=int, default=1500,
                    help="benchmark kline limit (默认 1500 ≈ 6 年日线)")
     p.add_argument("--skip-existing", action="store_true",
@@ -380,7 +471,8 @@ def main() -> int:
         if args.task in ("profile", "all"):
             task_profile(args.batch_size, args.dry_run, args.skip_existing)
         if args.task in ("finance", "all"):
-            task_finance(args.year, args.quarter, args.dry_run, None)
+            task_finance(args.year, args.quarter, args.dry_run,
+                         args.start_year, args.end_year, args.quarters)
         if args.task in ("benchmark", "all"):
             task_benchmark(args.limit, args.dry_run)
     except KeyboardInterrupt:
