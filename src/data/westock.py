@@ -69,9 +69,12 @@ def _run_westock(argv: list) -> dict:
     cmd = _NPM_BIN + list(argv)
     logger.debug("执行: %s", " ".join(cmd))
 
+    # Windows: CREATE_NO_WINDOW 防止 npx.cmd 弹黑色 cmd 窗口
+    CREATE_NO_WINDOW = 0x08000000
     try:
         result = subprocess.run(
-            cmd, shell=False, capture_output=True, text=True, timeout=30
+            cmd, shell=False, capture_output=True, text=True, timeout=30,
+            creationflags=CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
         if result.returncode != 0:
             logger.error("WeStock 命令失败: %s", result.stderr)

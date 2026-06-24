@@ -162,6 +162,8 @@ def westock_batch(symbols: list[str], subcommand: str, *flags: str,
     示例:
         westock_batch([sh600000, sh600519], "profile")               # 无 flags
         westock_batch([sh600000], "kline", "--period", "day", ...)   # flags 在 codes 后
+
+    Windows 隐藏 cmd 窗口: subprocess.run 用 CREATE_NO_WINDOW 标志
     """
     if not symbols:
         return []
@@ -172,9 +174,12 @@ def westock_batch(symbols: list[str], subcommand: str, *flags: str,
         raise ValueError(f"subcommand 格式非法: {subcommand!r}")
     cmd = _NPM_BIN + [subcommand, joined] + list(flags)
     logger.debug("执行: %s ...", " ".join(cmd))
+    # Windows CREATE_NO_WINDOW 防止 npx.cmd 弹黑窗
+    CREATE_NO_WINDOW = 0x08000000
     try:
         r = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout, shell=False,
+            creationflags=CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
     except subprocess.TimeoutExpired:
         logger.error("westock 超时: %d 股", len(symbols))
