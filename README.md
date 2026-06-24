@@ -5,6 +5,7 @@
 > **状态**: v2.0-beta | **测试**: 持续集成 (Playwright E2E + pytest) | **Python**: 3.10+
 > **当前分支**: `develop`（包含 Issue #73 操盘体系 + XGBoost v4 + PR3 工程重构）
 > **实盘路径**: 详见 [`LIVE_TRADING_ROADMAP.md`](./LIVE_TRADING_ROADMAP.md)
+> **框架差距调研**: 详见 [`docs/vnpy_vs_ours_deep_diff.md`](./docs/vnpy_vs_ours_deep_diff.md)（2026-06-23，15 项缺口 + 10 个代码修复 + 10 个测试缺口）
 
 ---
 
@@ -281,6 +282,18 @@ python scripts/train_xgb_v4.py      # V龙头 XGBoost v4
 - [ ] **Phase 12**: 小资金实盘（5-10w 启动）
 
 > 实盘化详细路径见 [`LIVE_TRADING_ROADMAP.md`](./LIVE_TRADING_ROADMAP.md)
+
+---
+
+## 📚 关键文档索引
+
+| 主题 | 文档 |
+|------|------|
+| 实盘路径 | [`LIVE_TRADING_ROADMAP.md`](./LIVE_TRADING_ROADMAP.md) |
+| vnpy 差距分析（更新版） | [`docs/vnpy_vs_ours_deep_diff.md`](./docs/vnpy_vs_ours_deep_diff.md) ← 2026-06-23 重做 |
+| vnpy 差距分析（旧版） | [`docs/VNPY_GAP_ANALYSIS.md`](./docs/VNPY_GAP_ANALYSIS.md) |
+| vnpy 借鉴落地计划 | [`docs/Vnpy_Optimization_Notes.md`](./docs/Vnpy_Optimization_Notes.md) |
+| 剩余任务清单 | [`TODO.md`](./TODO.md) |
 
 ---
 
