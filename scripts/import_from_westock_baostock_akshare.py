@@ -326,8 +326,29 @@ def task_finance(year: int, quarter: int, dry_run: bool, start_year: int | None,
         job_rows: list[dict] = []
         fail_codes: list[str] = []
         t0 = time.time()
+        consecutive_errors = 0
         for i, bscode in enumerate(bs_codes):
-            rs = bs.query_profit_data(code=bscode, year=yy, quarter=qq)
+            # 重试: baostock 服务端有时 WinError 10054 断连, 用 retry + backoff
+            rs = None
+            for retry in range(3):
+                try:
+                    rs = bs.query_profit_data(code=bscode, year=yy, quarter=qq)
+                    consecutive_errors = 0  # 成功 reset
+                    break
+                except Exception as e:
+                    consecutive_errors += 1
+                    if consecutive_errors >= 20:
+                        # 连续 20 个错误, 大概率服务端 ban 了 IP, 退避 30s
+                        logger.warning("连续 %d 错误, 退避 30s: %s",
+                                       consecutive_errors, str(e)[:80])
+                        time.sleep(30)
+                        consecutive_errors = 0
+                    else:
+                        time.sleep(min(2 ** retry, 8))  # 1s, 2s, 4s, 8s...
+                    continue
+            if rs is None:
+                fail_codes.append(bscode)
+                continue
             if rs.error_code != "0":
                 fail_codes.append(bscode)
                 continue

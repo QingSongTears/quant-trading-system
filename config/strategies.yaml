@@ -206,3 +206,25 @@ strategies:
     strategy_type: "portfolio"
     engine: "main"
     status: "🟢 主推"
+
+  # ---- V龙头 主升浪 (XGBoost v4 ML 驱动) ----
+  # 8 维评分 + 技术指标 + 滞后/动量 → XGBoost v4 → top 30 候选池 + 行业分散(≤30%)
+  # 模型: data/xgb_model.json + data/xgb_scaler.json (AUC 0.7912)
+  # 架构: vnpy.alpha 三段式 (XgbV4Model + FeatureBuilder + Strategy)
+
+  - name: "V龙头主升浪"
+    class_path: "src.strategies.v_leader_main_surge.VLeaderMainSurgeStrategy"
+    params:
+      n_stocks: 30
+      rebalance_days: 20
+      lookback_days: 60
+      min_amount_wan: 3000
+      exclude_st: true
+      max_sector_pct: 0.30
+      ml_model_path: "data/xgb_model.json"
+      ml_scaler_path: "data/xgb_scaler.json"
+    description: "V龙头 主升浪 — 8 维评分 + 技术指标 + 滞后/动量 → XGBoost v4 月度预测 → top 30 候选池 + 行业分散(单行业≤30%)"
+    source: "Fama-French(1993) + Jegadeesh(1990) + XGBoost v4 (AUC 0.7912)"
+    strategy_type: "portfolio"
+    engine: "main"
+    status: "🟡 待 OOS 验证"
