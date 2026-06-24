@@ -558,3 +558,352 @@ class DataRepository:
         """
         tables = self.list_tables()
         return {"tables": [self.get_table_stats(t) for t in tables]}
+
+    # ============================================================
+    # param_server.py 迁移专用方法 (2026-06-24)
+    # 19 处 sqlite3.connect 收敛到 DataRepository 的命名方法
+    # ============================================================
+
+    def get_all_stock_industries(self) -> dict[str, str]:
+        """PR-fix param_server: 获取所有 code → industry 映射 (启动加载)
+
+        原 param_server.py:274 启动时加载用于 industry_map 全局变量
+        Returns:
+            {code: industry_name}
+        注: 实际数据在 stock_basic.industry (stock_profile 表为空时)
+        """
+        try:
+            df = read_sql(
+                "SELECT code, industry FROM stock_basic WHERE industry IS NOT NULL AND industry != ''",
+                self.engine,
+            )
+            if df.empty:
+                return {}
+            return dict(zip(df["code"].astype(str), df["industry"].astype(str)))
+        except Exception:
+            return {}
+
+    def get_all_stock_codes_names(self) -> pd.DataFrame:
+        """PR-fix param_server: 获取所有股票 code+name (搜索索引构建用)
+
+        原 param_server.py:565 `_build_search_index()` 全表读取
+        Returns:
+            DataFrame with columns: code, name
+        注: 实际数据在 stock_basic (stock_profile 表为空时)
+        """
+        sql = "SELECT code, name FROM stock_basic WHERE name IS NOT NULL AND name != ''"
+        return read_sql(sql, self.engine)
+
+    def get_latest_benchmark_closes(
+        self, index_code: str = "sh000300", n: int = 21
+    ) -> list[tuple]:
+        """PR-fix param_server: 获取最近 N 个交易日基准指数收盘价
+
+        原 param_server.py:2111 大盘过滤逻辑
+        Returns:
+            [(trade_date, close), ...] 按 trade_date DESC 排序
+        """
+        sql = """
+            SELECT trade_date, close FROM benchmark_data
+            WHERE index_code = :code
+            ORDER BY trade_date DESC
+            LIMIT :n
+        """
+        df = read_sql(sql, self.engine, {"code": index_code, "n": int(n)})
+        if df.empty:
+            return []
+        return list(zip(df["trade_date"].tolist(), df["close"].tolist()))
+
+    def get_tech_indicators_at_or_before(
+        self, code: str, trade_date: str | date, lookback_days: int = 10
+    ) -> dict | None:
+        """PR-fix param_server: 获取某日(或向前 N 天内最近)的技术指标
+
+        原 param_server.py:2513 `_get_tech_features_single()`
+        Returns:
+            dict with macd_hist/rsi14/kdj_k/kdj_j 或 None
+        """
+        from sqlalchemy import text
+        d_str = str(trade_date)[:10]
+        sql = """
+            SELECT macd_hist, rsi14, kdj_k, kdj_j FROM technical_indicators
+            WHERE code = :code AND trade_date <= :d
+            ORDER BY trade_date DESC
+            LIMIT :n
+        """
+        try:
+            with self.engine.connect() as conn:
+                rows = conn.execute(
+                    text(sql),
+                    {"code": code, "d": d_str, "n": int(lookback_days)},
+                ).fetchall()
+            if not rows:
+                return None
+            return dict(rows[0]._mapping)
+        except Exception:
+            return None
+
+    # ----- backtest_result 复合查询 (Phase 2) -----
+
+    def get_backtest_history_with_strategy(self, limit: int = 50) -> list[dict]:
+        """PR-fix param_server: 回测历史 + 策略名 JOIN (dashboard 用)
+
+        原 param_server.py:1861 /api/backtest/history
+        Returns:
+            [{id, strategy_id, strategy_name, stock_code, stock_name,
+              start_date, end_date, total_return, sharpe_ratio, ...}, ...]
+        """
+        from sqlalchemy import text
+        sql = """
+            SELECT r.id, r.strategy_id, s.name AS strategy_name,
+                   r.stock_code, r.stock_name,
+                   r.start_date, r.end_date,
+                   r.total_return, r.sharpe_ratio, r.max_drawdown,
+                   r.win_rate, r.total_trades, r.annual_return,
+                   r.created_at
+            FROM backtest_result r
+            LEFT JOIN strategy_config s ON r.strategy_id = s.id
+            ORDER BY r.created_at DESC
+            LIMIT :limit
+        """
+        try:
+            with self.engine.connect() as conn:
+                rows = conn.execute(text(sql), {"limit": int(limit)}).fetchall()
+            return [dict(r._mapping) for r in rows]
+        except Exception:
+            return []
+
+    def get_backtest_detail_with_strategy(self, result_id: int) -> dict | None:
+        """PR-fix param_server: 单条回测 + 策略名 JOIN (backtest_detail 页面用)
+
+        原 param_server.py:1890 /api/backtest/history/<id>
+        """
+        from sqlalchemy import text
+        sql = """
+            SELECT r.*, s.name AS strategy_name, s.class_path, s.params AS strategy_params
+            FROM backtest_result r
+            LEFT JOIN strategy_config s ON r.strategy_id = s.id
+            WHERE r.id = :id
+        """
+        try:
+            with self.engine.connect() as conn:
+                row = conn.execute(text(sql), {"id": int(result_id)}).fetchone()
+            return dict(row._mapping) if row else None
+        except Exception:
+            return None
+
+    def get_strategy_votes_for_stock(
+        self, stock_code: str, min_trades: int = 1, limit: int = 100
+    ) -> list[dict]:
+        """PR-fix param_server: 某只股票上的多策略投票汇总
+
+        原 param_server.py:2092 /api/strategy/signal/<code>
+        Returns:
+            [{strategy_name, total_return, sharpe_ratio, win_rate, total_trades, ...}]
+        """
+        from sqlalchemy import text
+        sql = """
+            SELECT s.name AS strategy_name, r.stock_code,
+                   r.total_return, r.sharpe_ratio, r.max_drawdown,
+                   r.win_rate, r.total_trades, r.created_at
+            FROM backtest_result r
+            LEFT JOIN strategy_config s ON r.strategy_id = s.id
+            WHERE r.stock_code = :code
+              AND r.total_return IS NOT NULL
+              AND r.total_trades > :min_trades
+            ORDER BY r.created_at DESC
+            LIMIT :limit
+        """
+        try:
+            with self.engine.connect() as conn:
+                rows = conn.execute(
+                    text(sql),
+                    {"code": stock_code, "min_trades": int(min_trades), "limit": int(limit)},
+                ).fetchall()
+            return [dict(r._mapping) for r in rows]
+        except Exception:
+            return []
+
+    def get_dashboard_stats(self) -> dict:
+        """PR-fix param_server: dashboard 聚合统计 (4 个查询合一)
+
+        原 param_server.py:1919 /api/dashboard/stats
+        Returns:
+            {
+              total_backtests, total_stocks, total_strategies,
+              by_strategy: [{strategy_name, count, avg_return, max_return, min_return, ...}],
+              top_by_strategy: [{strategy_name, stock_code, total_return, max_drawdown, ...}],
+              prediction_total, prediction_verified, prediction_pending
+            }
+        """
+        from sqlalchemy import text
+        stats: dict = {"available": True}
+        try:
+            with self.engine.connect() as conn:
+                # 1. 总数
+                stats["total_backtests"] = conn.execute(
+                    text("SELECT COUNT(*) FROM backtest_result")
+                ).scalar() or 0
+                stats["total_stocks"] = conn.execute(
+                    text("SELECT COUNT(DISTINCT stock_code) FROM backtest_result WHERE stock_code IS NOT NULL")
+                ).scalar() or 0
+                stats["total_strategies"] = conn.execute(
+                    text("SELECT COUNT(*) FROM strategy_config")
+                ).scalar() or 0
+
+                # 2. 按策略聚合
+                by_strategy_rows = conn.execute(text("""
+                    SELECT s.name AS strategy_name, COUNT(*) AS cnt,
+                           AVG(r.total_return) AS avg_return,
+                           MAX(r.total_return) AS max_return,
+                           MIN(r.total_return) AS min_return,
+                           AVG(r.sharpe_ratio) AS avg_sharpe,
+                           AVG(r.win_rate) AS avg_win_rate
+                    FROM backtest_result r
+                    JOIN strategy_config s ON r.strategy_id = s.id
+                    GROUP BY s.id
+                    ORDER BY avg_return DESC
+                """)).fetchall()
+                stats["by_strategy"] = [dict(r._mapping) for r in by_strategy_rows]
+
+                # 3. 每个策略 Top 20
+                top_rows = conn.execute(text("""
+                    SELECT s.name AS strategy_name, r.stock_code, r.stock_name,
+                           r.total_return, r.sharpe_ratio, r.max_drawdown,
+                           r.win_rate, r.created_at
+                    FROM backtest_result r
+                    JOIN strategy_config s ON r.strategy_id = s.id
+                    WHERE r.id IN (
+                        SELECT id FROM backtest_result r2
+                        WHERE r2.strategy_id = r.strategy_id
+                        ORDER BY r2.total_return DESC LIMIT 20
+                    )
+                    ORDER BY s.name, r.total_return DESC
+                """)).fetchall()
+                stats["top_by_strategy"] = [dict(r._mapping) for r in top_rows]
+
+                # 4. prediction_record 统计(表可能不存在)
+                try:
+                    stats["prediction_total"] = conn.execute(
+                        text("SELECT COUNT(*) FROM prediction_record")
+                    ).scalar() or 0
+                    stats["prediction_verified"] = conn.execute(
+                        text("SELECT COUNT(*) FROM prediction_record WHERE verified = 1")
+                    ).scalar() or 0
+                    stats["prediction_pending"] = conn.execute(
+                        text("SELECT COUNT(*) FROM prediction_record WHERE verified = 0 OR verified IS NULL")
+                    ).scalar() or 0
+                except Exception:
+                    stats["prediction_total"] = 0
+                    stats["prediction_verified"] = 0
+                    stats["prediction_pending"] = 0
+            return stats
+        except Exception as e:
+            logger.warning("get_dashboard_stats 失败: %s", e)
+            stats["available"] = False
+            stats["error"] = str(e)[:200]
+            return stats
+
+    def get_strategy_compare_stats(self, top_n: int = 10) -> dict:
+        """PR-fix param_server: /api/strategy/compare 策略汇总 + Top N
+
+        原 param_server.py:2027
+        """
+        from sqlalchemy import text
+        out: dict = {"available": True}
+        try:
+            with self.engine.connect() as conn:
+                # 策略汇总
+                rows = conn.execute(text("""
+                    SELECT s.name AS strategy_name,
+                           COUNT(*) AS cnt,
+                           AVG(r.total_return) AS avg_return,
+                           AVG(r.sharpe_ratio) AS avg_sharpe,
+                           MAX(r.total_return) AS best_return,
+                           MIN(r.total_return) AS worst_return
+                    FROM backtest_result r
+                    JOIN strategy_config s ON r.strategy_id = s.id
+                    GROUP BY s.id
+                    ORDER BY avg_return DESC
+                """)).fetchall()
+                out["strategies"] = [dict(r._mapping) for r in rows]
+
+                # Top N per strategy
+                top_rows = conn.execute(text("""
+                    SELECT s.name AS strategy_name, r.stock_code,
+                           r.total_return, r.sharpe_ratio, r.max_drawdown,
+                           r.created_at
+                    FROM backtest_result r
+                    JOIN strategy_config s ON r.strategy_id = s.id
+                    WHERE r.id IN (
+                        SELECT id FROM backtest_result r2
+                        WHERE r2.strategy_id = r.strategy_id
+                        ORDER BY r2.total_return DESC LIMIT :n
+                    )
+                    ORDER BY s.name, r.total_return DESC
+                """), {"n": int(top_n)}).fetchall()
+                out["top_by_strategy"] = [dict(r._mapping) for r in top_rows]
+            return out
+        except Exception as e:
+            logger.warning("get_strategy_compare_stats 失败: %s", e)
+            return {"available": False, "error": str(e)[:200]}
+
+    # ----- 写操作 (Phase 2/3) -----
+
+    def upsert_strategy_config_by_name(
+        self, name: str, class_path: str, params: str,
+        description: str = "", source: str = ""
+    ) -> int:
+        """PR-fix param_server: 按 name upsert strategy_config,返回 id
+
+        原 param_server.py:1778
+        """
+        with self.get_session() as session:
+            existing = session.query(StrategyConfig).filter_by(name=name).first()
+            if existing:
+                existing.class_path = class_path
+                existing.params = params
+                existing.description = description
+                existing.source = source
+                session.flush()
+                return int(existing.id)
+            sc = StrategyConfig(
+                name=name, class_path=class_path, params=params,
+                description=description, source=source,
+            )
+            session.add(sc)
+            session.flush()
+            return int(sc.id)
+
+    def upsert_backtest_result(
+        self, result_data: dict, key_fields: tuple = ("strategy_id", "stock_code", "start_date", "end_date")
+    ) -> int:
+        """PR-fix param_server: 按 (strategy_id, stock_code, 起止日期) upsert
+
+        原 param_server.py:1778 落库逻辑
+        Args:
+            result_data: dict 含全部 BacktestResult 字段
+            key_fields: 用于去重的字段元组
+        Returns:
+            int: 记录 id
+        """
+        from sqlalchemy import inspect
+        from sqlalchemy.orm.attributes import instrumented_attribute
+        with self.get_session() as session:
+            # 构造过滤条件
+            filters = {f: result_data[f] for f in key_fields if f in result_data}
+            existing = None
+            if filters:
+                existing = session.query(BacktestResult).filter_by(**filters).first()
+            if existing:
+                # 更新
+                for k, v in result_data.items():
+                    if hasattr(existing, k):
+                        setattr(existing, k, v)
+                session.flush()
+                return int(existing.id)
+            else:
+                record = BacktestResult(**result_data)
+                session.add(record)
+                session.flush()
+                return int(record.id)
