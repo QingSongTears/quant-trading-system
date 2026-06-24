@@ -195,4 +195,58 @@ def clear_xgb_v4_cache() -> None:
     _instance = None
 
 
-__all__ = ["XgbV4Model", "XgbV4LoadError", "get_xgb_v4", "clear_xgb_v4_cache"]
+# ── 训练 helper (2026-06-25 加, 给 AStockAlphaModel.fit 用) ──────────
+
+
+def _train_xgb(
+    X: "np.ndarray",
+    y: "np.ndarray",
+    xgb_params: dict,
+    feature_names: Optional[list] = None,
+):
+    """
+    训练 XGBoost 模型 + 拟合 Scaler, 返回 (booster, scaler)
+
+    Args:
+        X: 特征矩阵 (n_samples, n_features)
+        y: 标签 (n_samples,)
+        xgb_params: xgboost.train 参数
+        feature_names: 特征名 (用于 scaler)
+
+    Returns:
+        (booster, scaler) — booster 是 xgb.Booster, scaler 是 JsonScaler
+
+    注:
+        - 不依赖 sklearn (修 2026-06-25, 项目可能没装 sklearn)
+        - 用 numpy 直接算 mean/std (Z-score 标准化)
+        - booster 是 xgb.Booster (不是 XgbV4Model)
+    """
+    from .xgb_scaler import JsonScaler
+
+    if feature_names is None:
+        feature_names = [f"f{i}" for i in range(X.shape[1])]
+
+    # 1. 拟合 scaler (Z-score 标准化, 与 StandardScaler 等价)
+    X = np.asarray(X, dtype=np.float64)
+    n_features = X.shape[1]
+    mean = X.mean(axis=0).tolist()
+    std = X.std(axis=0, ddof=0).tolist()
+    # 防 0 std (除零)
+    std = [s if s > 0 else 1.0 for s in std]
+    scaler = JsonScaler(
+        mean=mean, scale=std,
+        n_features=n_features, feature_names=feature_names,
+    )
+
+    # 2. 训练 XGBoost
+    dmatrix = xgb.DMatrix(X, label=y, feature_names=feature_names)
+    booster = xgb.train(xgb_params, dmatrix, num_boost_round=100)
+
+    return booster, scaler
+
+
+__all__ = [
+    "XgbV4Model", "XgbV4LoadError",
+    "get_xgb_v4", "clear_xgb_v4_cache",
+    "_train_xgb",
+]

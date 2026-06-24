@@ -46,12 +46,13 @@ logger = logging.getLogger(__name__)
 
 
 class _DB:
-    """SQL 片段常量"""
+    """SQL 片段常量 (修 2026-06-25: 去掉 .format(), 改 bindparam 防注入)"""
     SELECT_BARS = (
         "SELECT trade_date, open, high, low, close, volume, amount "
         "FROM daily_price "
         "WHERE code = :code "
-        "{date_clause} "
+        "AND (CAST(:start AS DATE) IS NULL OR trade_date >= :start) "
+        "AND (CAST(:end AS DATE) IS NULL OR trade_date <= :end) "
         "ORDER BY trade_date ASC"
     )
     SELECT_STOCK_LIST = (
@@ -59,11 +60,11 @@ class _DB:
         "FROM stock_basic "
         "ORDER BY code"
     )
-    SELECT_DATE_BATCH = (
+    SELECT_DATE_BATCH_TEMPLATE = (
         "SELECT code, trade_date, open, high, low, close, volume, amount "
         "FROM daily_price "
         "WHERE trade_date = :trade_date "
-        "{code_clause}"
+        "AND code IN :codes"  # 用 expanding bindparam, 见 get_bars_by_date
     )
 
 
@@ -189,7 +190,7 @@ class LocalDatafeed(BaseDatafeed):
                 f"(实际应为 {expected_market})"
             )
 
-        # 拼 date_clause
+        # 修 2026-06-25: 统一用 bindparam, 去掉 .format() 拼 SQL
         if count is not None and start is None and end is None:
             # 取最近 N 条 (倒序拿再反序)
             sql = (
@@ -201,16 +202,13 @@ class LocalDatafeed(BaseDatafeed):
                 rows = conn.execute(text(sql), {"code": code, "count": int(count)}).fetchall()
             rows = list(reversed(rows))
         else:
-            params = {"code": code}
-            date_clause_parts = []
-            if start is not None:
-                date_clause_parts.append("AND trade_date >= :start")
-                params["start"] = start
-            if end is not None:
-                date_clause_parts.append("AND trade_date <= :end")
-                params["end"] = end
-            date_clause = " ".join(date_clause_parts)
-            sql = _DB.SELECT_BARS.format(date_clause=date_clause)
+            # None 转 None (SQL 用 CAST(... IS NULL OR ...) 处理)
+            params = {
+                "code": code,
+                "start": start,
+                "end": end,
+            }
+            sql = _DB.SELECT_BARS
             with self._engine.connect() as conn:
                 rows = conn.execute(text(sql), params).fetchall()
 
@@ -268,15 +266,23 @@ class LocalDatafeed(BaseDatafeed):
             return super().get_bars_by_date(query_date, universe, interval)
 
         params = {"trade_date": query_date}
+        from sqlalchemy import bindparam
+        sql = _DB.SELECT_DATE_BATCH_TEMPLATE
         if universe:
             codes = [vt_symbol_to_code(s) for s in universe]
-            placeholders = ",".join(f":c{i}" for i in range(len(codes)))
-            code_clause = f"AND code IN ({placeholders})"
-            params.update({f"c{i}": c for i, c in enumerate(codes)})
+            stmt = text(sql).bindparams(bindparam("codes", value=codes, expanding=True))
         else:
-            code_clause = ""
-
-        sql = _DB.SELECT_DATE_BATCH.format(code_clause=code_clause)
+            # universe=None: 拉全市场, 用一个虚拟大列表 (防 IN () 语法错)
+            # 实际项目中, 千万行 daily_price 全市场某日 1 query 即可
+            # 简单做法: 传个包含 999999 个 code 的不可能 list, 或单独写不带 IN 的 SQL
+            # 这里走兜底: 用一个特殊 list 让 IN 永远为真
+            codes = None  # 走 else 分支
+            stmt = text(
+                "SELECT code, trade_date, open, high, low, close, volume, amount "
+                "FROM daily_price WHERE trade_date = :trade_date"
+            )
+        with self._engine.connect() as conn:
+            rows = conn.execute(stmt, params).fetchall()
         with self._engine.connect() as conn:
             rows = conn.execute(text(sql), params).fetchall()
 
