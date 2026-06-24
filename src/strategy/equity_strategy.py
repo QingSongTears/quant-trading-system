@@ -97,6 +97,16 @@ class EquityStrategy(AlphaStrategy):
         if signals is None or signals.empty:
             return
 
+        # 4.5 校验必需列 (2026-06-24 修复: 防子类返回缺列 DataFrame 时崩)
+        required_cols = {"vt_symbol", "signal"}
+        missing = required_cols - set(signals.columns)
+        if missing:
+            raise ValueError(
+                f"{self.__class__.__name__}.generate_signals() "
+                f"返回的 DataFrame 缺少必需列: {missing}; "
+                f"实际 columns={list(signals.columns)}"
+            )
+
         # 5. 取 Top-K (按 signal 降序)
         signals = signals.sort_values("signal", ascending=False).head(self.top_k)
         active_symbols = set(signals["vt_symbol"])
