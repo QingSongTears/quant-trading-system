@@ -1,0 +1,107 @@
+{
+  "strategy_name": "V6ReversalSelectionStrategy",
+  "config": {
+    "train_months": 3,
+    "test_months": 1,
+    "step_months": 1,
+    "start_date": "2024-01-01",
+    "end_date": "2024-09-01"
+  },
+  "windows": [
+    {
+      "window_id": 0,
+      "train_start": "2024-01-01",
+      "train_end": "2024-04-01",
+      "test_start": "2024-04-01",
+      "test_end": "2024-05-01",
+      "best_params": {
+        "MAX_RSI_14": 42.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.06,
+        "MAX_DRAWDOWN_60D": -20.0
+      },
+      "in_sample_sharpe": 1.15,
+      "oos_sharpe": -0.25,
+      "oos_annual_return": -4.8,
+      "oos_max_drawdown": -3.82,
+      "oos_total_trades": 7,
+      "oos_win_rate": 10.53
+    },
+    {
+      "window_id": 1,
+      "train_start": "2024-02-01",
+      "train_end": "2024-05-01",
+      "test_start": "2024-05-01",
+      "test_end": "2024-06-01",
+      "best_params": {
+        "MAX_RSI_14": 42.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.06,
+        "MAX_DRAWDOWN_60D": -20.0
+      },
+      "in_sample_sharpe": 1.1,
+      "oos_sharpe": -6.83,
+      "oos_annual_return": -85.49,
+      "oos_max_drawdown": -15.45,
+      "oos_total_trades": 13,
+      "oos_win_rate": 10.53
+    },
+    {
+      "window_id": 2,
+      "train_start": "2024-03-01",
+      "train_end": "2024-06-01",
+      "test_start": "2024-06-01",
+      "test_end": "2024-07-01",
+      "best_params": {
+        "MAX_RSI_14": 42.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.06,
+        "MAX_DRAWDOWN_60D": -20.0
+      },
+      "in_sample_sharpe": -2.48,
+      "oos_sharpe": -7.34,
+      "oos_annual_return": -94.72,
+      "oos_max_drawdown": -21.66,
+      "oos_total_trades": 19,
+      "oos_win_rate": 26.32
+    },
+    {
+      "window_id": 3,
+      "train_start": "2024-04-01",
+      "train_end": "2024-07-01",
+      "test_start": "2024-07-01",
+      "test_end": "2024-08-01",
+      "best_params": {
+        "MAX_RSI_14": 42.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.06,
+        "MAX_DRAWDOWN_60D": -20.0
+      },
+      "in_sample_sharpe": -5.62,
+      "oos_sharpe": 4.42,
+      "oos_annual_return": 610.97,
+      "oos_max_drawdown": -8.74,
+      "oos_total_trades": 20,
+      "oos_win_rate": 43.48
+    },
+    {
+      "window_id": 4,
+      "train_start": "2024-05-01",
+      "train_end": "2024-08-01",
+      "test_start": "2024-08-01",
+      "test_end": "2024-09-01",
+      "best_params": {
+        "MAX_RSI_14": 42.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.06,
+        "MAX_DRAWDOWN_60D": -20.0
+      },
+      "in_sample_sharpe": -2.1,
+      "oos_sharpe": 4.18,
+      "oos_annual_return": 163.84,
+      "oos_max_drawdown": -2.43,
+      "oos_total_trades": 12,
+      "oos_win_rate": 28.57
+    }
+  ]
+}

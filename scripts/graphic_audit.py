@@ -1,6 +1,6 @@
 """
 图形专项审查：抓所有有图形的页面高清截图
-输出到 output/audit_graphic_<page>.png
+输出到 screenshots/graphic/audit_graphic_<page>.png
 """
 import asyncio
 import json
@@ -17,7 +17,8 @@ PAGES = [
     ("data", "http://localhost:5054/data"),
 ]
 
-OUT = Path(__file__).parent.parent / "output"
+OUT = Path(__file__).resolve().parent.parent / "screenshots" / "graphic"
+OUT.mkdir(parents=True, exist_ok=True)
 OUT.mkdir(exist_ok=True)
 
 async def main():

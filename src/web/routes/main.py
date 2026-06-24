@@ -385,6 +385,12 @@ def _register_standalone_routes():
         router.add_api_route(path, _handler, response_class=HTMLResponse, methods=["GET"])
 
 
+@router.get("/console", response_class=HTMLResponse)
+async def console_page(request: Request):
+    """AI QuantX 风格统一控制台 — 7 tabs (总览/回测/对比/持仓/行情/风控/日志) A股涨红跌绿"""
+    return templates.TemplateResponse(request, "console.html", _get_global_context())
+
+
 @router.get("/fund-flow-report", response_class=HTMLResponse)
 async def fund_flow_report_page(request: Request):
     """资金面融合回测 — 实时从 database/fund_flow_report_data.json 读"""

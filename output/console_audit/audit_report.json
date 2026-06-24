@@ -1,0 +1,44 @@
+{
+  "overview": {
+    "preview": "{\"title\":\"系统总览\",\"kpis\":[\"95\",\"+386.57%\",\"14\",\"0.61\"]}",
+    "canvases": 2,
+    "table_rows": 13,
+    "errors": []
+  },
+  "backtest": {
+    "preview": "{\"title\":\"模型回测\",\"kpis\":[\"—\",\"—\",\"—\",\"—\",\"—\"]}",
+    "canvases": 2,
+    "table_rows": 13,
+    "errors": []
+  },
+  "compare": {
+    "preview": "{\"title\":\"模型对比\",\"kpis\":[]}",
+    "canvases": 3,
+    "table_rows": 26,
+    "errors": []
+  },
+  "positions": {
+    "preview": "{\"title\":\"实时持仓\",\"kpis\":[]}",
+    "canvases": 3,
+    "table_rows": 26,
+    "errors": []
+  },
+  "market": {
+    "preview": "{\"title\":\"A股行情\",\"kpis\":[]}",
+    "canvases": 3,
+    "table_rows": 26,
+    "errors": []
+  },
+  "risk": {
+    "preview": "{\"title\":\"风控中心\",\"kpis\":[\"95\",\"58\",\"37\",\"-26.40%\",\"-65.56%\"]}",
+    "canvases": 7,
+    "table_rows": 26,
+    "errors": []
+  },
+  "logs": {
+    "preview": "{\"title\":\"回测记录\",\"kpis\":[\"95\",\"35\",\"14\"]}",
+    "canvases": 8,
+    "table_rows": 75,
+    "errors": []
+  }
+}

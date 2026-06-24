@@ -66,8 +66,10 @@ async def main():
             print(json.dumps(r, ensure_ascii=False))
 
         # 截图
-        await page.screenshot(path='output/debug_workbench.png', full_page=True)
-        print('\n截图保存: output/debug_workbench.png')
+        shot_path = Path(__file__).resolve().parent.parent / 'screenshots' / 'dbg' / 'debug_workbench.png'
+        shot_path.parent.mkdir(parents=True, exist_ok=True)
+        await page.screenshot(path=str(shot_path), full_page=True)
+        print(f'\n截图保存: {shot_path}')
 
         await browser.close()
 

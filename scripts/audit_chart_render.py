@@ -42,7 +42,7 @@ async def main():
             for e in console_errs[:5]:
                 print(f"  > {e[:200]}")
 
-            shot = f"output/smoketest_{name}.png"
+            shot = str(Path(__file__).resolve().parent.parent / "screenshots" / "smoketest" / f"{name}.png")
             await page.screenshot(path=shot, full_page=False)
             print(f"  shot: {shot}")
             await ctx.close()

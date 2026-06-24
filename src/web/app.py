@@ -16,6 +16,7 @@ FastAPI Web 应用
 from __future__ import annotations
 import logging
 import threading
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -36,6 +37,47 @@ STATIC_DIR = Path(__file__).parent / "static"
 _shared_templates = None
 
 
+def _api_auth_script() -> str:
+    """全局 API 鉴权拦截器 JS 片段 — 通过 Jinja2 globals 注入,所有模板自动可用
+
+    设计: 写到 _api_auth_snippet 字符串,模板里用 {{ _api_auth_snippet|safe }} 引用.
+    这样独立模板(不继承 base.html)也能拿到 Bearer token 自动注入.
+    """
+    from .auth import get_api_key
+    key = get_api_key()
+    return f"""<script>
+(function() {{
+    const API_KEY = {json.dumps(key)};
+    if (!API_KEY) return;
+    const origFetch = window.fetch.bind(window);
+    window.fetch = function(input, init) {{
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        if (url.indexOf('/api/') === 0 || url.indexOf(window.location.origin + '/api/') === 0) {{
+            init = init || {{}};
+            const headers = new Headers(init.headers || {{}});
+            if (!headers.has('Authorization')) {{
+                headers.set('Authorization', 'Bearer ' + API_KEY);
+            }}
+            init.headers = headers;
+        }}
+        return origFetch(input, init);
+    }};
+    const origOpen = XMLHttpRequest.prototype.open;
+    const origSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function(method, url) {{
+        this.__url = url;
+        return origOpen.apply(this, arguments);
+    }};
+    XMLHttpRequest.prototype.send = function() {{
+        if (this.__url && (this.__url.indexOf('/api/') === 0 || this.__url.indexOf(window.location.origin + '/api/') === 0)) {{
+            try {{ this.setRequestHeader('Authorization', 'Bearer ' + API_KEY); }} catch(e){{}}
+        }}
+        return origSend.apply(this, arguments);
+    }};
+}})();
+</script>"""
+
+
 def get_templates() -> Jinja2Templates:
     """获取共享的 Jinja2 模板引擎实例（懒加载，注册自定义过滤器/全局函数）"""
     global _shared_templates
@@ -43,6 +85,8 @@ def get_templates() -> Jinja2Templates:
         _shared_templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
         _shared_templates.env.filters["abs"] = abs
         _shared_templates.env.globals["abs"] = abs  # 同时支持函数调用 abs(...)
+        # 全局注入 API 鉴权脚本 — 独立模板(不继承 base.html)也能用
+        _shared_templates.env.globals["_api_auth_snippet"] = _api_auth_script()
     return _shared_templates
 
 # 全局下载状态管理器（线程安全）
