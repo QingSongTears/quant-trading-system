@@ -187,6 +187,49 @@ def init_data_from_csv():
         return False
 
 
+def start_param_server_subprocess(tuning_port: int = 8081):
+    """PR-fix Step 3 A: 启动 param_server.py 作为子进程
+
+    与 FastAPI 主服务并行运行,提供额外的调参/筛选面板 UI
+    默认端口 8081,可通过 --tuning-port 修改
+
+    Args:
+        tuning_port: param_server 监听端口
+    Returns:
+        Popen: 子进程对象,失败时 None
+    """
+    import subprocess
+    script = PROJECT_ROOT / "scripts" / "param_server.py"
+    if not script.exists():
+        print(f"⚠️  param_server.py 不存在: {script}")
+        return None
+    print(f"\n🎛️  启动 param_server 调参面板 (端口 {tuning_port})...")
+    env = os.environ.copy()
+    env["PORT"] = str(tuning_port)
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, str(script)],
+            cwd=str(PROJECT_ROOT),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            creationflags=0x08000000 if sys.platform == "win32" else 0,  # 隐藏 cmd 窗口
+        )
+        # 等几秒让 server 起来
+        import time
+        time.sleep(3)
+        if proc.poll() is None:
+            print(f"  ✅ param_server 启动成功, PID={proc.pid}")
+            print(f"     URL: http://localhost:{tuning_port}/")
+            return proc
+        else:
+            print(f"  ❌ param_server 启动失败, exit code={proc.returncode}")
+            return None
+    except Exception as e:
+        print(f"  ❌ param_server 启动异常: {e}")
+        return None
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="A股量化交易模型系统",
@@ -216,6 +259,10 @@ def main():
                         help="从 market_data/ CSV 导入数据 (无需网络,Step2 H 新增)")
     parser.add_argument("--check-only", action="store_true",
                         help="仅检查数据库,不启动 Web (Step2 H 新增, 用于 CI/Docker)")
+    parser.add_argument("--with-tuning", action="store_true",
+                        help="同时启动 param_server.py 调参面板 (Step3 A 新增, 默认端口 8081)")
+    parser.add_argument("--tuning-port", type=int, default=8081,
+                        help="param_server 端口 (默认: 8081, 需 --with-tuning)")
     parser.add_argument("--debug", action="store_true", help="调试模式")
 
     args = parser.parse_args()
@@ -288,13 +335,35 @@ def main():
         print("   python run.py --init-data     # 从 market_data/ CSV 导入 (快,无需网络)")
         sys.exit(1)
 
-    # Graceful shutdown: 捕获 SIGINT/SIGTERM，让 uvicorn 有机会清理资源
+    # 启动 param_server 调参面板 (PR-fix Step 3 A: --with-tuning)
+    tuning_proc = None
+    if args.with_tuning:
+        tuning_proc = start_param_server_subprocess(tuning_port=args.tuning_port)
+        if tuning_proc is None:
+            print("⚠️  param_server 启动失败,继续只启动 FastAPI")
+    else:
+        print("\n💡 提示: --with-tuning 可同时启动 param_server 调参面板")
+
+    # Graceful shutdown: 捕获 SIGINT/SIGTERM,清理所有子进程
     def _signal_handler(sig, frame):
         print("\n🛑 收到停止信号，正在优雅关闭...")
+        if tuning_proc is not None and tuning_proc.poll() is None:
+            print("   关闭 param_server 子进程...")
+            tuning_proc.terminate()
+            try:
+                tuning_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                tuning_proc.kill()
         sys.exit(0)
 
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
+
+    print(f"\n📊 访问入口:")
+    print(f"   - FastAPI 主服务:  http://localhost:{args.port}/")
+    if tuning_proc is not None:
+        print(f"   - param_server:    http://localhost:{args.tuning_port}/")
+    print()
 
     import uvicorn
     uvicorn.run(
