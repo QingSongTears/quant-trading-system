@@ -21,7 +21,12 @@ import time
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import Page, expect
+
+# 修 2026-06-25: 缺 playwright 时整体 skip (不阻断 test 收集)
+# 不然 tests/e2e/test_workbench.py 整个 collection 失败, e2e 全跑不动
+playwright = pytest.importorskip("playwright.sync_api", reason="playwright 未安装, 跳过 e2e UI 测试")
+
+from playwright.sync_api import Page, expect  # noqa: E402 必须在 importorskip 之后
 
 # ── 服务器配置 ──────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent

@@ -5,6 +5,40 @@
 
 ---
 
+## ✅ 2026-06-24/25 已完成 (基础架构 + 借鉴 vnpy 闭环)
+
+> 11 commits, +293 tests, 8 src bug 修复, 4 个新文档  
+> 详见: `docs/CHANGELOG_2026-06-24_25.md`
+
+### 阶段六 Top5 全部交付
+
+- ✅ T6.0 DataManager 统一门面 (commit 7dd96a1/eb43904, +62 tests)
+- ✅ T6.1 借鉴模块单测 (commit 3e26138, +98 tests, 修 add_strategy bug)
+- ✅ T6.3 BarGenerator + ArrayManager (commit 8c88509/db2e9bf, +54 tests, 17 指标)
+- ✅ T6.5 研究层三件套 (commit f6be297, +26 tests, BaseDataset/AlphaModel/AlphaLab)
+
+### Review 闭环 (P0/P1/P2)
+
+- ✅ P0 review critical 修复 (commit 553175f, MACD/KDJ/boll/lazy)
+- ✅ P0 文档补完 (commit f46c70a, 4 个 usage)
+- ✅ P1 缺数据 warning/debug 日志 (commit fc8c5f3, +11 tests)
+- ✅ P2 research 真接 XGBoost (commit 0ea464e, P2.1)
+- ✅ P2 SQL .format() 改 bindparam (commit 0ea464e, P2.3)
+
+---
+
+## 🎯 P3 起点 (下次 sprint 推荐)
+
+| 优先级 | 项 | 价值 | 风险 | 估时 |
+|--------|-----|------|------|------|
+| P3.1 | 修 baseline 2 fail (westock import sys + e2e DB 路径) | 高 | 低 | 30 min |
+| P3.2 | v_leader 真接 AStockDataset (替换 hash mock) | 高 | 中 | 1-2d |
+| P3.3 | BarGenerator 走 EventEngine 订阅 (P2.2) | 中 | 高 | 2-3h |
+| P3.4 | A 股 T+1 链路打通 (BarData.yd_volume) | 中 | 中 | 2h |
+| P3.5 | BacktestEngine 重构 (engine + portfolio 合并) | 中 | 中 | 1d |
+
+---
+
 ## 🔥 数据升级 (2026-06-18)
 
 20个CSV已上传Git LFS → `market_data/` 目录 (637MB)
