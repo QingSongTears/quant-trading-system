@@ -197,8 +197,60 @@ class DataManager:
         return get_datafeed()
 
     # ─────────────────────────────────────────
-    #  生命周期
+    #  6. simulation — 模拟交易数据访问
     # ─────────────────────────────────────────
+
+    @property
+    def simulation(self):
+        """模拟交易数据访问 (SimulationRepo)
+
+        用法:
+            from src.data import data_mgr
+            runs = data_mgr.simulation.list_runs()
+            perf = data_mgr.simulation.get_performance(run_id)
+        """
+        from .simulation_repo import SimulationRepo
+
+        if not hasattr(self, "_simulation_repo"):
+            setattr(self, "_simulation_repo", SimulationRepo())
+        return self._simulation_repo
+
+    # ─────────────────────────────────────────
+    #  7. query / execute — 通用 SQL 访问
+    # ─────────────────────────────────────────
+
+    def query(self, sql: str, params: dict | None = None) -> list:
+        """通用 SQL 查询 (返回 dict list)
+
+        用于尚未抽象到 datafeed/SimulationRepo 的表 (如 backtest_result)。
+
+        Args:
+            sql: SQL 语句 (用 :param 占位, 不用 ?)
+            params: 参数字典
+
+        Returns:
+            [dict, ...] (空列表 if 无结果)
+        """
+        from sqlalchemy import text as _t
+        from ..db.engine import get_engine
+        engine = get_engine()
+        with engine.connect() as conn:
+            rows = conn.execute(_t(sql), params or {}).fetchall()
+        return [dict(r._mapping) for r in rows]
+
+    def execute(self, sql: str, params: dict | None = None) -> int:
+        """通用 SQL 写操作 (INSERT/UPDATE/DELETE)
+
+        Returns:
+            受影响行数
+        """
+        from sqlalchemy import text as _t
+        from ..db.engine import get_engine
+        engine = get_engine()
+        with engine.connect() as conn:
+            result = conn.execute(_t(sql), params or {})
+            conn.commit()
+        return result.rowcount
 
     def close(self) -> None:
         """关闭所有数据源 (释放资源)"""
