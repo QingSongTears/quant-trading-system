@@ -68,6 +68,31 @@ ALTER TABLE stock_basic ADD COLUMN office_address TEXT;
 ALTER TABLE stock_basic ADD COLUMN tel TEXT;
 ALTER TABLE stock_basic ADD COLUMN email TEXT;
 
+-- 1b. 重建 stock_profile 表 (westock profile 完整 14 字段, 含 industry/sector/regCapital)
+--     v_leader_features.py 优先查 stock_profile.industry, 兜底 stock_basic.industry
+CREATE TABLE IF NOT EXISTS stock_profile (
+    code TEXT PRIMARY KEY,
+    code6 TEXT NOT NULL,
+    name TEXT,
+    listed_date TEXT,
+    business TEXT,
+    website TEXT,
+    industry TEXT,
+    sector TEXT,
+    issue_price REAL,
+    reg_capital REAL,
+    establish_date TEXT,
+    chairman TEXT,
+    reg_address TEXT,
+    office_address TEXT,
+    tel TEXT,
+    email TEXT,
+    source TEXT DEFAULT 'westock',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_sp_code6 ON stock_profile(code6);
+CREATE INDEX IF NOT EXISTS idx_sp_industry ON stock_profile(industry);
+
 -- 2. 新表 benchmark_kline: 指数全 OHLCV (westock kline)
 CREATE TABLE IF NOT EXISTS benchmark_kline (
     code TEXT NOT NULL,             -- sh000300 / sh000905 / ...
@@ -113,6 +138,7 @@ def import_stock_profile(cur: sqlite3.Cursor, full: bool = False) -> int:
     ALTER TABLE 已建好 stock_basic 扩展列. 本函数:
       - 从 market_data/stock_profile.csv 读 westock profile (5205 行, 15 字段)
       - UPDATE stock_basic 的扩展列
+      - 重建 stock_profile 表 (v_leader_features.py 优先查这里)
       - code 标准化: sh600000 → 600000, sz000001 → 000001
       - industry: '银行' → 直接写入 stock_basic.industry (已存在的列)
     """
@@ -129,10 +155,7 @@ def import_stock_profile(cur: sqlite3.Cursor, full: bool = False) -> int:
     # code 列: sh600000 → 600000
     df["code6"] = df["code"].str.replace(r"^(sh|sz|bj)", "", regex=True).str.zfill(6)
 
-    # 字段映射 (CSV 列 → DB 列)
-    # westock: code / name / listedDate / business / website / industry / sector
-    #         / issuePrice / regCapital / establishDate / chairman / regAddress
-    #         / officeAddress / tel / email
+    # === A. UPDATE stock_basic 扩展列 ===
     field_map = {
         "industry": "industry",
         "sector": "sector",
@@ -149,8 +172,6 @@ def import_stock_profile(cur: sqlite3.Cursor, full: bool = False) -> int:
         "email": "email",
     }
 
-    # 增量: 已有 code 不覆盖 (用 UPDATE 但只覆盖新行)
-    # 简化: 全部 UPDATE (5100 行 1-2 秒, 重复运行无副作用)
     n_updated = 0
     for r in df.itertuples(index=False):
         code6 = r.code6
@@ -169,9 +190,57 @@ def import_stock_profile(cur: sqlite3.Cursor, full: bool = False) -> int:
         cur.execute(sql, vals)
         if cur.rowcount > 0:
             n_updated += 1
-
     print(f"   ✅ UPDATE stock_basic: {n_updated} 行")
-    return n_updated
+
+    # === B. 重建 stock_profile 表 (DROP + CREATE + INSERT) ===
+    cur.execute("DROP TABLE IF EXISTS stock_profile")
+    cur.execute("""
+        CREATE TABLE stock_profile (
+            code TEXT PRIMARY KEY,
+            code6 TEXT NOT NULL,
+            name TEXT,
+            listed_date TEXT,
+            business TEXT,
+            website TEXT,
+            industry TEXT,
+            sector TEXT,
+            issue_price REAL,
+            reg_capital REAL,
+            establish_date TEXT,
+            chairman TEXT,
+            reg_address TEXT,
+            office_address TEXT,
+            tel TEXT,
+            email TEXT,
+            source TEXT DEFAULT 'westock',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("CREATE INDEX idx_sp_code6 ON stock_profile(code6)")
+    cur.execute("CREATE INDEX idx_sp_industry ON stock_profile(industry)")
+
+    # bulk INSERT
+    rows = [
+        (
+            r.code, r.code6.zfill(6),
+            r.name, r.listedDate, r.business, r.website,
+            r.industry, r.sector,
+            _to_float(r.issuePrice), _to_float(r.regCapital),
+            r.establishDate, r.chairman,
+            r.regAddress, r.officeAddress, r.tel, r.email,
+        )
+        for r in df.itertuples(index=False)
+    ]
+    cur.executemany(
+        "INSERT INTO stock_profile "
+        "(code, code6, name, listed_date, business, website, industry, sector, "
+        " issue_price, reg_capital, establish_date, chairman, "
+        " reg_address, office_address, tel, email) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    print(f"   ✅ REBUILD stock_profile: {len(rows)} 行")
+    return n_updated + len(rows)
 
 
 def import_benchmark_kline(cur: sqlite3.Cursor, full: bool = False) -> int:
