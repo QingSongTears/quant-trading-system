@@ -58,6 +58,12 @@ class PortfolioBacktestEngine:
         self.benchmark_code = config["backtest"]["benchmark"]
         self.risk_free_rate = config["backtest"]["risk_free_rate"]
 
+        # Step B 优化 (2026-06-25): _load_all_data LRU 缓存
+        # walk_forward 跑 N windows × M samples = 多次相同 (start, end) 调用,
+        # 缓存避免每次重读 DB + 重算 pct_change fallback (1M+ 行)
+        self._data_cache: dict = {}
+        self._data_cache_max = 4
+
     def run(self,
             strategy: BaseSelectionStrategy,
             start_date: date,
@@ -119,7 +125,16 @@ class PortfolioBacktestEngine:
     # ===== 内部方法 =====
 
     def _load_all_data(self, start: date, end: date) -> pd.DataFrame:
-        """加载全市场 daily_price 数据"""
+        """加载全市场 daily_price 数据
+
+        Step B 优化 (2026-06-25): 加 LRU 缓存
+        walk_forward 跑 N windows × M samples = 多次相同 (start, end) 调用,
+        缓存避免每次重读 DB + 重算 pct_change fallback (1M+ 行)
+        """
+        cache_key = (start, end)
+        if cache_key in self._data_cache:
+            return self._data_cache[cache_key].copy()
+
         sql = """
             SELECT dp.code, sb.name, sb.list_date, NULL AS mcap_yi, dp.trade_date,
                    dp.open, dp.high, dp.low, dp.close,
@@ -159,6 +174,13 @@ class PortfolioBacktestEngine:
             df["turnover"] = 1.0
         else:
             df["turnover"] = df["turnover"].fillna(0)
+
+        # Step B 优化: 写入 LRU 缓存 (max 4 entries)
+        if len(self._data_cache) >= self._data_cache_max:
+            # 简单 FIFO: 删除最早插入的
+            oldest_key = next(iter(self._data_cache))
+            del self._data_cache[oldest_key]
+        self._data_cache[cache_key] = df
 
         return df
 
