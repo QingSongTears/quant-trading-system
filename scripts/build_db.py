@@ -121,11 +121,11 @@ def import_stock_basic(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int:
     """
     导入 stock_basic 表
 
-    源: market_data/reference/tencent_quotes.csv
+    源: market_data/raw/reference/tencent_quotes.csv
          或 market_data/stock_basic.csv (fallback)
     """
     candidates = [
-        data_dir / "reference" / "tencent_quotes.csv",
+        data_dir / "raw" / "reference" / "tencent_quotes.csv",
         data_dir / "stock_basic.csv",
     ]
     csv_path = next((p for p in candidates if p.exists()), None)
@@ -226,13 +226,26 @@ def import_fund_flow(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int:
     if full:
         cur.execute("DELETE FROM fund_flow_data")
 
+    def _to_float(s):
+        """宽容处理: 空 / nan / '-' / 'None' / 数字字符串"""
+        if pd.isna(s):
+            return None
+        if isinstance(s, str):
+            s = s.strip()
+            if s in ("", "-", "--", "None", "nan"):
+                return None
+        try:
+            return float(s)
+        except (ValueError, TypeError):
+            return None
+
     rows = [
         (r.code, r.trade_date,
-         float(r.main_net) if pd.notna(r.main_net) else None,
-         float(r.super_large_net) if pd.notna(r.super_large_net) else None,
-         float(r.large_net) if pd.notna(r.large_net) else None,
-         float(r.medium_net) if pd.notna(r.medium_net) else None,
-         float(r.small_net) if pd.notna(r.small_net) else None)
+         _to_float(r.main_net),
+         _to_float(r.super_large_net),
+         _to_float(r.large_net),
+         _to_float(r.medium_net),
+         _to_float(r.small_net))
         for r in df.itertuples(index=False)
     ]
     cur.executemany(
@@ -262,10 +275,13 @@ def import_technical_indicators(cur: sqlite3.Cursor, data_dir: Path, full: bool)
         return 0
 
     print(f"   发现 {len(files)} 个 CSV")
+    # 跳过冗余备份 (part1/part2 是 2025 的拆分备份, 与 tech_indicators_2025.csv 重复)
+    files = [f for f in files if "part" not in f.name]
+    print(f"   跳过 part1/part2 后剩余 {len(files)} 个 CSV")
     dfs = [pd.read_csv(f, dtype={"code": str}, low_memory=False) for f in files]
     df = pd.concat(dfs, ignore_index=True)
 
-    df = df.dropna(subset=["code", "trade_date"])
+    df = df.dropna(subset=["code", "date"])
     df["code"] = df["code"].astype(str).str.replace(r"^(sz|sh|bj)", "", regex=True).str.zfill(6)
 
     if full:
@@ -275,6 +291,9 @@ def import_technical_indicators(cur: sqlite3.Cursor, data_dir: Path, full: bool)
     cols = ["code", "trade_date", "macd_dif", "macd_dea", "macd_hist",
             "rsi14", "kdj_k", "kdj_d", "kdj_j",
             "boll_mid", "boll_upper", "boll_lower"]
+    # 把 CSV 'date' 列重命名为 'trade_date' 以匹配 DB schema
+    if "date" in df.columns and "trade_date" not in df.columns:
+        df = df.rename(columns={"date": "trade_date"})
     for r in df.itertuples(index=False):
         rd = r._asdict() if hasattr(r, "_asdict") else r._asdict()
         row = []
@@ -387,6 +406,467 @@ def main():
         full=not args.incremental,
         data_dir=args.data_dir,
     )
+
+
+# ── 新增 importers (整合 consolidate_db / import_small_csvs 逻辑) ─────
+
+def import_block_trade(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int:
+    """大宗交易 ← raw/reference/block_trade.csv
+
+    CSV 字段: code, market, name, date, deal_price, close_price, premium_pct,
+              vol, amount, buyer, seller
+    DB 字段: code, trade_date, name, deal_price, close_price, premium_pct,
+             volume, amount, buyer, seller
+    映射: date→trade_date, vol→volume
+    """
+    import pandas as pd
+    csv_path = data_dir / "raw" / "reference" / "block_trade.csv"
+    if not csv_path.exists():
+        print(f"   ⚠️ {csv_path.name} 不存在, 跳过")
+        return 0
+    df = pd.read_csv(csv_path, dtype={"code": str}, low_memory=False)
+    # 字段重命名
+    df = df.rename(columns={"date": "trade_date", "vol": "volume"})
+    df = df.dropna(subset=["code", "trade_date"])
+    df["code"] = df["code"].astype(str).str.replace(r"^(sz|sh|bj)", "", regex=True).str.zfill(6)
+    df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce").dt.strftime("%Y-%m-%d")
+    df = df.dropna(subset=["trade_date"])
+    if full:
+        cur.execute("DELETE FROM block_trade")
+    rows = [
+        (r.code, r.trade_date,
+         getattr(r, "name", None) if pd.notna(getattr(r, "name", None)) else None,
+         float(r.deal_price) if pd.notna(r.deal_price) else None,
+         float(r.close_price) if pd.notna(r.close_price) else None,
+         float(r.premium_pct) if pd.notna(r.premium_pct) else None,
+         int(r.volume) if pd.notna(r.volume) else None,
+         float(r.amount) if pd.notna(r.amount) else None,
+         getattr(r, "buyer", None) if pd.notna(getattr(r, "buyer", None)) else None,
+         getattr(r, "seller", None) if pd.notna(getattr(r, "seller", None)) else None)
+        for r in df.itertuples(index=False)
+    ]
+    cur.executemany(
+        "INSERT OR IGNORE INTO block_trade "
+        "(code, trade_date, name, deal_price, close_price, premium_pct, "
+        " volume, amount, buyer, seller) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    print(f"   ✅ INSERT block_trade: {len(rows)} 行")
+    return len(rows)
+
+
+def import_dividend(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int:
+    """分红 ← raw/reference/dividend.csv
+
+    CSV 字段: code, market, name, ex_div_date, pre_tax_bonus, transfer_ratio,
+              bonus_ratio, record_date (直接对齐)
+    """
+    import pandas as pd
+    csv_path = data_dir / "raw" / "reference" / "dividend.csv"
+    if not csv_path.exists():
+        print(f"   ⚠️ {csv_path.name} 不存在, 跳过")
+        return 0
+    df = pd.read_csv(csv_path, dtype={"code": str}, low_memory=False)
+    df = df.dropna(subset=["code"])
+    df["code"] = df["code"].astype(str).str.replace(r"^(sz|sh|bj)", "", regex=True).str.zfill(6)
+    if full:
+        cur.execute("DELETE FROM dividend")
+    rows = []
+    for r in df.itertuples(index=False):
+        def _date(s):
+            return str(s)[:10] if pd.notna(s) else None
+        rows.append((
+            r.code,
+            _date(r.ex_div_date),
+            float(r.pre_tax_bonus) if pd.notna(r.pre_tax_bonus) else None,
+            float(r.transfer_ratio) if pd.notna(r.transfer_ratio) else None,
+            float(r.bonus_ratio) if pd.notna(r.bonus_ratio) else None,
+            _date(r.record_date),
+        ))
+    cur.executemany(
+        "INSERT OR IGNORE INTO dividend "
+        "(code, ex_div_date, pre_tax_bonus, transfer_ratio, bonus_ratio, record_date) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    print(f"   ✅ INSERT dividend: {len(rows)} 行")
+    return len(rows)
+
+
+def import_announcements(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int:
+    """公告 ← raw/reference/announcements.csv
+
+    CSV 字段: code, market, name, date, type, title, url
+    DB 字段: code, trade_date, type, title, url (date→trade_date)
+    """
+    import pandas as pd
+    csv_path = data_dir / "raw" / "reference" / "announcements.csv"
+    if not csv_path.exists():
+        print(f"   ⚠️ {csv_path.name} 不存在, 跳过")
+        return 0
+    df = pd.read_csv(csv_path, dtype={"code": str}, low_memory=False)
+    df = df.rename(columns={"date": "trade_date"})
+    df = df.dropna(subset=["code"])
+    df["code"] = df["code"].astype(str).str.replace(r"^(sz|sh|bj)", "", regex=True).str.zfill(6)
+    if full:
+        cur.execute("DELETE FROM announcements")
+    rows = []
+    for r in df.itertuples(index=False):
+        rows.append((
+            r.code,
+            str(r.trade_date)[:10] if pd.notna(r.trade_date) else None,
+            r.type if pd.notna(r.type) else None,
+            r.title if pd.notna(r.title) else None,
+            r.url if pd.notna(r.url) else None,
+        ))
+    cur.executemany(
+        "INSERT OR IGNORE INTO announcements (code, trade_date, type, title, url) "
+        "VALUES (?, ?, ?, ?, ?)",
+        rows,
+    )
+    print(f"   ✅ INSERT announcements: {len(rows)} 行")
+    return len(rows)
+
+
+def import_holder_num(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int:
+    """股东户数 ← holder_num.csv (新表)"""
+    import csv as _csv
+    csv_path = data_dir / "holder_num.csv"
+    if not csv_path.exists():
+        print(f"   ⚠️ {csv_path.name} 不存在, 跳过")
+        return 0
+    def _f(s):
+        if not s or s == "nan":
+            return None
+        try:
+            return float(s)
+        except (ValueError, TypeError):
+            return None
+    rows = []
+    with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+        for r in _csv.DictReader(f):
+            rows.append((
+                r["code"].zfill(6), r["end_date"][:10],
+                int(r["holder_num"]) if r.get("holder_num", "").isdigit() else None,
+                int(r["pre_holder_num"]) if r.get("pre_holder_num", "").isdigit() else None,
+                _f(r.get("holder_change_pct")),
+                _f(r.get("avg_holding")),
+                "tencent",
+            ))
+    cur.executemany(
+        "INSERT OR IGNORE INTO holder_num "
+        "(code, end_date, holder_num, pre_holder_num, holder_change_pct, avg_holding, source) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    print(f"   ✅ INSERT holder_num: {len(rows)} 行")
+    return len(rows)
+
+
+def import_benchmark(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int:
+    """指数 K 线 ← market_data/benchmark_data.csv (westock 6 指数)"""
+    import csv as _csv
+    csv_path = data_dir / "benchmark_data.csv"
+    if not csv_path.exists():
+        print(f"   ⚠️ {csv_path.name} 不存在, 跳过")
+        return 0
+    def _f(s):
+        if not s or s == "nan":
+            return None
+        try:
+            return float(s)
+        except (ValueError, TypeError):
+            return None
+    rows = []
+    with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+        for r in _csv.DictReader(f):
+            rows.append((
+                r["code"], r["date"][:10], _f(r["close"]), None,
+                r.get("name") or None,
+                _f(r["open"]), _f(r["high"]), _f(r["low"]),
+                int(r["volume"]) if r.get("volume", "").isdigit() else None,
+                _f(r["amount"]), _f(r["exchange"]),
+                r["code"], "westock",
+            ))
+    cur.execute("DELETE FROM benchmark_data WHERE source = 'westock'")
+    cur.executemany(
+        "INSERT INTO benchmark_data "
+        "(index_code, trade_date, close, pct_change, name, open, high, low, "
+        " volume, amount, exchange_factor, code, source) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    print(f"   ✅ INSERT benchmark_data: {len(rows)} 行")
+    return len(rows)
+
+
+def import_finance(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int:
+    """财务摘要 ← market_data/finance_summary.csv (baostock profit_data)"""
+    import csv as _csv
+    csv_path = data_dir / "finance_summary.csv"
+    if not csv_path.exists():
+        print(f"   ⚠️ {csv_path.name} 不存在, 跳过")
+        return 0
+    def _f(s):
+        if not s or s == "nan":
+            return None
+        try:
+            return float(s)
+        except (ValueError, TypeError):
+            return None
+    rows = []
+    with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+        for r in _csv.DictReader(f):
+            code_full = r["code"]
+            code6 = code_full.split(".", 1)[1].zfill(6) if "." in code_full else code_full.zfill(6)
+            stat_date = r["statDate"][:10]
+            pub_date = r["pubDate"][:10]
+            row = {
+                "code": code6, "_date": stat_date, "EndDate": stat_date,
+                "ROE": _f(r["roeAvg"]), "ROETTM": _f(r["roeAvg"]),
+                "ROEWeighted": _f(r["roeAvg"]),
+                "EPS": _f(r["epsTTM"]), "EPSTTM": _f(r["epsTTM"]),
+                "BasicEPS": _f(r["epsTTM"]), "DilutedEPS": _f(r["epsTTM"]),
+                "NetProfitRatio": _f(r["npMargin"]),
+                "NetProfitRatioTTM": _f(r["npMargin"]),
+                "OperatingRevenue": _f(r["MBRevenue"]),
+                "OperatingRevenueTTM": _f(r["MBRevenue"]),
+                "TotalOperatingRevenue": _f(r["MBRevenue"]),
+                "NPParentCompanyOwners": _f(r["netProfit"]),
+                "NPParentCompanyOwnersTTM": _f(r["netProfit"]),
+                "baostock_pub_date": pub_date,
+                "roe_avg": _f(r["roeAvg"]),
+                "np_margin": _f(r["npMargin"]),
+                "gp_margin": _f(r["gpMargin"]),
+                "net_profit": _f(r["netProfit"]),
+                "eps_ttm": _f(r["epsTTM"]),
+                "main_revenue": _f(r["MBRevenue"]),
+                "total_share": _f(r["totalShare"]),
+                "liqa_share": _f(r["liqaShare"]),
+                "source": "baostock",
+            }
+            rows.append(row)
+    cur.execute("DELETE FROM finance_summary WHERE source = 'baostock'")
+    cols = list(rows[0].keys())
+    placeholders = ", ".join([f":{c}" for c in cols])
+    col_names = ", ".join(cols)
+    sql = f"INSERT INTO finance_summary ({col_names}) VALUES ({placeholders})"
+    cur.executemany(sql, rows)
+    print(f"   ✅ INSERT finance_summary: {len(rows)} 行 (baostock)")
+    return len(rows)
+
+
+def import_stock_profile(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int:
+    """股票简介 ← market_data/stock_profile.csv (westock profile)
+
+    同时 UPDATE stock_basic 扩展列 (兜底路径给 v_leader_features.py).
+    stock_profile 表被 REBUILD (DROP + CREATE, 按 ORM schema + circulating_shares).
+    """
+    import csv as _csv
+    csv_path = data_dir / "stock_profile.csv"
+    if not csv_path.exists():
+        print(f"   ⚠️ {csv_path.name} 不存在, 跳过")
+        return 0
+    def _f(s):
+        if not s or s == "nan":
+            return None
+        try:
+            return float(s)
+        except (ValueError, TypeError):
+            return None
+    rows = []
+    with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+        for r in _csv.DictReader(f):
+            code = r["code"]
+            code6 = code[2:].zfill(6) if code[:2] in ("sh", "sz", "bj") else code.zfill(6)
+            rows.append({
+                "code": code6,
+                "name": r["name"],
+                "listed_date": r["listedDate"] or None,
+                "industry": r["industry"] or None,
+                "sector": r["sector"] or None,
+                "issue_price": _f(r["issuePrice"]),
+                "reg_capital": _f(r["regCapital"]),
+                "chairman": r["chairman"] or None,
+                "establish_date": r["establishDate"] or None,
+                "website": r["website"] or None,
+                "business": r["business"] or None,
+                "reg_address": r["regAddress"] or None,
+            })
+    # 1. UPDATE stock_basic 扩展列 (兜底路径)
+    n_updated = 0
+    for row in rows:
+        cur.execute("""
+            UPDATE stock_basic SET
+                industry = COALESCE(?, industry),
+                sector = COALESCE(?, sector),
+                listed_date_alt = COALESCE(?, listed_date_alt),
+                issue_price = COALESCE(?, issue_price),
+                reg_capital = COALESCE(?, reg_capital),
+                establish_date = COALESCE(?, establish_date),
+                chairman = COALESCE(?, chairman),
+                website = COALESCE(?, website),
+                business = COALESCE(?, business),
+                reg_address = COALESCE(?, reg_address)
+            WHERE code = ?
+        """, (
+            row["industry"], row["sector"], row["listed_date"],
+            row["issue_price"], row["reg_capital"], row["establish_date"],
+            row["chairman"], row["website"], row["business"], row["reg_address"],
+            row["code"],
+        ))
+        if cur.rowcount > 0:
+            n_updated += 1
+    print(f"   ✅ UPDATE stock_basic 扩展列: {n_updated} 行")
+
+    # 2. REBUILD stock_profile 表
+    cur.execute("DROP TABLE IF EXISTS stock_profile")
+    cur.execute("""
+        CREATE TABLE stock_profile (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL,
+            name TEXT,
+            listed_date TEXT,
+            industry TEXT,
+            sector TEXT,
+            issue_price REAL,
+            reg_capital REAL,
+            chairman TEXT,
+            establish_date TEXT,
+            website TEXT,
+            business TEXT,
+            reg_address TEXT,
+            circulating_shares REAL,
+            source TEXT DEFAULT 'westock',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("CREATE INDEX idx_sp_code ON stock_profile(code)")
+    cur.execute("CREATE INDEX idx_sp_industry ON stock_profile(industry)")
+    cur.execute("CREATE INDEX idx_sp_sector ON stock_profile(sector)")
+    insert_rows = [
+        (r["code"], r["name"], r["listed_date"], r["industry"], r["sector"],
+         r["issue_price"], r["reg_capital"], r["chairman"], r["establish_date"],
+         r["website"], r["business"], r["reg_address"], None, "westock")
+        for r in rows
+    ]
+    cur.executemany(
+        "INSERT INTO stock_profile "
+        "(code, name, listed_date, industry, sector, issue_price, reg_capital, "
+        " chairman, establish_date, website, business, reg_address, "
+        " circulating_shares, source) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        insert_rows,
+    )
+    print(f"   ✅ REBUILD stock_profile: {len(insert_rows)} 行")
+    return n_updated + len(insert_rows)
+
+
+def import_research_report(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int:
+    """研报 ← raw/reference/research_report.csv"""
+    import csv as _csv
+    csv_path = data_dir / "raw" / "reference" / "research_report.csv"
+    if not csv_path.exists():
+        print(f"   ⚠️ {csv_path.name} 不存在, 跳过")
+        return 0
+    rows = []
+    with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+        for r in _csv.DictReader(f):
+            code = r.get("code", "").strip()
+            code = code.zfill(6) if code.isdigit() else code
+            rows.append((
+                code,
+                r.get("date", "")[:10] if r.get("date") else None,
+                r.get("rating") or None,
+                r.get("rating_change") or None,
+                r.get("title") or None,
+                r.get("author") or None,
+                r.get("institution") or None,
+                r.get("url") or None,
+            ))
+    cur.executemany(
+        "INSERT OR IGNORE INTO research_report "
+        "(code, date, rating, rating_change, title, author, institution, url) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    print(f"   ✅ INSERT research_report: {len(rows)} 行")
+    return len(rows)
+
+
+def import_em_global_news(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int:
+    """财经新闻 ← raw/reference/em_global_news.csv"""
+    import csv as _csv
+    csv_path = data_dir / "raw" / "reference" / "em_global_news.csv"
+    if not csv_path.exists():
+        print(f"   ⚠️ {csv_path.name} 不存在, 跳过")
+        return 0
+    rows = [
+        (r.get("date", "")[:10] if r.get("date") else None,
+         r.get("title") or None, r.get("url") or None,
+         r.get("summary") or None, r.get("source") or None)
+        for r in _csv.DictReader(open(csv_path, "r", encoding="utf-8-sig", newline=""))
+    ]
+    cur.executemany(
+        "INSERT OR IGNORE INTO em_global_news "
+        "(date, title, url, summary, source) "
+        "VALUES (?, ?, ?, ?, ?)",
+        rows,
+    )
+    print(f"   ✅ INSERT em_global_news: {len(rows)} 行")
+    return len(rows)
+
+
+def import_ths_hot_reason(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int:
+    """同花顺热股 ← raw/reference/ths_hot_reason.csv"""
+    import csv as _csv
+    csv_path = data_dir / "raw" / "reference" / "ths_hot_reason.csv"
+    if not csv_path.exists():
+        print(f"   ⚠️ {csv_path.name} 不存在, 跳过")
+        return 0
+    def _f(s):
+        if not s or s == "nan":
+            return None
+        try:
+            return float(s)
+        except (ValueError, TypeError):
+            return None
+    rows = []
+    with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+        for r in _csv.DictReader(f):
+            code_raw = r.get("code", "").strip()
+            code = code_raw.zfill(6) if code_raw.isdigit() else code_raw
+            rows.append((
+                r.get("date", "")[:10] if r.get("date") else None,
+                int(r["rank"]) if r.get("rank", "").isdigit() else None,
+                code, r.get("name") or None,
+                _f(r.get("hot_value")), r.get("concept") or None,
+                r.get("reason") or None, _f(r.get("change_pct")),
+            ))
+    cur.executemany(
+        "INSERT OR IGNORE INTO ths_hot_reason "
+        "(date, rank, code, name, hot_value, concept, reason, change_pct) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    print(f"   ✅ INSERT ths_hot_reason: {len(rows)} 行")
+    return len(rows)
+
+
+# ── 更新 IMPORTERS 字典 ────────────────────────
+IMPORTERS.update({
+    "block_trade": import_block_trade,
+    "dividend": import_dividend,
+    "announcements": import_announcements,
+    "holder_num": import_holder_num,
+    "benchmark": import_benchmark,
+    "finance": import_finance,
+    "stock_profile": import_stock_profile,
+    "research_report": import_research_report,
+    "em_global_news": import_em_global_news,
+    "ths_hot_reason": import_ths_hot_reason,
+})
 
 
 if __name__ == "__main__":
