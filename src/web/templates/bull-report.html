@@ -34,10 +34,60 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .loading{text-align:center;padding:60px;color:var(--dim);font-size:0.9rem}
 .footer{text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border);margin-top:20px}
 .code{font-family:monospace;color:var(--accent);font-size:0.85rem}
+
+/* 统一 header 修复（脚本自动注入） */
+header {
+    display: flex !important;
+    align-items: center !important;
+    gap: 16px !important;
+    padding: 12px 24px !important;
+    min-height: 56px !important;
+    background: var(--card, #1a1d27) !important;
+    border-bottom: 1px solid var(--border, #2a2d3a) !important;
+    position: relative !important;
+    z-index: 10 !important;
+}
+header h1 {
+    font-size: 1.15rem !important;
+    font-weight: 600 !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+    /* emoji 字体回退（修复 Windows 上 🔬 显示成乱码"❾"） */
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', sans-serif !important;
+}
+header h1 .h1-icon {
+    display: inline-block;
+    margin-right: 6px;
+    font-size: 1.25rem;
+    vertical-align: -2px;
+}
+header .nav-links, header > a[href="/"] {
+    margin-left: auto !important;
+    color: var(--dim, #888) !important;
+    text-decoration: none !important;
+    font-size: 0.85rem !important;
+    padding: 4px 12px !important;
+    border-radius: 6px !important;
+    transition: all 0.15s !important;
+    white-space: nowrap !important;
+}
+header .nav-links a, header > a[href="/"] {
+    color: var(--dim, #888) !important;
+    text-decoration: none !important;
+}
+header .nav-links a:hover, header > a[href="/"]:hover {
+    color: var(--accent, #4fc3f7) !important;
+    background: rgba(79, 195, 247, 0.08) !important;
+}
+header > span, header > .sub {
+    color: var(--dim, #888) !important;
+    font-size: 0.82rem !important;
+}
+
 </style>
-</head>
+    {{ _api_auth_snippet | safe }}
+  </head>
 <body>
-<a href="/" style="position:fixed;top:12px;left:16px;color:#4fc3f7;font-size:0.8rem;text-decoration:none;z-index:999;background:#1a1d27;padding:4px 10px;border-radius:6px;border:1px solid #2a2d3a;">&larr; 首页</a>
 <header>
   <h1>🐂 牛市选股报告</h1>
   <span class="sub" id="subInfo">从 backtest_result 取夏普 Top 10 · 实时数据</span>

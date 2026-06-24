@@ -1,0 +1,542 @@
+{% extends "base.html" %}
+{% block title %}{{ stock_code }} - 个股详情{% endblock %}
+{% block extra_head %}
+<style>
+    /* K线 tab 切换 */
+    .kline-tabs .nav-link {
+        font-size: 0.9rem;
+        padding: 0.4rem 1rem;
+        color: var(--text-secondary);
+        border: none;
+        border-bottom: 2px solid transparent;
+        background: transparent;
+    }
+    .kline-tabs .nav-link.active {
+        color: var(--indigo);
+        border-bottom-color: var(--indigo);
+        font-weight: 600;
+    }
+    .kline-tabs .nav-link:hover { color: var(--indigo); }
+
+    /* 加载态 */
+    .skeleton {
+        background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 50%, #f1f5f9 100%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+        border-radius: 6px;
+        height: 1.5rem;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* 概念标签 */
+    .concept-bar {
+        display: flex; flex-wrap: wrap; gap: 0.5rem;
+        padding: 0.75rem 0;
+    }
+    .concept-chip {
+        padding: 4px 12px; border-radius: 14px;
+        background: linear-gradient(135deg, #eef2ff 0%, #ddd6fe 100%);
+        color: #4338ca; font-size: 0.85rem; font-weight: 500;
+        cursor: pointer; transition: transform .15s ease;
+    }
+    .concept-chip:hover { transform: translateY(-2px); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-3">
+
+    <!-- 搜索栏 -->
+    <div class="d-flex align-items-center mb-3 gap-2">
+        <a href="/" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> 返回首页
+        </a>
+        <div class="input-group" style="max-width: 360px;">
+            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+            <input type="text" id="code-input" class="form-control" placeholder="输入代码或名称" value="{{ stock_code }}">
+            <button class="btn btn-primary" onclick="loadStock()">查询</button>
+        </div>
+        <span class="text-muted small" id="update-time"></span>
+    </div>
+
+    <!-- 大字当前价 (leek-fund hero) -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="stock-hero">
+                <div>
+                    <div class="d-flex align-items-baseline gap-2">
+                        <span class="stock-hero__name" id="hd-name">--</span>
+                        <span class="stock-hero__code" id="hd-code">--</span>
+                    </div>
+                </div>
+                <div class="ms-auto text-end">
+                    <div class="stock-hero__price" id="hd-price">--</div>
+                    <div class="stock-hero__change" id="hd-change">--</div>
+                </div>
+            </div>
+
+            <!-- 6 指标网格 -->
+            <div class="metric-grid mt-3">
+                <div class="metric-grid__item">
+                    <div class="metric-grid__label">今开</div>
+                    <div class="metric-grid__value" id="m-open">--</div>
+                </div>
+                <div class="metric-grid__item">
+                    <div class="metric-grid__label">昨收</div>
+                    <div class="metric-grid__value" id="m-prev">--</div>
+                </div>
+                <div class="metric-grid__item">
+                    <div class="metric-grid__label">最高</div>
+                    <div class="metric-grid__value" id="m-high">--</div>
+                </div>
+                <div class="metric-grid__item">
+                    <div class="metric-grid__label">最低</div>
+                    <div class="metric-grid__value" id="m-low">--</div>
+                </div>
+                <div class="metric-grid__item">
+                    <div class="metric-grid__label">成交量(手)</div>
+                    <div class="metric-grid__value" id="m-vol">--</div>
+                </div>
+                <div class="metric-grid__item">
+                    <div class="metric-grid__label">成交额</div>
+                    <div class="metric-grid__value" id="m-amt">--</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-8">
+
+            <!-- K线图 + 分时图 -->
+            <div class="card mb-3">
+                <div class="card-header d-flex align-items-center">
+                    <ul class="nav kline-tabs" id="chart-tabs">
+                        <li class="nav-item"><a class="nav-link active" data-period="day" data-fq="qfq">日K</a></li>
+                        <li class="nav-item"><a class="nav-link" data-period="week">周K</a></li>
+                        <li class="nav-item"><a class="nav-link" data-period="month">月K</a></li>
+                        <li class="nav-item"><a class="nav-link" data-type="minute">分时</a></li>
+                    </ul>
+                    <div class="ms-auto small text-muted" id="chart-info">--</div>
+                </div>
+                <div class="card-body p-0">
+                    <div id="kline-chart" class="chart-container" style="height: 480px;"></div>
+                </div>
+            </div>
+
+            <!-- 公司简况 -->
+            <div class="card mb-3">
+                <div class="card-header">公司简况</div>
+                <div class="card-body">
+                    <div class="row g-3" id="profile-grid">
+                        <div class="col-md-6">
+                            <div class="info-panel__row">
+                                <span class="label">所属行业</span>
+                                <span class="val" id="p-industry">--</span>
+                            </div>
+                            <div class="info-panel__row">
+                                <span class="label">所属板块</span>
+                                <span class="val" id="p-sector">--</span>
+                            </div>
+                            <div class="info-panel__row">
+                                <span class="label">上市日期</span>
+                                <span class="val" id="p-listed">--</span>
+                            </div>
+                            <div class="info-panel__row">
+                                <span class="label">发行价</span>
+                                <span class="val" id="p-issue">--</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="info-panel__row">
+                                <span class="label">注册资本</span>
+                                <span class="val" id="p-regcap">--</span>
+                            </div>
+                            <div class="info-panel__row">
+                                <span class="label">董事长</span>
+                                <span class="val" id="p-chair">--</span>
+                            </div>
+                            <div class="info-panel__row">
+                                <span class="label">注册地</span>
+                                <span class="val" id="p-addr">--</span>
+                            </div>
+                            <div class="info-panel__row">
+                                <span class="label">官网</span>
+                                <span class="val"><a id="p-web" target="_blank">--</a></span>
+                            </div>
+                        </div>
+                        <div class="col-12 mt-2">
+                            <div class="info-panel__title">主营业务</div>
+                            <div id="p-business" class="text-muted small" style="line-height: 1.7;">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 财务数据 (默认最近 4 期利润表) -->
+            <div class="card mb-3">
+                <div class="card-header d-flex align-items-center">
+                    <span>财务报表</span>
+                    <div class="ms-auto btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary active" data-fintype="">全部</button>
+                        <button class="btn btn-outline-primary" data-fintype="lrb">利润表</button>
+                        <button class="btn btn-outline-primary" data-fintype="zcfz">资产负债表</button>
+                        <button class="btn btn-outline-primary" data-fintype="xjll">现金流量表</button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0" id="finance-table">
+                            <thead><tr><th class="text-muted small">加载中…</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="col-lg-4">
+
+            <!-- 止盈止损 (技术指标 + 高低点) -->
+            <div class="info-panel">
+                <div class="info-panel__title">止盈止损位</div>
+                <div class="info-panel__row">
+                    <span class="label">压力位 (近 N 日高)</span>
+                    <span class="val up" id="p-pressure">--</span>
+                </div>
+                <div class="info-panel__row">
+                    <span class="label">支撑位 (近 N 日低)</span>
+                    <span class="val down" id="p-support">--</span>
+                </div>
+                <div class="info-panel__row">
+                    <span class="label">建议止损</span>
+                    <span class="val down" id="p-stop">--</span>
+                </div>
+                <div class="info-panel__row">
+                    <span class="label">建议止盈</span>
+                    <span class="val up" id="p-target">--</span>
+                </div>
+            </div>
+
+            <!-- 快捷操作 -->
+            <div class="info-panel">
+                <div class="info-panel__title">快捷操作</div>
+                <a id="qa-backtest" class="btn btn-primary w-100 mb-2">
+                    <i class="bi bi-cpu"></i> 在工作台回测该股
+                </a>
+                <a id="qa-history" class="btn btn-outline-secondary w-100 mb-2">
+                    <i class="bi bi-clock-history"></i> 查看历史回测
+                </a>
+                <a id="qa-ai" class="btn btn-outline-secondary w-100">
+                    <i class="bi bi-robot"></i> AI 智能诊断
+                </a>
+            </div>
+
+            <!-- 同花顺诊股 (预留 API 接入位) -->
+            <div class="info-panel">
+                <div class="info-panel__title">同花顺诊股</div>
+                <div class="text-muted small">
+                    <i class="bi bi-info-circle"></i> 接入同花顺数据后展示综合评分、短线/中线/长线观点
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+const STOCK_CODE = {{ stock_code | tojson }};
+let klineChart = null;
+let currentPeriod = 'day';
+let currentType = 'kline'; // kline / minute
+
+// 颜色 — A股红涨绿跌
+const COLOR_UP = '#ef4444';
+const COLOR_DOWN = '#22c55e';
+const COLOR_NEUTRAL = '#94a3b8';
+
+function fmt(v, d = 2) {
+    if (v === null || v === undefined || isNaN(v)) return '--';
+    return Number(v).toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+
+function fmtVol(v) {
+    if (!v) return '--';
+    if (v >= 1e8) return (v / 1e8).toFixed(2) + ' 亿';
+    if (v >= 1e4) return (v / 1e4).toFixed(2) + ' 万';
+    return v.toFixed(0);
+}
+
+function applyColor(el, change) {
+    if (change === null || change === undefined) {
+        el.className = 'flat';
+    } else if (change > 0) {
+        el.className = 'up';
+    } else if (change < 0) {
+        el.className = 'down';
+    } else {
+        el.className = 'flat';
+    }
+}
+
+// ====== 加载行情快照 ======
+async function loadQuote() {
+    const r = await fetchAuth(`/api/stock/quote?code=${STOCK_CODE}`);
+    if (!r.success) { return; }
+    const d = r.data;
+    document.getElementById('hd-name').textContent = d.name || d.code;
+    document.getElementById('hd-code').textContent = d.code;
+    const priceEl = document.getElementById('hd-price');
+    priceEl.textContent = fmt(d.price);
+    applyColor(priceEl, d.change);
+    const changeEl = document.getElementById('hd-change');
+    const arrow = d.change > 0 ? '▲' : (d.change < 0 ? '▼' : '—');
+    const sign = d.change > 0 ? '+' : '';
+    changeEl.textContent = `${arrow} ${sign}${fmt(d.change)} (${sign}${fmt(d.change_pct)}%)`;
+    applyColor(changeEl, d.change);
+    document.getElementById('m-open').textContent = fmt(d.open);
+    applyColor(document.getElementById('m-open'), d.open - d.prev_close);
+    document.getElementById('m-prev').textContent = fmt(d.prev_close);
+    document.getElementById('m-high').textContent = fmt(d.high);
+    applyColor(document.getElementById('m-high'), d.high - d.prev_close);
+    document.getElementById('m-low').textContent = fmt(d.low);
+    applyColor(document.getElementById('m-low'), d.low - d.prev_close);
+    document.getElementById('m-vol').textContent = fmtVol(d.volume);
+    document.getElementById('m-amt').textContent = fmtVol(d.amount);
+    document.getElementById('update-time').textContent = `数据日期: ${d.date || '--'} | 换手: ${fmt(d.exchange)}%`;
+    // 快捷操作链接
+    document.getElementById('qa-backtest').href = `/workbench?code=${d.code}&name=${encodeURIComponent(d.name || '')}`;
+    document.getElementById('qa-ai').href = `/diagnose?code=${d.code}&name=${encodeURIComponent(d.name || '')}`;
+}
+
+// ====== 加载K线 ======
+async function loadKline(period = 'day', fq = 'qfq') {
+    currentType = 'kline';
+    const r = await fetchAuth(`/api/stock/kline?code=${STOCK_CODE}&period=${period}&limit=180&fq=${fq}`);
+    if (!r.success || !r.data.candles.length) {
+        document.getElementById('chart-info').textContent = '暂无K线数据';
+        return;
+    }
+    const { candles, volumes } = r.data;
+    document.getElementById('chart-info').textContent = `${period === 'day' ? '日' : (period === 'week' ? '周' : '月')}K · ${candles.length}根 · ${candles[0][0]} ~ ${candles[candles.length-1][0]}`;
+    drawKlineChart(candles, volumes);
+    // 算止盈止损
+    const highs = candles.map(c => c[4]);
+    const lows = candles.map(c => c[3]);
+    const pressure = Math.max(...highs);
+    const support = Math.min(...lows);
+    const last = candles[candles.length - 1][2];
+    document.getElementById('p-pressure').textContent = fmt(pressure);
+    document.getElementById('p-support').textContent = fmt(support);
+    document.getElementById('p-stop').textContent = fmt(last * 0.95);
+    document.getElementById('p-target').textContent = fmt(last * 1.10);
+}
+
+async function loadMinute() {
+    currentType = 'minute';
+    const r = await fetchAuth(`/api/stock/minute?code=${STOCK_CODE}&days=1`);
+    if (!r.success || !r.data.length) {
+        document.getElementById('chart-info').textContent = '暂无分时数据 (非交易时段)';
+        drawEmptyChart();
+        return;
+    }
+    document.getElementById('chart-info').textContent = `分时 · ${r.data.length} 个切片`;
+    drawMinuteChart(r.data);
+}
+
+function drawEmptyChart() {
+    const dom = document.getElementById('kline-chart');
+    if (klineChart) klineChart.dispose();
+    klineChart = echarts.init(dom);
+    klineChart.setOption({
+        grid: { left: 60, right: 60, top: 40, bottom: 40 },
+        xAxis: { type: 'category', data: [] },
+        yAxis: { type: 'value' },
+        series: []
+    });
+}
+
+function drawKlineChart(candles, volumes) {
+    const dom = document.getElementById('kline-chart');
+    if (klineChart) klineChart.dispose();
+    klineChart = echarts.init(dom);
+    const dates = candles.map(c => c[0]);
+    const candleData = candles.map(c => [c[1], c[2], c[3], c[4]]);
+    const volData = volumes.map(v => ({
+        value: v.value,
+        itemStyle: { color: v.dir > 0 ? COLOR_UP : COLOR_DOWN }
+    }));
+    // MA 5/10/20
+    function ma(n) {
+        return candles.map((_, i) => {
+            if (i < n - 1) return '-';
+            const slice = candles.slice(i - n + 1, i + 1);
+            const sum = slice.reduce((s, c) => s + c[2], 0);
+            return +(sum / n).toFixed(2);
+        });
+    }
+    klineChart.setOption({
+        animation: false,
+        legend: { data: ['K线', 'MA5', 'MA10', 'MA20'], top: 8, textStyle: { fontSize: 12 } },
+        tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+        axisPointer: { link: [{ xAxisIndex: 'all' }] },
+        grid: [
+            { left: 60, right: 30, top: 40, height: '65%' },
+            { left: 60, right: 30, top: '78%', height: '18%' }
+        ],
+        xAxis: [
+            { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { onZero: false }, splitLine: { show: false }, axisLabel: { show: false } },
+            { type: 'category', data: dates, gridIndex: 1, scale: true, boundaryGap: false, axisLine: { onZero: false }, axisLabel: { fontSize: 10 } }
+        ],
+        yAxis: [
+            { scale: true, splitArea: { show: true }, axisLabel: { fontSize: 10 } },
+            { scale: true, gridIndex: 1, splitNumber: 2, axisLabel: { fontSize: 10, formatter: v => fmtVol(v) }, axisLine: { show: false }, axisTick: { show: false } }
+        ],
+        dataZoom: [
+            { type: 'inside', xAxisIndex: [0, 1], start: 60, end: 100 },
+            { show: true, xAxisIndex: [0, 1], type: 'slider', bottom: 5, height: 18, start: 60, end: 100 }
+        ],
+        series: [
+            { name: 'K线', type: 'candlestick', data: candleData, itemStyle: { color: COLOR_UP, color0: COLOR_DOWN, borderColor: COLOR_UP, borderColor0: COLOR_DOWN } },
+            { name: 'MA5', type: 'line', data: ma(5), smooth: true, lineStyle: { width: 1, color: '#f59e0b' }, showSymbol: false },
+            { name: 'MA10', type: 'line', data: ma(10), smooth: true, lineStyle: { width: 1, color: '#8b5cf6' }, showSymbol: false },
+            { name: 'MA20', type: 'line', data: ma(20), smooth: true, lineStyle: { width: 1, color: '#06b6d4' }, showSymbol: false },
+            { name: '成交量', type: 'bar', data: volData, xAxisIndex: 1, yAxisIndex: 1 }
+        ]
+    });
+}
+
+function drawMinuteChart(data) {
+    const dom = document.getElementById('kline-chart');
+    if (klineChart) klineChart.dispose();
+    klineChart = echarts.init(dom);
+    const times = data.map(d => d.time);
+    const prices = data.map(d => d.price);
+    const vols = data.map(d => d.volume);
+    const first = prices[0];
+    const colors = prices.map(p => p >= first ? COLOR_UP : COLOR_DOWN);
+    klineChart.setOption({
+        animation: false,
+        legend: { data: ['分时价', '均价 (估算)', '成交量'], top: 8, textStyle: { fontSize: 12 } },
+        tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+        axisPointer: { link: [{ xAxisIndex: 'all' }] },
+        grid: [
+            { left: 60, right: 30, top: 40, height: '65%' },
+            { left: 60, right: 30, top: '78%', height: '18%' }
+        ],
+        xAxis: [
+            { type: 'category', data: times, axisLabel: { show: false } },
+            { type: 'category', data: times, gridIndex: 1, axisLabel: { fontSize: 10 } }
+        ],
+        yAxis: [
+            { scale: true, axisLabel: { fontSize: 10 } },
+            { scale: true, gridIndex: 1, splitNumber: 2, axisLabel: { fontSize: 10, formatter: v => fmtVol(v) } }
+        ],
+        dataZoom: [{ type: 'inside', xAxisIndex: [0, 1], start: 0, end: 100 }],
+        series: [
+            { name: '分时价', type: 'line', data: prices, smooth: true, showSymbol: false, lineStyle: { width: 1.5, color: '#6366f1' }, areaStyle: { color: 'rgba(99,102,241,0.1)' } },
+            { name: '均价 (估算)', type: 'line', data: prices.map((_, i) => (prices.slice(0, i + 1).reduce((s, p) => s + p, 0) / (i + 1)).toFixed(2)), smooth: true, showSymbol: false, lineStyle: { width: 1, color: '#f59e0b', type: 'dashed' } },
+            { name: '成交量', type: 'bar', data: vols.map((v, i) => ({ value: v, itemStyle: { color: colors[i] } })), xAxisIndex: 1, yAxisIndex: 1 }
+        ]
+    });
+}
+
+// ====== 加载公司简况 ======
+async function loadProfile() {
+    const r = await fetchAuth(`/api/stock/profile?code=${STOCK_CODE}`);
+    if (!r.success) return;
+    const d = r.data;
+    // 用 profile 的真实名称回填 hero
+    if (d.name) {
+        document.getElementById('hd-name').textContent = d.name;
+        document.title = d.name + ' (' + d.code + ') - 个股详情';
+    }
+    document.getElementById('p-industry').textContent = d.industry || '--';
+    document.getElementById('p-sector').textContent = d.sector || '--';
+    document.getElementById('p-listed').textContent = d.listedDate || '--';
+    document.getElementById('p-issue').textContent = d.issuePrice ? d.issuePrice + ' 元' : '--';
+    document.getElementById('p-regcap').textContent = d.regCapital ? d.regCapital + ' 万元' : '--';
+    document.getElementById('p-chair').textContent = d.chairman || '--';
+    document.getElementById('p-addr').textContent = d.regAddress || '--';
+    const web = document.getElementById('p-web');
+    if (d.website) { web.href = d.website; web.textContent = d.website; web.classList.add('text-decoration-none'); }
+    document.getElementById('p-business').textContent = d.business || '--';
+}
+
+// ====== 加载财务 ======
+let currentFinType = '';
+async function loadFinance(type_ = '') {
+    currentFinType = type_;
+    const r = await fetchAuth(`/api/stock/finance?code=${STOCK_CODE}&type_=${type_}&num=4`);
+    const table = document.getElementById('finance-table');
+    if (!r.success || !r.data.length) {
+        table.innerHTML = '<thead><tr><th class="text-muted small p-3">暂无财务数据</th></tr></thead>';
+        return;
+    }
+    const rows = r.data;
+    const cols = Object.keys(rows[0]).filter(c => c !== 'code' && c !== 'name');
+    let html = '<thead><tr><th class="text-muted small">指标</th>';
+    cols.forEach(c => { html += `<th class="text-end small">${c}</th>`; });
+    html += '</tr></thead><tbody>';
+    rows.forEach(row => {
+        html += `<tr><td class="text-muted">${row.name || row.code || '--'}</td>`;
+        cols.forEach(c => {
+            const v = row[c];
+            const cls = (typeof v === 'string' && v.startsWith('-')) ? 'down' : (typeof v === 'string' && /^[0-9.]+$/.test(v) && parseFloat(v) > 0 ? 'up' : '');
+            html += `<td class="text-end font-monospace ${cls}">${v || '--'}</td>`;
+        });
+        html += '</tr>';
+    });
+    html += '</tbody>';
+    table.innerHTML = html;
+}
+
+// ====== Tab 切换 ======
+document.querySelectorAll('#chart-tabs .nav-link').forEach(el => {
+    el.addEventListener('click', e => {
+        e.preventDefault();
+        document.querySelectorAll('#chart-tabs .nav-link').forEach(n => n.classList.remove('active'));
+        el.classList.add('active');
+        const type = el.dataset.type;
+        if (type === 'minute') {
+            loadMinute();
+        } else {
+            loadKline(el.dataset.period, el.dataset.fq || 'qfq');
+        }
+    });
+});
+
+document.querySelectorAll('[data-fintype]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-fintype]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        loadFinance(btn.dataset.fintype);
+    });
+});
+
+function loadStock() {
+    const code = document.getElementById('code-input').value.trim();
+    if (code) location.href = '/stock/' + code;
+}
+
+document.getElementById('code-input').addEventListener('keypress', e => {
+    if (e.key === 'Enter') loadStock();
+});
+
+window.addEventListener('resize', () => klineChart && klineChart.resize());
+
+// ====== fetchAuth 全局鉴权 ======
+async function fetchAuth(url) {
+    const r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + (window.API_KEY || '') } });
+    return await r.json();
+}
+window.API_KEY = '{{ api_key or "" }}';
+
+// ====== 启动 ======
+loadQuote();
+loadKline('day', 'qfq');
+loadProfile();
+loadFinance();
+</script>
+{% endblock %}

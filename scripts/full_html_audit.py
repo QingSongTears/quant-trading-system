@@ -25,7 +25,8 @@ PAGES = [
 ]
 
 BASE = "http://localhost:5054"
-OUT_DIR = Path("D:/gitHub/qunat/quant-trading-system/output")
+ROOT = Path(__file__).resolve().parent.parent
+OUT_DIR = ROOT / "screenshots" / "full_audit"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 

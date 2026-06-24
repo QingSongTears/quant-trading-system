@@ -18,27 +18,187 @@
     {% block extra_head %}{% endblock %}
     <style>
         :root {
-            --profit-green: #22c55e;
-            --loss-red: #ef4444;
+            --profit-green: #ef4444;   /* A股红涨 */
+            --loss-green: #22c55e;     /* A股绿跌 */
+            --profit-text: #dc2626;
+            --loss-text: #16a34a;
             --ai-blue: #3b82f6;
             --indigo: #6366f1;
+            --bg-soft: #f5f7fb;
+            --bg-card: #ffffff;
+            --border-soft: #e5e7eb;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --shadow-sm: 0 1px 2px rgba(15,23,42,0.04);
+            --shadow-md: 0 4px 12px rgba(15,23,42,0.06);
+            --shadow-lg: 0 10px 24px rgba(15,23,42,0.08);
+            --gradient-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            --gradient-profit: linear-gradient(135deg, #ef4444 0%, #f97316 100%);
+            --gradient-loss: linear-gradient(135deg, #22c55e 0%, #10b981 100%);
         }
-        body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        body {
+            background: var(--bg-soft);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+            letter-spacing: -0.01em;
+        }
         .navbar-brand { font-weight: 700; letter-spacing: -0.5px; }
-        .card { border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-        .metric-value { font-size: 1.75rem; font-weight: 700; }
-        .metric-label { font-size: 0.8rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-        .profit { color: var(--profit-green); }
-        .loss { color: var(--loss-red); }
+        .navbar { backdrop-filter: blur(8px); background: rgba(33,37,41,0.95) !important; }
+        .card {
+            border: 1px solid var(--border-soft);
+            border-radius: 14px;
+            box-shadow: var(--shadow-sm);
+            background: var(--bg-card);
+            transition: box-shadow .2s ease, transform .2s ease;
+        }
+        .card:hover { box-shadow: var(--shadow-md); }
+        .card-header {
+            background: transparent;
+            border-bottom: 1px solid var(--border-soft);
+            font-weight: 600;
+            padding: 0.85rem 1.25rem;
+        }
+        .metric-value { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; }
+        .metric-label {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+        }
+        .profit { color: var(--profit-text); }
+        .loss { color: var(--loss-text); }
         .ai-disclaimer {
-            background: #eff6ff; border-left: 4px solid var(--ai-blue);
-            padding: 0.75rem 1rem; border-radius: 6px; margin: 1rem 0;
+            background: linear-gradient(90deg, #eff6ff 0%, #eef2ff 100%);
+            border-left: 4px solid var(--ai-blue);
+            padding: 0.75rem 1rem; border-radius: 8px; margin: 1rem 0;
             font-size: 0.85rem; color: #1e40af;
         }
         .chart-container { width: 100%; height: 400px; }
-        .section-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb; }
-        .stock-tag { display: inline-block; padding: 2px 8px; background: #f1f5f9; border-radius: 4px; font-family: monospace; font-size: 0.85rem; margin: 2px; }
-        .nav-pills .nav-link.active { background: var(--indigo); }
+        .section-title {
+            font-size: 1.05rem; font-weight: 600;
+            margin-bottom: 1rem; padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border-soft);
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        .section-title::before {
+            content: ""; width: 4px; height: 18px;
+            background: var(--gradient-primary);
+            border-radius: 2px;
+        }
+        .stock-tag {
+            display: inline-block; padding: 2px 8px;
+            background: #f1f5f9; border-radius: 4px;
+            font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+            font-size: 0.85rem; margin: 2px;
+        }
+        .nav-pills .nav-link { font-weight: 500; }
+        .nav-pills .nav-link.active {
+            background: var(--gradient-primary);
+            box-shadow: 0 4px 12px rgba(99,102,241,0.3);
+        }
+        .btn-primary {
+            background: var(--gradient-primary);
+            border: none;
+            box-shadow: 0 2px 8px rgba(99,102,241,0.25);
+        }
+        .btn-primary:hover {
+            box-shadow: 0 4px 14px rgba(99,102,241,0.4);
+            transform: translateY(-1px);
+        }
+        .form-control, .form-select {
+            border-radius: 8px;
+            border-color: var(--border-soft);
+            padding: 0.5rem 0.75rem;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: var(--indigo);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+        }
+
+        /* 大字当前价 (leek-fund 风格) */
+        .stock-hero {
+            display: flex; align-items: baseline; gap: 1rem;
+            padding: 1.5rem 0;
+        }
+        .stock-hero__price {
+            font-size: 3.25rem; font-weight: 700;
+            letter-spacing: -0.04em; line-height: 1;
+        }
+        .stock-hero__name { font-size: 1.75rem; font-weight: 700; }
+        .stock-hero__code {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-secondary); font-size: 1rem;
+            background: #f1f5f9; padding: 2px 8px; border-radius: 4px;
+        }
+        .stock-hero__change { font-size: 1.1rem; font-weight: 600; }
+
+        /* 6 指标卡 (leek-fund 风格) */
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 1px;
+            background: var(--border-soft);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .metric-grid__item {
+            background: var(--bg-card);
+            padding: 0.85rem 1rem;
+        }
+        .metric-grid__label {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .metric-grid__value {
+            font-size: 1.1rem; font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            margin-top: 0.25rem;
+        }
+        @media (max-width: 768px) {
+            .metric-grid { grid-template-columns: repeat(2, 1fr); }
+            .stock-hero__price { font-size: 2.5rem; }
+        }
+
+        /* 标签 chip (leek-fund 概念标签) */
+        .chip {
+            display: inline-block; padding: 4px 10px;
+            background: #f1f5f9; border-radius: 14px;
+            font-size: 0.82rem; color: var(--text-secondary);
+            margin: 2px;
+        }
+        .chip:hover { background: #e2e8f0; cursor: pointer; }
+
+        /* 侧栏 (leek-fund 止盈止损) */
+        .info-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-soft);
+            border-radius: 14px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1rem;
+            box-shadow: var(--shadow-sm);
+        }
+        .info-panel__title {
+            font-size: 0.85rem; font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.75rem;
+        }
+        .info-panel__row {
+            display: flex; justify-content: space-between;
+            padding: 0.4rem 0; font-size: 0.92rem;
+        }
+        .info-panel__row .label { color: var(--text-secondary); }
+        .info-panel__row .val { font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+
+        /* 涨跌色 — A股规范 */
+        .up { color: var(--profit-text); }
+        .down { color: var(--loss-text); }
+        .flat { color: var(--text-secondary); }
 
         /* 快捷卡片 hover 动效 (修复 index.html .hover-shadow 缺失) */
         .hover-shadow {
@@ -46,7 +206,7 @@
         }
         .hover-shadow:hover {
             transform: translateY(-3px);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+            box-shadow: var(--shadow-lg);
             border-color: #cbd5e1;
         }
         a.text-decoration-none:hover { text-decoration: none !important; }
@@ -81,6 +241,9 @@
             transform: translateY(20px);
             transition: opacity 0.25s, transform 0.25s;
             pointer-events: none;
+            background: var(--gradient-primary);
+            color: white;
+            box-shadow: 0 6px 16px rgba(99,102,241,0.4);
         }
         #back-to-top.visible {
             opacity: 1;
@@ -146,8 +309,18 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link {% if request.url.path == '/console' %}active{% endif %}" href="/console">
+                            <i class="bi bi-lightning-charge"></i> 控制台
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link {% if request.url.path == '/workbench' %}active{% endif %}" href="/workbench">
                             <i class="bi bi-tools"></i> 工作台
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.url.path.startswith('/stock') %}active{% endif %}" href="/stock/600519">
+                            <i class="bi bi-graph-up"></i> 个股详情
                         </a>
                     </li>
                     <li class="nav-item">
@@ -214,6 +387,8 @@
     </footer>
 
     <script src="{{ cdn.bootstrap }}/js/bootstrap.bundle.min.js"></script>
+    <!-- 全局工具 JS — Bearer token 拦截器从 Jinja2 globals 注入 (兼容独立模板) -->
+    {{ _api_auth_snippet | safe }}
     <!-- 全局工具 JS -->
     <script>
     /* =============================================

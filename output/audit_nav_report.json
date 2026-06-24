@@ -1,0 +1,550 @@
+{
+  "total": 30,
+  "ok": 30,
+  "results": [
+    {
+      "url": "/backtest",
+      "http_status": 200,
+      "title": "回测记录 - QuantTrading - A股量化回测系统",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 0,
+      "key_elements": {
+        "table": 2,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 1
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/backtest-lab",
+      "http_status": 200,
+      "title": "回测实验室 · 参数调整 · 日志对比",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 1,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/backtest-view",
+      "http_status": 200,
+      "title": "策略回测 · 可视化",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 1,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/backtest/154",
+      "http_status": 200,
+      "title": "回测详情 - 双均线交叉 × 000007",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 3,
+      "key_elements": {
+        "table": 3,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 2
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/backtest/155",
+      "http_status": 200,
+      "title": "回测详情 - 布林带突破 × 000007",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 3,
+      "key_elements": {
+        "table": 3,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 2
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/backtest/156",
+      "http_status": 200,
+      "title": "回测详情 - MACD金叉死叉 × 000010",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 3,
+      "key_elements": {
+        "table": 3,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 2
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/backtest/157",
+      "http_status": 200,
+      "title": "回测详情 - 双均线交叉 × 000010",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 3,
+      "key_elements": {
+        "table": 3,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 2
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/backtest/158",
+      "http_status": 200,
+      "title": "回测详情 - 布林带突破 × 000010",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 3,
+      "key_elements": {
+        "table": 3,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 2
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/bull-report",
+      "http_status": 200,
+      "title": "牛市选股报告 · 回测 TOP 榜",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 1,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/compare",
+      "http_status": 200,
+      "title": "多模型对比 - QuantTrading - A股量化回测系统",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 0,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 1
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/dashboard",
+      "http_status": 200,
+      "title": "数据总览 · 量化系统",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 2,
+      "key_elements": {
+        "table": 3,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/data",
+      "http_status": 200,
+      "title": "数据管理 - QuantTrading - A股量化回测系统",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 0,
+      "key_elements": {
+        "table": 2,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 1
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/data-monitor",
+      "http_status": 200,
+      "title": "数据监控 · 8维量化选股",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 1,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 2,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/diagnose",
+      "http_status": 200,
+      "title": "个股诊断 · 8维量化选股",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 3,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/dim-compare",
+      "http_status": 200,
+      "title": "维度贡献 · 牛股vs全市场IC对比",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 1,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/fund-flow-report",
+      "http_status": 200,
+      "title": "资金面融合回测 · v6对比",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 2,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/ic",
+      "http_status": 200,
+      "title": "IC分析 · 8维评分贡献度",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 4,
+      "key_elements": {
+        "table": 2,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/portfolio",
+      "http_status": 200,
+      "title": "持仓分析 · 8维量化选股",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 2,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/predict",
+      "http_status": 200,
+      "title": "预测看板 · 上涨概率",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 0,
+      "key_elements": {
+        "table": 2,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/screener",
+      "http_status": 200,
+      "title": "选股工作台 · 8维量化选股",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 0,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/sector",
+      "http_status": 200,
+      "title": "行业板块 · 8维量化选股",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 1,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/signal",
+      "http_status": 200,
+      "title": "综合信号 · 多维度共振",
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "page_errors": [
+        "Cannot use import statement outside a module"
+      ],
+      "failed_requests": [],
+      "canvas_count": 1,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/simulate",
+      "http_status": 200,
+      "title": "模拟交易 · 量化系统",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 1,
+      "key_elements": {
+        "table": 2,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/strategies",
+      "http_status": 200,
+      "title": "策略管理 - QuantTrading - A股量化回测系统",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 0,
+      "key_elements": {
+        "table": 18,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 1
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/strategy-compare",
+      "http_status": 200,
+      "title": "策略对比 · 7大策略全景",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 4,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/tuning",
+      "http_status": 200,
+      "title": "参数调优 · 8维权重",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 1,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/v5",
+      "http_status": 200,
+      "title": "v5_hybrid 参数调优 · A股量化",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 1,
+      "key_elements": {
+        "table": 0,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/v6-compare",
+      "http_status": 200,
+      "title": "v6阈值对比 · 多参数测试",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 2,
+      "key_elements": {
+        "table": 1,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/verify",
+      "http_status": 200,
+      "title": "预测验证 · 命中率统计",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 2,
+      "key_elements": {
+        "table": 2,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 0
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "url": "/workbench",
+      "http_status": 200,
+      "title": "回测工作台 - QuantTrading - A股量化回测系统",
+      "console_errors": [],
+      "page_errors": [],
+      "failed_requests": [],
+      "canvas_count": 0,
+      "key_elements": {
+        "table": 4,
+        "form": 0,
+        "echart_box": 0,
+        "heading": 1,
+        "navbar": 1
+      },
+      "ok": true,
+      "error": null
+    }
+  ]
+}

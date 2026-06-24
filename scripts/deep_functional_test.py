@@ -11,7 +11,9 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 BASE = "http://localhost:5054"
-OUT_DIR = Path("D:/gitHub/qunat/quant-trading-system/output")
+ROOT = Path(__file__).resolve().parent.parent
+OUT_DIR = ROOT / "screenshots" / "deep_test"
+OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 async def deep_test():

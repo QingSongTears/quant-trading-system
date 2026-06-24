@@ -1,0 +1,69 @@
+{
+  "strategy_name": "VLeaderMainSurgeStrategy",
+  "config": {
+    "train_months": 2,
+    "test_months": 1,
+    "step_months": 1,
+    "start_date": "2025-01-01",
+    "end_date": "2025-06-01"
+  },
+  "windows": [
+    {
+      "window_id": 0,
+      "train_start": "2025-01-01",
+      "train_end": "2025-03-01",
+      "test_start": "2025-03-01",
+      "test_end": "2025-04-01",
+      "best_params": {
+        "MAX_RSI_14": 30.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.1,
+        "MAX_DRAWDOWN_60D": -15.0
+      },
+      "in_sample_sharpe": 1.31,
+      "oos_sharpe": -3.54,
+      "oos_annual_return": -48.36,
+      "oos_max_drawdown": -8.13,
+      "oos_total_trades": 2,
+      "oos_win_rate": 38.1
+    },
+    {
+      "window_id": 1,
+      "train_start": "2025-02-01",
+      "train_end": "2025-04-01",
+      "test_start": "2025-04-01",
+      "test_end": "2025-05-01",
+      "best_params": {
+        "MAX_RSI_14": 30.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.1,
+        "MAX_DRAWDOWN_60D": -15.0
+      },
+      "in_sample_sharpe": 1.21,
+      "oos_sharpe": -0.71,
+      "oos_annual_return": -36.43,
+      "oos_max_drawdown": -12.95,
+      "oos_total_trades": 1,
+      "oos_win_rate": 50.0
+    },
+    {
+      "window_id": 2,
+      "train_start": "2025-03-01",
+      "train_end": "2025-05-01",
+      "test_start": "2025-05-01",
+      "test_end": "2025-06-01",
+      "best_params": {
+        "MAX_RSI_14": 30.0,
+        "MAX_RSI_6": 20.0,
+        "MAX_BB_POSITION": 0.1,
+        "MAX_DRAWDOWN_60D": -15.0
+      },
+      "in_sample_sharpe": -1.15,
+      "oos_sharpe": -0.21,
+      "oos_annual_return": -1.55,
+      "oos_max_drawdown": -2.34,
+      "oos_total_trades": 1,
+      "oos_win_rate": 38.89
+    }
+  ]
+}

@@ -8,7 +8,7 @@ Headless 浏览器冒烟测试
   4. /strategies        策略列表
 
 对每个页面：
-  - 截图保存到 output/smoketest_<page>.png
+  - 截图保存到 screenshots/smoketest/<page>.png
   - 捕获 console 错误 / 页面错误 / 失败请求
   - 等待 ECharts canvas 实际绘制（data-zr-dom-id 出现）
   - 检测关键 DOM 元素是否存在
@@ -27,7 +27,9 @@ from pathlib import Path
 
 from playwright.async_api import async_playwright
 
-OUT_DIR = Path("output")
+ROOT = Path(__file__).resolve().parent.parent
+OUT_DIR = ROOT / "screenshots" / "smoketest"
+OUT_DIR.mkdir(parents=True, exist_ok=True)
 OUT_DIR.mkdir(exist_ok=True)
 
 PAGES = [
