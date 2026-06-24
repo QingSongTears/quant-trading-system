@@ -800,27 +800,8 @@ async def api_simulate_run(body: dict):
 @router.get("/simulate/positions")
 async def api_simulate_positions(run_id: str = Query(...)):
     """获取持仓状态（运行中或已完成）"""
-    from pathlib import Path; import sqlite3
-    db = Path(__file__).resolve().parent.parent.parent.parent / "database" / "quant.db"
-    conn = sqlite3.connect(str(db))
-    rows = conn.execute(
-        "SELECT DISTINCT code FROM simulation_trades WHERE run_id=? AND direction='BUY'"
-        " AND code NOT IN (SELECT code FROM simulation_trades WHERE run_id=? AND direction='SELL')",
-        (run_id, run_id)
-    ).fetchall()
-    positions = []
-    for r in rows:
-        entry = conn.execute(
-            "SELECT entry_date, entry_price, entry_size FROM simulation_trades "
-            "WHERE run_id=? AND code=? AND direction='BUY' ORDER BY entry_date DESC LIMIT 1",
-            (run_id, r[0])
-        ).fetchone()
-        if entry:
-            positions.append({
-                "code": r[0], "entry_date": entry[0],
-                "entry_price": entry[1], "size": entry[2],
-            })
-    return {"positions": positions}
+    from src.data import data_mgr
+    return {"positions": data_mgr.simulation.get_positions(run_id)}
 
 
 @router.get("/simulate/trades")
@@ -830,64 +811,29 @@ async def api_simulate_trades(
     page_size: int = Query(50, ge=1, le=200),
 ):
     """获取交易明细"""
-    from pathlib import Path
-    db = Path(__file__).resolve().parent.parent.parent.parent / "database" / "quant.db"
-    import sqlite3
-    conn = sqlite3.connect(str(db))
-    conn.row_factory = sqlite3.Row
-    offset = (page - 1) * page_size
-    rows = conn.execute(
-        "SELECT * FROM simulation_trades WHERE run_id=? ORDER BY exit_date DESC LIMIT ? OFFSET ?",
-        (run_id, page_size, offset)
-    ).fetchall()
-    total = conn.execute(
-        "SELECT COUNT(*) FROM simulation_trades WHERE run_id=?", (run_id,)
-    ).fetchone()[0]
-    columns = [d[1] for d in conn.execute("PRAGMA table_info(simulation_trades)").fetchall()]
-    trades = [dict(zip(columns, r)) for r in rows]
-    return {"total": total, "page": page, "page_size": page_size, "trades": trades}
+    from src.data import data_mgr
+    return data_mgr.simulation.get_trades(run_id, page=page, page_size=page_size)
 
 
 @router.get("/simulate/performance")
 async def api_simulate_performance(run_id: str = Query(...)):
     """获取绩效指标"""
-    from pathlib import Path; import sqlite3
-    db = Path(__file__).resolve().parent.parent.parent.parent / "database" / "quant.db"
-    conn = sqlite3.connect(str(db))
-    conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        "SELECT * FROM simulation WHERE run_id=?", (run_id,)
-    ).fetchone()
-    if not row:
+    from src.data import data_mgr
+    perf = data_mgr.simulation.get_performance(run_id)
+    if not perf:
         raise HTTPException(404, f"run_id {run_id} 不存在")
-    columns = [d[1] for d in conn.execute("PRAGMA table_info(simulation)").fetchall()]
-    return dict(zip(columns, row))
+    return perf
 
 
 @router.get("/simulate/list")
 async def api_simulate_list(limit: int = Query(20, ge=1, le=100)):
     """列出所有模拟运行记录"""
-    from pathlib import Path; import sqlite3
-    db = Path(__file__).resolve().parent.parent.parent.parent / "database" / "quant.db"
-    conn = sqlite3.connect(str(db))
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT run_id, model, status, start_date, end_date, total_return, "
-        "total_trades, win_rate, initial_capital, final_capital, created_at "
-        "FROM simulation ORDER BY created_at DESC LIMIT ?", (limit,)
-    ).fetchall()
-    return {"simulations": [dict(r) for r in rows]}
+    from src.data import data_mgr
+    return {"simulations": data_mgr.simulation.list_runs(limit=limit)}
 
 
 @router.get("/simulate/equity")
 async def api_simulate_equity(run_id: str = Query(...)):
     """获取净值曲线"""
-    from pathlib import Path; import sqlite3
-    db = Path(__file__).resolve().parent.parent.parent.parent / "database" / "quant.db"
-    conn = sqlite3.connect(str(db))
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT date, capital, position_value, total FROM simulation_equity "
-        "WHERE run_id=? ORDER BY date", (run_id,)
-    ).fetchall()
-    return {"equity": [dict(r) for r in rows]}
+    from src.data import data_mgr
+    return {"equity": data_mgr.simulation.get_equity(run_id)}

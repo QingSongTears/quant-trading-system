@@ -6,12 +6,13 @@
 
 from __future__ import annotations
 import json
-import sqlite3
 import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Optional
+
+from sqlalchemy import text
 
 import pandas as pd
 
@@ -25,11 +26,8 @@ from .trading.stop_loss import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-DB_PATH = PROJECT_ROOT / "database" / "quant.db"
-
 
 # ── 数据结构 ──────────────────────────────────────────
-
 
 @dataclass
 class Signal:
@@ -40,7 +38,6 @@ class Signal:
     price: float       # 信号发出时价格
     confidence: float  # 0-1
     source: str        # 模型名称
-
 
 @dataclass
 class TradeRecord:
@@ -64,7 +61,6 @@ class TradeRecord:
     holding_days: int = 0
     slippage: float = 0.0
 
-
 @dataclass
 class Position:
     """当前持仓状态"""
@@ -78,7 +74,6 @@ class Position:
     highest_price: float = 0.0
     current_price: float = 0.0
     profit_pct: float = 0.0
-
 
 @dataclass
 class SimulationResult:
@@ -100,9 +95,7 @@ class SimulationResult:
     profit_factor: float = 0.0
     error: str = ""
 
-
 # ── 信号适配器 ──────────────────────────────────────
-
 
 class SignalAdapter:
     """从 DB 获取信号——适配现有回测结果和预测数据"""
@@ -118,22 +111,17 @@ class SignalAdapter:
         
         strategy_id: 1-7 对应7个策略
         """
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
-        
-        # 从 backtest_result 获取该策略的信号
-        # 使用 equity_curve 中的持仓变化推断买卖信号
-        rows = conn.execute(
+        from src.data import data_mgr
+        rows = data_mgr.query(
             """SELECT stock_code, start_date, end_date, total_return,
                       sharpe_ratio, win_rate, total_trades, equity_curve
                FROM backtest_result
-               WHERE strategy_id=? AND stock_code=?
-                 AND start_date >= ? AND end_date <= ?
+               WHERE strategy_id=:sid AND stock_code=:code
+                 AND start_date >= :start AND end_date <= :end
                ORDER BY start_date
                LIMIT 1""",
-            (strategy_id, code, start_date, end_date)
-        ).fetchall()
-        conn.close()
+            {"sid": strategy_id, "code": code, "start": start_date, "end": end_date},
+        )
 
         if not rows:
             return []
@@ -170,9 +158,7 @@ class SignalAdapter:
             price=0, confidence=0, source=f"strategy_{strategy_id}",
         )
 
-
 # ── 模拟交易引擎 ──────────────────────────────────────
-
 
 class Simulator:
     """模拟交易引擎"""
@@ -218,12 +204,8 @@ class Simulator:
         )
 
         try:
-            conn = sqlite3.connect(str(DB_PATH))
-
             for code in codes:
-                self._simulate_one(code, start_date, end_date, strategy_id, conn)
-
-            conn.close()
+                self._simulate_one(code, start_date, end_date, strategy_id)
 
             # 计算绩效
             self._calc_performance(result)
@@ -239,16 +221,17 @@ class Simulator:
 
     def _simulate_one(
         self, code: str, start: str, end: str,
-        strategy_id: int, conn: sqlite3.Connection,
+        strategy_id: int,
     ):
         """模拟单只股票"""
-        rows = conn.execute(
+        from src.data import data_mgr
+        rows = data_mgr.query(
             """SELECT trade_date, open, high, low, close, pct_change
                FROM daily_price
-               WHERE code=? AND trade_date>=? AND trade_date<=?
+               WHERE code=:code AND trade_date>=:start AND trade_date<=:end
                ORDER BY trade_date""",
-            (code, start, end)
-        ).fetchall()
+            {"code": code, "start": start, "end": end},
+        )
 
         if len(rows) < 20:
             return
@@ -257,12 +240,12 @@ class Simulator:
         pending_sell = False  # T+1: 今日买入标记，次日才能卖
 
         for i, row in enumerate(rows):
-            trade_date = row[0]
-            open_p = row[1] or 0
-            high = row[2] or 0
-            low = row[3] or 0
-            close = row[4] or 0
-            pct_chg = row[5] or 0
+            trade_date = row["trade_date"]
+            open_p = row.get("open") or 0
+            high = row.get("high") or 0
+            low = row.get("low") or 0
+            close = row.get("close") or 0
+            pct_chg = row.get("pct_change") or 0
 
             prev_close = close / (1 + pct_chg / 100) if pct_chg != 0 else close
             atr = get_stock_atr(code, trade_date) or (close * 0.03)  # 兜底ATR
@@ -426,10 +409,15 @@ class Simulator:
                 result.profit_factor = round(total_win / total_loss, 2)
 
     def _save_to_db(self, result: SimulationResult):
-        """保存结果到 DB"""
-        conn = sqlite3.connect(str(DB_PATH))
+        """保存结果到 DB (用 SQLAlchemy engine, 统一连接管理)"""
+        from ..db.engine import get_engine
+        from sqlalchemy import text as _t
+
+        engine = get_engine()
+
         # 建表（如不存在）
-        conn.execute("""
+        _DDL = [
+            """
             CREATE TABLE IF NOT EXISTS simulation (
                 run_id TEXT PRIMARY KEY,
                 model TEXT, config TEXT, status TEXT,
@@ -441,8 +429,8 @@ class Simulator:
                 profit_factor REAL, error TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        conn.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS simulation_trades (
                 trade_id TEXT PRIMARY KEY,
                 run_id TEXT, code TEXT, direction TEXT,
@@ -454,53 +442,114 @@ class Simulator:
                 net_pnl REAL, holding_days INTEGER,
                 slippage REAL
             )
-        """)
-        conn.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS simulation_equity (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 run_id TEXT, date TEXT, code TEXT,
                 capital REAL, position_value REAL,
                 total REAL
             )
-        """)
-        conn.commit()
+            """,
+        ]
+        with engine.connect() as conn:
+            for ddl in _DDL:
+                conn.execute(_t(ddl))
+            conn.commit()
 
-        # 写入结果
-        conn.execute(
-            """INSERT OR REPLACE INTO simulation
-               (run_id, model, config, status, start_date, end_date,
-                initial_capital, final_capital, total_return, annual_return,
-                sharpe_ratio, max_drawdown, win_rate, total_trades, profit_factor, error)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (result.run_id, result.model, json.dumps(result.config), result.status,
-             result.start_date, result.end_date,
-             result.initial_capital, result.final_capital,
-             result.total_return, result.annual_return,
-             result.sharpe_ratio, result.max_drawdown,
-             result.win_rate, result.total_trades,
-             result.profit_factor, result.error)
-        )
-
-        # 写入交易记录
-        for t in self.trades:
+        with engine.connect() as conn:
+            # 写入 simulation 主表
             conn.execute(
-                """INSERT OR REPLACE INTO simulation_trades
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (t.trade_id, t.run_id, t.code, t.direction, t.signal_source,
-                 t.entry_date, t.entry_price, t.entry_size,
-                 t.exit_date, t.exit_price, t.exit_reason,
-                 t.pnl, t.pnl_pct, t.commission, t.stamp_tax,
-                 t.net_pnl, t.holding_days, t.slippage)
+                _t(
+                    """INSERT OR REPLACE INTO simulation
+                       (run_id, model, config, status, start_date, end_date,
+                        initial_capital, final_capital, total_return, annual_return,
+                        sharpe_ratio, max_drawdown, win_rate, total_trades,
+                        profit_factor, error)
+                       VALUES (:run_id, :model, :config, :status, :start_date,
+                               :end_date, :initial_capital, :final_capital,
+                               :total_return, :annual_return, :sharpe_ratio,
+                               :max_drawdown, :win_rate, :total_trades,
+                               :profit_factor, :error)"""
+                ),
+                {
+                    "run_id": result.run_id,
+                    "model": result.model,
+                    "config": json.dumps(result.config),
+                    "status": result.status,
+                    "start_date": result.start_date,
+                    "end_date": result.end_date,
+                    "initial_capital": result.initial_capital,
+                    "final_capital": result.final_capital,
+                    "total_return": result.total_return,
+                    "annual_return": result.annual_return,
+                    "sharpe_ratio": result.sharpe_ratio,
+                    "max_drawdown": result.max_drawdown,
+                    "win_rate": result.win_rate,
+                    "total_trades": result.total_trades,
+                    "profit_factor": result.profit_factor,
+                    "error": result.error,
+                },
             )
 
-        # 写入净值曲线（抽样：每5条存1条）
-        for i, pt in enumerate(self.equity_curve):
-            if i % 5 == 0:
+            # 写入交易记录
+            for t in self.trades:
                 conn.execute(
-                    "INSERT INTO simulation_equity (run_id, date, code, capital, position_value, total) VALUES (?,?,?,?,?,?)",
-                    (result.run_id, pt["date"], pt["code"],
-                     pt["capital"], pt["position_value"], pt["total"])
+                    _t(
+                        """INSERT OR REPLACE INTO simulation_trades
+                           (trade_id, run_id, code, direction, signal_source,
+                            entry_date, entry_price, entry_size,
+                            exit_date, exit_price, exit_reason,
+                            pnl, pnl_pct, commission, stamp_tax,
+                            net_pnl, holding_days, slippage)
+                           VALUES (:trade_id, :run_id, :code, :direction,
+                                   :signal_source, :entry_date, :entry_price,
+                                   :entry_size, :exit_date, :exit_price,
+                                   :exit_reason, :pnl, :pnl_pct, :commission,
+                                   :stamp_tax, :net_pnl, :holding_days,
+                                   :slippage)"""
+                    ),
+                    {
+                        "trade_id": t.trade_id,
+                        "run_id": t.run_id,
+                        "code": t.code,
+                        "direction": t.direction,
+                        "signal_source": t.signal_source,
+                        "entry_date": t.entry_date,
+                        "entry_price": t.entry_price,
+                        "entry_size": t.entry_size,
+                        "exit_date": t.exit_date,
+                        "exit_price": t.exit_price,
+                        "exit_reason": t.exit_reason,
+                        "pnl": t.pnl,
+                        "pnl_pct": t.pnl_pct,
+                        "commission": t.commission,
+                        "stamp_tax": t.stamp_tax,
+                        "net_pnl": t.net_pnl,
+                        "holding_days": t.holding_days,
+                        "slippage": t.slippage,
+                    },
                 )
 
-        conn.commit()
-        conn.close()
+            # 写入净值曲线（抽样：每5条存1条）
+            for i, pt in enumerate(self.equity_curve):
+                if i % 5 == 0:
+                    conn.execute(
+                        _t(
+                            "INSERT INTO simulation_equity "
+                            "(run_id, date, code, capital, position_value, total) "
+                            "VALUES (:run_id, :date, :code, :capital, "
+                            ":position_value, :total)"
+                        ),
+                        {
+                            "run_id": result.run_id,
+                            "date": pt["date"],
+                            "code": pt["code"],
+                            "capital": pt["capital"],
+                            "position_value": pt["position_value"],
+                            "total": pt["total"],
+                        },
+                    )
+
+            conn.commit()
+
