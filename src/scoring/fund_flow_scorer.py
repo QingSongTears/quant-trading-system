@@ -131,7 +131,9 @@ class FundFlowScorer(BaseScorer):
             result = _sp.run(
                 ["npx", "-y", "westock-data-clawhub@1.0.4", "profile", wscode],
                 capture_output=True, text=True, timeout=20,
-                env={**__import__('os').environ, "NODE_OPTIONS": ""}
+                env={**__import__('os').environ, "NODE_OPTIONS": ""},
+                # Windows: 隐藏 npx.cmd 弹出的黑色 cmd 窗口
+                creationflags=0x08000000 if __import__('sys').platform == "win32" else 0,
             )
             if result.returncode == 0:
                 lines = result.stdout.strip().split("\n")

@@ -47,14 +47,16 @@ def fetch_day_klines(date: str, codes6_market: list[tuple[str, str]]) -> list[di
     """westock kline 单股调用拉一天, 自动跳过无数据的"""
     import time as _t
     rows_all = []
-    BATCH = 1  # kline 单股调用 (批量会丢 symbol 列)
+    # Windows CREATE_NO_WINDOW (0x08000000) 防止 npx.cmd 弹黑色 cmd 窗口
+    CREATE_NO_WINDOW = 0x08000000
     for i, (code6, mkt) in enumerate(codes6_market):
         ws = f"{mkt}{code6}"
         try:
             r = subprocess.run(
                 ["npx.cmd", "-y", "westock-data-clawhub@1.0.4",
                  "kline", ws, "--period", "day", "--start", date, "--end", date],
-                capture_output=True, text=True, timeout=30, shell=False
+                capture_output=True, text=True, timeout=30, shell=False,
+                creationflags=CREATE_NO_WINDOW if sys.platform == "win32" else 0,
             )
         except subprocess.TimeoutExpired:
             continue
@@ -62,15 +64,14 @@ def fetch_day_klines(date: str, codes6_market: list[tuple[str, str]]) -> list[di
             continue
         parsed = parse_markdown_table(r.stdout)
         for row in parsed:
-            # 字段标准化
             row["code6"] = code6
             row["market"] = mkt
             row["trade_date"] = date
             rows_all.append(row)
         if (i + 1) % 200 == 0:
             elapsed = _t.time() - t0
-            rate = (i + 1) / elapsed
-            eta = (len(codes6_market) - i - 1) / rate
+            rate = (i + 1) / elapsed if elapsed else 0
+            eta = (len(codes6_market) - i - 1) / rate if rate else 0
             logger.info("   %s 进度 %d/%d 累计 %d  %.1f 股/s  ETA %.1fmin",
                         date, i + 1, len(codes6_market), len(rows_all), rate, eta / 60)
     return rows_all
