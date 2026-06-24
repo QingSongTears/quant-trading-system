@@ -24,8 +24,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 
 from sqlalchemy import text
 
-from ..db.engine import get_engine
-from ..gateway import BarData, ContractData
+from ...db.engine import get_engine
+from ...gateway import BarData, ContractData
 from .base import (
     BaseDatafeed,
     Interval,
@@ -187,7 +187,7 @@ class LocalDatafeed(BaseDatafeed):
     def get_stock_list(self) -> List[ContractData]:
         if not self.inited:
             self.init()
-        from ..gateway import ContractData  # 局部避免循环
+        from ...gateway import ContractData  # 局部避免循环
 
         with self._engine.connect() as conn:
             rows = conn.execute(text(_DB.SELECT_STOCK_LIST)).fetchall()

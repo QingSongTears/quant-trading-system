@@ -9,7 +9,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 if TYPE_CHECKING:
-    from ..gateway import BarData, ContractData
+    from ...gateway import BarData, ContractData
 
 
 logger = logging.getLogger(__name__)
@@ -169,7 +169,8 @@ class BaseDatafeed(metaclass=ABCMeta):
 
         子类可覆盖 (BaoStock 走 bs.query_trade_dates 更准)
         """
-        from ..data.repository import DataRepository
+        # 走 DataManager 统一入口 (2026-06-24, 避免循环 + 路径硬编码)
+        from ...models.repository import DataRepository
         repo = DataRepository()
         with repo.engine.connect() as conn:
             from sqlalchemy import text
