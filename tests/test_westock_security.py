@@ -139,8 +139,9 @@ class TestGetKlineValidation:
         # 第一个位置参数应该是 list
         cmd = captured["args"][0]
         assert isinstance(cmd, list), f"argv 必须是 list,得到 {type(cmd).__name__}"
-        # 第一个元素是 npx
-        assert cmd[0] == "npx"
+        # 第一个元素是 npx (可能是完整路径如 C:\...\npx.CMD)
+        import os
+        assert os.path.basename(cmd[0]).lower().startswith("npx"), f"首元素应为 npx, 得到 {cmd[0]}"
         # 不应该含 shell 元字符
         joined = " ".join(str(x) for x in cmd)
         assert ";" not in joined

@@ -121,11 +121,9 @@ def setup(
         )
         _sink_ids.append(sink_id)
 
-    # 6. 添加文件 sink (按日切分)
+    # 6. 添加文件 sink (按日切分 + 自动压缩旧日志)
     if file_log:
-        today = datetime.now().strftime("%Y%m%d")
-        filename = f"quant_{today}.log"
-        file_path = log_path / filename
+        file_path = log_path / "quant_{time:YYYYMMDD}.log"
 
         sink_id = logger.add(
             str(file_path),
@@ -134,7 +132,8 @@ def setup(
             encoding="utf-8",
             rotation="00:00",      # 每天 0 点切分新文件
             retention="30 days",   # 保留 30 天
-            enqueue=False,         # 同步写, 简单可靠 (A 股场景不需要异步)
+            compression="zip",     # 旧日志自动压缩，节省磁盘空间
+            enqueue=True,          # 线程安全写入（多线程回测/下载场景）
         )
         _sink_ids.append(sink_id)
 
@@ -232,3 +231,19 @@ def bridge_stdlib_logging() -> None:
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(logging.INFO)
+
+
+# ── 优雅关闭 ──────────────────────────
+
+
+def shutdown() -> None:
+    """
+    优雅关闭日志系统，确保所有缓冲区日志写入磁盘。
+    在 graceful shutdown 时调用（如 SIGINT/SIGTERM 处理中）。
+    """
+    try:
+        logger.complete()  # 等待所有 enqueue 的日志写完
+        logger.remove()    # 移除所有 sink
+        logger.info("日志系统已关闭")
+    except Exception:
+        pass  # 关闭阶段不应因日志问题阻塞退出

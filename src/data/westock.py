@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 import subprocess
 import sys
 from datetime import date, datetime
@@ -28,7 +29,27 @@ from datetime import date, datetime
 logger = logging.getLogger(__name__)
 
 WESTOCK_PKG = "westock-data-clawhub@1.0.4"
-_NPM_BIN = ["npx", "-y", WESTOCK_PKG]
+
+
+def _resolve_npx() -> list[str]:
+    """
+    动态定位 npx 可执行文件，兼容 Windows (npx.cmd) 和 Unix (npx)。
+    找不到时返回含清晰错误提示的 fallback，让后续 subprocess.run 给出有意义的报错。
+    """
+    for name in ("npx", "npx.cmd"):
+        path = shutil.which(name)
+        if path:
+            return [path, "-y", WESTOCK_PKG]
+    # 找不到 npx — 返回默认值，后续调用时由 subprocess 抛出 FileNotFoundError
+    # 但这里先记录一条警告日志，方便排查
+    logger.warning(
+        "未找到 npx 可执行文件。请确认 Node.js 已安装且在 PATH 中。"
+        "Windows 用户可从 cmd.exe 运行 'where npx' 确认。"
+    )
+    return ["npx", "-y", WESTOCK_PKG]
+
+
+_NPM_BIN = _resolve_npx()
 
 # ===== 入参白名单(防止命令注入) =====
 # 股票代码: sh/sz/bj + 6 位数字,逗号分隔多个

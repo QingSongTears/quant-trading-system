@@ -19,11 +19,13 @@ templates = get_templates()
 
 # 注入全局配置到模板
 def _get_global_context() -> dict:
+    from ..auth import get_api_key
     config = get_config()
     return {
         "app_name": config["web"]["title"],
         "ai_disclaimer": config["ai_disclaimer"],
         "cdn": config["web"]["cdn"],
+        "api_key": get_api_key(),
     }
 
 
@@ -194,7 +196,9 @@ async def backtest_detail(request: Request, result_id: int):
     repo = DataRepository()
     result = repo.get_backtest_result(result_id)
     if not result:
-        return HTMLResponse("<h1>404 - 回测记录不存在</h1>", status_code=404)
+        # 记录不存在 → 友好降级：跳转列表页（用户能看到最新记录）
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/backtest", status_code=302)
 
     # 解析 JSON 字段
     equity_curve = json.loads(result.equity_curve) if result.equity_curve else []

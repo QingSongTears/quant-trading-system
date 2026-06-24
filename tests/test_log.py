@@ -81,6 +81,7 @@ def test_setup_console_only_disables_file(tmp_path, clean_log_state):
 def test_setup_file_log_creates_file(tmp_path, clean_log_state):
     setup(log_dir=str(tmp_path), level="INFO", file_log=True)
     logger.info("test message")
+    loguru_logger.complete()  # flush async queue (enqueue=True)
 
     files = list(tmp_path.glob("quant_*.log"))
     assert len(files) == 1
@@ -92,6 +93,7 @@ def test_setup_file_log_format_includes_source(tmp_path, clean_log_state):
     setup(log_dir=str(tmp_path), level="INFO", file_log=True)
     log = get_logger("test.mod")
     log.info("hello source")
+    loguru_logger.complete()  # flush async queue (enqueue=True)
 
     content = (tmp_path / "quant_20260624.log").read_text(encoding="utf-8")
     assert "test.mod" in content
@@ -216,6 +218,7 @@ def test_file_log_writes_with_utf8_encoding(tmp_path, clean_log_state):
     setup(log_dir=str(tmp_path), level="INFO", file_log=True)
     log = get_logger("test.utf8")
     log.info("测试中文日志")
+    loguru_logger.complete()  # flush async queue (enqueue=True)
 
     content = (tmp_path / "quant_20260624.log").read_text(encoding="utf-8")
     assert "测试中文日志" in content
@@ -241,6 +244,7 @@ def test_end_to_end_log_writes(tmp_path, clean_log_state):
     log.info("info msg")
     log.warning("warn msg")
     log.error("error msg")
+    loguru_logger.complete()  # flush async queue (enqueue=True)
 
     files = list(tmp_path.glob("quant_*.log"))
     assert len(files) == 1

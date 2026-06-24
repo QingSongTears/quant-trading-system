@@ -15,6 +15,7 @@ FastAPI Web 应用
 """
 from __future__ import annotations
 import logging
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -44,7 +45,8 @@ def get_templates() -> Jinja2Templates:
         _shared_templates.env.globals["abs"] = abs  # 同时支持函数调用 abs(...)
     return _shared_templates
 
-# 全局下载状态管理器
+# 全局下载状态管理器（线程安全）
+_download_lock = threading.Lock()
 download_status = {
     "running": False,
     "mode": None,
@@ -58,17 +60,25 @@ download_status = {
 
 
 def get_download_status() -> dict:
-    """获取全局下载状态（线程安全需考虑，当前简化实现）"""
-    return dict(download_status)
+    """获取全局下载状态（线程安全）"""
+    with _download_lock:
+        return dict(download_status)
+
+
+def update_download_status(updates: dict):
+    """更新下载状态（线程安全）"""
+    with _download_lock:
+        download_status.update(updates)
 
 
 def reset_download_status():
     """重置下载状态"""
-    download_status.update({
-        "running": False, "mode": None, "progress": 0,
-        "total": 0, "current": "", "error": None,
-        "result": None, "started_at": None,
-    })
+    with _download_lock:
+        download_status.update({
+            "running": False, "mode": None, "progress": 0,
+            "total": 0, "current": "", "error": None,
+            "result": None, "started_at": None,
+        })
 
 
 def create_app() -> FastAPI:
