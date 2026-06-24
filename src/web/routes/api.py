@@ -617,9 +617,14 @@ async def get_strategy_compare(
 
     数据接口统一 (PR-fix 2026-06-24):
     - 如果传 stock_code,返回该股票的所有模型摘要 (与 /api/models/summary 一致)
-    - 如果不传,返回所有最近回测结果 (按 strategy_name 分组)
+    - 如果不传,返回全量回测的**策略聚合视图**(适配 dashboard.html render 函数):
+      strategies: [{name, cnt, flat_count, win_count, avg_return,
+                    avg_sharpe, avg_win_rate, best_return, worst_return, avg_trades}]
+      total_records: int
+      total_stocks: int (用于覆盖卡片)
     """
     from ...config import load_strategies
+    from collections import defaultdict
 
     repo = DataRepository()
 
@@ -630,25 +635,61 @@ async def get_strategy_compare(
         summaries = repo.get_models_summary_for_stock(models, stock_code)
         return {"success": True, "data": summaries}
 
-    # 无 stock_code: 返回所有策略的最新回测
-    results = repo.get_recent_backtests(limit=100)
-    data = []
+    # 无 stock_code: 聚合按策略分组的全量回测
+    results = repo.get_recent_backtests(limit=500)
+
+    # 按 strategy_name 分组聚合
+    by_strategy: dict = defaultdict(list)
     for r in results:
-        mdd = r.max_drawdown
-        if mdd is not None and mdd > 0:
-            mdd = -mdd
-        data.append({
-            "id": r.id,
-            "strategy_name": r.strategy.name if r.strategy else "未知",
-            "stock_code": r.stock_code,
-            "stock_name": r.stock_name,
-            "total_return": _safe_float(r.total_return),
-            "sharpe_ratio": _safe_float(r.sharpe_ratio),
-            "max_drawdown": mdd,
-            "win_rate": _safe_float(r.win_rate),
-            "created_at": str(r.created_at),
+        name = r.strategy.name if r.strategy else "未知"
+        by_strategy[name].append(r)
+
+    strategies_agg = []
+    for name, rows in by_strategy.items():
+        returns = [r.total_return for r in rows if r.total_return is not None]
+        sharpes = [r.sharpe_ratio for r in rows if r.sharpe_ratio is not None]
+        win_rates = [r.win_rate for r in rows if r.win_rate is not None]
+        trade_counts = [r.total_trades for r in rows if r.total_trades is not None]
+
+        cnt = len(rows)
+        # flat_count: 收益接近 0 的回测数(认为无意义)
+        flat_count = sum(1 for r in returns if abs(r) < 0.5)
+        active = cnt - flat_count
+        win_count = sum(1 for r in returns if r > 0)
+
+        avg_return = round(sum(returns) / len(returns), 2) if returns else 0
+        avg_sharpe = round(sum(sharpes) / len(sharpes), 2) if sharpes else 0
+        avg_win_rate = round(sum(win_rates) / len(win_rates), 2) if win_rates else 0
+        best_return = round(max(returns), 2) if returns else 0
+        worst_return = round(min(returns), 2) if returns else 0
+        avg_trades = round(sum(trade_counts) / len(trade_counts), 1) if trade_counts else 0
+
+        strategies_agg.append({
+            "name": name,
+            "cnt": cnt,
+            "flat_count": flat_count,
+            "win_count": win_count,
+            "avg_return": avg_return,
+            "avg_sharpe": avg_sharpe,
+            "avg_win_rate": avg_win_rate,
+            "best_return": best_return,
+            "worst_return": worst_return,
+            "avg_trades": avg_trades,
         })
-    return {"success": True, "data": data}
+
+    # 按 avg_return 降序排
+    strategies_agg.sort(key=lambda x: x["avg_return"], reverse=True)
+
+    # 聚合统计
+    total_stocks = len({r.stock_code for r in results if r.stock_code})
+
+    return {
+        "success": True,
+        "total_records": len(results),
+        "total_stocks": total_stocks,
+        "strategies": strategies_agg,
+        "data": strategies_agg,  # 别名 (兼容其他可能的调用方)
+    }
 
 
 # ===== 模型汇总 API =====
@@ -965,12 +1006,12 @@ async def api_simulate_run(body: dict):
 @router.get("/simulate/positions")
 async def api_simulate_positions(run_id: str = Query(...)):
     """获取持仓状态（运行中或已完成）"""
+    from src.data import data_mgr
     try:
-        from src.data import data_mgr
         return {"positions": data_mgr.simulation.get_positions(run_id)}
     except Exception as e:
-        logger.error("simulate/positions 失败: %s\n%s", e, traceback.format_exc())
-        raise HTTPException(status_code=500, detail="查询持仓失败")
+        logger.warning("simulate/positions 失败 (返回空): %s", e)
+        return {"positions": [], "available": False}
 
 
 @router.get("/simulate/trades")
@@ -980,47 +1021,50 @@ async def api_simulate_trades(
     page_size: int = Query(50, ge=1, le=200),
 ):
     """获取交易明细"""
+    from src.data import data_mgr
     try:
-        from src.data import data_mgr
         return data_mgr.simulation.get_trades(run_id, page=page, page_size=page_size)
     except Exception as e:
-        logger.error("simulate/trades 失败: %s\n%s", e, traceback.format_exc())
-        raise HTTPException(status_code=500, detail="查询交易明细失败")
+        logger.warning("simulate/trades 失败 (返回空): %s", e)
+        return {"trades": [], "total": 0, "page": page, "page_size": page_size, "available": False}
 
 
 @router.get("/simulate/performance")
 async def api_simulate_performance(run_id: str = Query(...)):
     """获取绩效指标"""
+    from src.data import data_mgr
     try:
-        from src.data import data_mgr
         perf = data_mgr.simulation.get_performance(run_id)
         if not perf:
-            raise HTTPException(404, f"run_id {run_id} 不存在")
+            return {"available": False, "reason": f"run_id {run_id} 不存在"}
         return perf
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error("simulate/performance 失败: %s\n%s", e, traceback.format_exc())
-        raise HTTPException(status_code=500, detail="查询绩效失败")
+        logger.warning("simulate/performance 失败 (返回空): %s", e)
+        return {"available": False, "reason": str(e)[:100]}
 
 
 @router.get("/simulate/list")
 async def api_simulate_list(limit: int = Query(20, ge=1, le=100)):
-    """列出所有模拟运行记录"""
+    """列出所有模拟运行记录
+
+    数据接口统一: simulation 表不存在或为空时,返回空列表而非 500。
+    这样前端 simulate.html 在 DB 未初始化时也能正常加载页面。
+    """
+    from src.data import data_mgr
     try:
-        from src.data import data_mgr
         return {"simulations": data_mgr.simulation.list_runs(limit=limit)}
     except Exception as e:
-        logger.error("simulate/list 失败: %s\n%s", e, traceback.format_exc())
-        raise HTTPException(status_code=500, detail="查询模拟列表失败")
+        # 表不存在 (OperationalError) 或查询失败 → 返回空列表
+        logger.warning("simulate/list 失败 (返回空列表): %s", e)
+        return {"simulations": [], "available": False, "reason": str(e)[:100]}
 
 
 @router.get("/simulate/equity")
 async def api_simulate_equity(run_id: str = Query(...)):
     """获取净值曲线"""
+    from src.data import data_mgr
     try:
-        from src.data import data_mgr
-        return {"equity": data_mgr.simulation.get_equity(run_id)}
+        return {"equity": data_mgr.simulation.get_equity(run_id), "available": True}
     except Exception as e:
-        logger.error("simulate/equity 失败: %s\n%s", e, traceback.format_exc())
-        raise HTTPException(status_code=500, detail="查询净值曲线失败")
+        logger.warning("simulate/equity 失败 (返回空): %s", e)
+        return {"equity": [], "available": False}
