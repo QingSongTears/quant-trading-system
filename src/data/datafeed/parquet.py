@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 
 import polars as pl
 
-from ..gateway import BarData, ContractData
+from ...gateway import BarData, ContractData
 from .base import (
     BaseDatafeed,
     Interval,
