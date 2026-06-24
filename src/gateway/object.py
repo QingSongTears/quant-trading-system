@@ -209,6 +209,11 @@ class TradeData(BaseData):
     def vt_orderid(self) -> str:
         return f"{self.gateway_name}.{self.orderid}"
 
+    @property
+    def vt_tradeid(self) -> str:
+        """vnpy 风格 vt_tradeid: gateway.tradeid (2026-06-24 补齐)"""
+        return f"{self.gateway_name}.{self.tradeid}"
+
 
 # ── 资金 / 持仓 ──────────────────────────────
 
@@ -220,14 +225,24 @@ class PositionData(BaseData):
     exchange: str = ""
     direction: Optional[Direction] = None
 
-    volume: float = 0.0          # 持仓数量 (股)
-    frozen: float = 0.0          # 冻结数量
+    volume: float = 0.0          # 持仓数量 (股, 含今昨仓)
+    frozen: float = 0.0          # 冻结数量 (挂单未成交)
+    yd_volume: float = 0.0       # 昨仓数量 (T+1 关键: 仅昨仓可卖, 2026-06-24)
+    td_volume: float = 0.0       # 今仓数量 (volume - yd_volume, OmsEngine 维护)
     price: float = 0.0           # 平均成本
     pnl: float = 0.0             # 浮动盈亏
 
     @property
     def vt_symbol(self) -> str:
         return f"{self.symbol}.{self.exchange}"
+
+    @property
+    def available_volume(self) -> float:
+        """A 股 T+1: 可卖数量 = 昨仓 - 冻结
+
+        简化版: 不区分买入/卖出冻结, 实际券商还区分
+        """
+        return max(0.0, self.yd_volume - self.frozen)
 
 
 @dataclass
