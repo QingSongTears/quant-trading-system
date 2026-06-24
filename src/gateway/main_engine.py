@@ -139,20 +139,31 @@ class MainEngine:
     # ─────────────────────────────────────────
 
     def add_strategy(
-        self, strategy_class: Type["AlphaStrategy"], name: str = "",
+        self,
+        strategy_class: Type["AlphaStrategy"],
+        name: str = "",
+        vt_symbols: List[str] | None = None,
+        setting: Dict[str, Any] | None = None,
     ) -> "AlphaStrategy":
         """
-        添加策略实例
+        添加策略实例 (2026-06-24 修复: 补齐 AlphaStrategy 必需参数)
 
         Args:
             strategy_class: AlphaStrategy 子类
             name: 实例名, 默认使用 strategy_class.__name__
+            vt_symbols: 关注合约列表, 默认 [] (子类 on_init 内可动态 set)
+            setting: 配置字典, 透传给 strategy_class.__init__
 
         Returns:
             策略实例
         """
         instance_name = name or strategy_class.__name__
-        strategy: "AlphaStrategy" = strategy_class(self)
+        strategy: "AlphaStrategy" = strategy_class(
+            self,
+            strategy_name=instance_name,
+            vt_symbols=vt_symbols or [],
+            setting=setting,
+        )
         self.strategies[instance_name] = strategy
         logger.info(f"添加策略: {instance_name}")
         return strategy
