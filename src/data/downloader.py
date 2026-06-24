@@ -18,12 +18,21 @@ from typing import Callable
 import akshare as ak
 import pandas as pd
 from sqlalchemy.orm import Session
-from tqdm import tqdm
 
 from ..config import get_config
 from ..models.repository import DataRepository
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_date(d: str) -> str:
+    """
+    统一日期格式为 YYYYMMDD（无横杠），兼容两种输入:
+    - "2022-06-01" → "20220601"
+    - "20220601"    → "20220601"
+    AKShare 的 stock_zh_a_hist 需要无横杠格式。
+    """
+    return d.replace("-", "")
 
 
 class DataDownloader:
@@ -44,7 +53,7 @@ class DataDownloader:
     def __init__(self):
         config = get_config()
         self.repo = DataRepository()
-        self.start_date = config["data"]["download"]["start_date"]
+        self.start_date = _normalize_date(config["data"]["download"]["start_date"])
         self.interval = config["data"]["download"]["request_interval"]
         self.max_retries = config["data"]["download"]["max_retries"]
         self.timeout = config["data"]["download"]["timeout"]
@@ -96,7 +105,7 @@ class DataDownloader:
         """
         self.progress_callback = progress_callback
         config = get_config()
-        start = config["data"]["download"]["start_date"]
+        start = _normalize_date(config["data"]["download"]["start_date"])
         end = date.today().strftime("%Y%m%d")
 
         # Step 1: 获取股票列表
@@ -206,7 +215,7 @@ class DataDownloader:
                 if latest:
                     start_date_str = (latest + pd.Timedelta(days=1)).strftime("%Y%m%d")
                 else:
-                    start_date_str = get_config()["data"]["download"]["start_date"]
+                    start_date_str = _normalize_date(get_config()["data"]["download"]["start_date"])
 
                 end_date_str = date.today().strftime("%Y%m%d")
 

@@ -8,6 +8,7 @@
 
 import subprocess
 import csv
+import os
 import time
 from pathlib import Path
 import pandas as pd
@@ -30,13 +31,38 @@ def load_codes():
     return codes
 
 
-def run_wes(cmd_str, timeout=120):
-    full = "NODE_OPTIONS='--no-warnings' " + cmd_str
-    r = subprocess.run(
-        full, shell=True,
-        capture_output=True, text=True, timeout=timeout
-    )
-    return r.returncode == 0, r.stdout, r.stderr
+def _get_npx_bin() -> str:
+    """定位 npx 可执行文件，兼容 Windows"""
+    import shutil
+    for name in ("npx", "npx.cmd"):
+        path = shutil.which(name)
+        if path:
+            return path
+    return "npx"  # fallback
+
+
+def _make_env():
+    """构建环境变量字典，抑制 Node.js 警告，兼容 Windows/Unix"""
+    env = os.environ.copy()
+    env["NODE_OPTIONS"] = "--no-warnings"
+    return env
+
+
+def run_wes(argv: list, timeout=120):
+    """执行 WeStock CLI 命令，使用 shell=False + env 参数，兼容 Windows"""
+    CREATE_NO_WINDOW = 0x08000000
+    try:
+        r = subprocess.run(
+            argv, shell=False,
+            capture_output=True, text=True, timeout=timeout,
+            env=_make_env(),
+            creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+        return r.returncode == 0, r.stdout, r.stderr
+    except subprocess.TimeoutExpired:
+        return False, "", "命令超时"
+    except Exception as e:
+        return False, "", str(e)
 
 
 def parse_stdout(stdout):
@@ -71,13 +97,12 @@ def update_margin():
     total = (len(codes) + BATCH - 1) // BATCH
     new_rows = []
 
+    npx = _get_npx_bin()
     for b in range(total):
         chunk = codes[b * BATCH : (b + 1) * BATCH]
-        cmd = (
-            "npx -y westock-data-clawhub@1.0.4 "
-            "margintrade " + ",".join(chunk) + " --date " + DATE
-        )
-        ok, out, err = run_wes(cmd)
+        argv = [npx, "-y", "westock-data-clawhub@1.0.4",
+                "margintrade", ",".join(chunk), "--date", DATE]
+        ok, out, err = run_wes(argv)
         if not ok:
             print(f"  SKIP batch {b+1}: {err[:60]}")
             time.sleep(2)
@@ -127,13 +152,12 @@ def update_block():
     total = (len(codes) + BATCH - 1) // BATCH
     new_rows = []
 
+    npx = _get_npx_bin()
     for b in range(total):
         chunk = codes[b * BATCH : (b + 1) * BATCH]
-        cmd = (
-            "npx -y westock-data-clawhub@1.0.4 "
-            "blocktrade " + ",".join(chunk) + " --date " + DATE
-        )
-        ok, out, err = run_wes(cmd)
+        argv = [npx, "-y", "westock-data-clawhub@1.0.4",
+                "blocktrade", ",".join(chunk), "--date", DATE]
+        ok, out, err = run_wes(argv)
         if not ok:
             print(f"  SKIP batch {b+1}: {err[:60]}")
             time.sleep(2)
@@ -179,8 +203,9 @@ def update_lhb():
     old = pd.read_csv(dst, encoding="utf-8-sig")
     print(f"  旧记录: {len(old)}")
 
-    cmd = "npx -y westock-data-clawhub@1.0.4 lhb --date " + DATE
-    ok, out, err = run_wes(cmd, timeout=60)
+    npx = _get_npx_bin()
+    argv = [npx, "-y", "westock-data-clawhub@1.0.4", "lhb", "--date", DATE]
+    ok, out, err = run_wes(argv, timeout=60)
     if not ok:
         print(f"  FAIL: {err[:100]}")
         return

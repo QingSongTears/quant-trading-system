@@ -221,7 +221,7 @@ class BacktestEngine:
         total_trades = stats.get("# Trades", 0)
         profit_factor = stats.get("Profit Factor", 0)
         annual_vol = self._calc_annual_volatility(stats)
-        calmar = annual_return / max_dd if max_dd > 0 else 0
+        calmar = annual_return / abs(max_dd) if max_dd != 0 else 0
 
         # 基准对比
         benchmark_return = self._calc_benchmark_return(start_date, end_date)
