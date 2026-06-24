@@ -67,6 +67,11 @@ class ArrayManager:
         self.size: int = size
         self.count: int = 0  # 已 push 的 K 线数
 
+        # KDJ 持续状态 (修 2026-06-25: 之前每次重算都重置 K=50/D=50, 前 50 根 KDJ 错)
+        # 初始值 50 是行业惯例 (无前值时, 默认中性)
+        self._kdj_k: float = 50.0
+        self._kdj_d: float = 50.0
+
         # numpy 数组 (dtype=object for datetime)
         self.open: np.ndarray = np.zeros(size, dtype=np.float64)
         self.high: np.ndarray = np.zeros(size, dtype=np.float64)
@@ -118,6 +123,9 @@ class ArrayManager:
         self.turnover[:] = 0.0
         self.datetime[:] = None
         self.count = 0
+        # 持续状态也重置 (修 2026-06-25: KDJ 状态跟数据重置)
+        self._kdj_k = 50.0
+        self._kdj_d = 50.0
 
     # ── 切片便捷 ──────────────────────────
 
@@ -162,46 +170,48 @@ class ArrayManager:
     ) -> Optional[Tuple[float, float, float]]:
         """MACD: (DIF, DEA, MACD柱)
         DIF = EMA(fast) - EMA(slow)
-        DEA = EMA(DIF, signal)
+        DEA = EMA(DIF, signal)   ← 修 2026-06-25: 之前实现错误
         MACD = 2 * (DIF - DEA)
         """
-        # 简化: 用最近 fast+slow+signal 根数据算
-        need = slow + signal + 5
+        need = slow + signal
         if not self._check_window(need):
             return None
 
-        # 用 pandas-style EMA (递归)
-        def _ema(arr, n):
-            alpha = 2.0 / (n + 1)
-            v = arr[0]
-            for x in arr[1:]:
-                v = alpha * x + (1 - alpha) * v
-            return v
-
         close = self.close[-need:]
-        ema_fast = _ema(close, fast)
-        ema_slow = _ema(close, slow)
-        dif = ema_fast - ema_slow
 
-        # DEA = EMA(DIF, signal), 需要历史 DIF 序列
-        # 简化: 取最近 signal 根 close 算的 DIF 序列, 递归
-        dif_series = []
-        for i in range(signal):
-            sub = close[-(slow + i):]
-            dif_series.append(_ema(sub, fast) - _ema(sub, slow))
-        dea = _ema(np.array(dif_series), signal)
+        # 1. 在 close 序列上递推计算 EMA(fast) 和 EMA(slow) 全序列
+        alpha_fast = 2.0 / (fast + 1)
+        alpha_slow = 2.0 / (slow + 1)
+        ema_fast_seq = np.empty(need, dtype=np.float64)
+        ema_slow_seq = np.empty(need, dtype=np.float64)
+        ema_fast_seq[0] = close[0]
+        ema_slow_seq[0] = close[0]
+        for i in range(1, need):
+            ema_fast_seq[i] = alpha_fast * close[i] + (1 - alpha_fast) * ema_fast_seq[i - 1]
+            ema_slow_seq[i] = alpha_slow * close[i] + (1 - alpha_slow) * ema_slow_seq[i - 1]
 
-        macd_val = 2 * (dif - dea)
-        return (float(dif), float(dea), float(macd_val))
+        # 2. DIF 全序列
+        dif_seq = ema_fast_seq - ema_slow_seq
+        dif = float(dif_seq[-1])
+
+        # 3. DEA = EMA(DIF, signal) — 对 DIF 全序列递推
+        #    从第 0 个开始递推 (vnpy 风格, 与同花顺/TradingView 一致)
+        alpha_sig = 2.0 / (signal + 1)
+        dea_val = dif_seq[0]
+        for x in dif_seq[1:]:
+            dea_val = alpha_sig * x + (1 - alpha_sig) * dea_val
+
+        macd_val = 2 * (dif - dea_val)
+        return (float(dif), float(dea_val), float(macd_val))
 
     def boll(
         self, n: int = 20, dev: float = 2.0,
     ) -> Optional[Tuple[float, float, float]]:
-        """布林带: (mid, upper, lower)"""
+        """布林带: (mid, upper, lower) — 修 2026-06-25: 用 ddof=1 (样本标准差, 跟 vnpy/TradingView 一致)"""
         if not self._check_window(n):
             return None
         mid = float(self.close[-n:].mean())
-        std = float(self.close[-n:].std(ddof=0))
+        std = float(self.close[-n:].std(ddof=1))  # 修: 样本标准差 (原 ddof=0 偏窄)
         upper = mid + dev * std
         lower = mid - dev * std
         return (mid, upper, lower)
@@ -252,13 +262,11 @@ class ArrayManager:
         else:
             rsv = (float(cc[-1]) - low_n) / (high_n - low_n) * 100
 
-        # K/D 累积 (从第 1 根 rsv 开始递归)
-        # 简化: 假设历史 K=50, D=50
-        k_prev, d_prev = 50.0, 50.0
-        k = (m1 - 1) / m1 * k_prev + 1 / m1 * rsv
-        d = (m2 - 1) / m2 * d_prev + 1 / m2 * k
-        j = 3 * k - 2 * d
-        return (float(k), float(d), float(j))
+        # K/D 持续状态 (修 2026-06-25: 用 self._kdj_k/d 保持历史递推, 不再每次重置 50)
+        self._kdj_k = (m1 - 1) / m1 * self._kdj_k + 1 / m1 * rsv
+        self._kdj_d = (m2 - 1) / m2 * self._kdj_d + 1 / m2 * self._kdj_k
+        j = 3 * self._kdj_k - 2 * self._kdj_d
+        return (float(self._kdj_k), float(self._kdj_d), float(j))
 
     def wr(self, n: int = 14) -> Optional[float]:
         """Williams %R: -100 ~ 0, 越接近 0 越超买"""
@@ -306,10 +314,10 @@ class ArrayManager:
         return float(tr[-n:].mean())
 
     def std(self, n: int = 20) -> Optional[float]:
-        """close 的 N 周期标准差"""
+        """close 的 N 周期标准差 — 修 2026-06-25: ddof=1 样本标准差"""
         if not self._check_window(n):
             return None
-        return float(self.close[-n:].std(ddof=0))
+        return float(self.close[-n:].std(ddof=1))
 
     def natr(self, n: int = 14) -> Optional[float]:
         """归一化 ATR (ATR / close * 100)"""

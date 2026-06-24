@@ -180,8 +180,13 @@ class AlphaLab:
         model = AStockAlphaModel.load(model_path, scaler_path=scaler_path, n_features=n_features)
         # dataset 必传 (用于推理时拉数据)
         if dataset is None:
-            dataset = AStockDataset.__new__(AStockDataset)  # 不调 __init__
-            # 实际项目应传真实 dataset
+            # 修 2026-06-25: 之前用 __new__ 绕过 __init__ 创建半成品实例 (lookback=0 等),
+            # 任何调用 predict 都会 AttributeError 或拿错数据。
+            # 现在显式抛错, 强制调用方传真实 dataset
+            raise ValueError(
+                "AlphaLab.load() 必须传 dataset 参数 (用于 predict_pipeline 拉数据)。\n"
+                "用法: AlphaLab.load(model_path, scaler_path=scaler_path, dataset=your_dataset, n_features=N)"
+            )
         lab = cls(dataset=dataset, model=model, lab_name=lab_name)
         lab._is_trained = True
         return lab

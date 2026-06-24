@@ -274,6 +274,18 @@ def test_lab_save_load_roundtrip(tmp_path):
     assert probs.size > 0
 
 
+def test_lab_load_without_dataset_raises(tmp_path):
+    """修 2026-06-25: load() 不传 dataset 应抛 ValueError (之前用 __new__ 绕过 __init__ 创建半成品)"""
+    lab1 = _make_lab()
+    lab1.train_pipeline("2024-01-01", "2024-01-31")
+    model_path = tmp_path / "ds_model.json"
+    scaler_path = tmp_path / "ds_scaler.json"
+    lab1.save(model_path, scaler_path=scaler_path)
+
+    with pytest.raises(ValueError, match="必须传 dataset"):
+        AlphaLab.load(model_path, scaler_path=scaler_path, n_features=10)
+
+
 def test_lab_repr_includes_state():
     lab = _make_lab()
     r = repr(lab)
