@@ -3,9 +3,9 @@
 <head>
 {% set page_title = "行业板块 · 8维量化选股" %}
 {% set need_chartjs = true %}
+{% set need_echarts = false %}
 {% include "partials/_standalone_head.html" %}
-<title>{{ page_title }}</title>
-{# 2026-06-25 (Phase C2): head 抽公共, 保留页面特定 style 在下方 #}
+{# 页面特定 style (从 output/ 原样保留) #}
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
@@ -45,60 +45,8 @@ tr.clickable{cursor:pointer}
 .modal-box{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;width:90%;max-width:900px;max-height:85vh;overflow-y:auto}
 .modal-close{float:right;font-size:1.5rem;color:var(--dim);cursor:pointer}
 .loading{opacity:0.5;pointer-events:none}
-
-/* 统一 header 修复（脚本自动注入） */
-header {
-    display: flex !important;
-    align-items: center !important;
-    gap: 16px !important;
-    padding: 12px 24px !important;
-    min-height: 56px !important;
-    background: var(--card, #1a1d27) !important;
-    border-bottom: 1px solid var(--border, #2a2d3a) !important;
-    position: relative !important;
-    z-index: 10 !important;
-}
-header h1 {
-    font-size: 1.15rem !important;
-    font-weight: 600 !important;
-    margin: 0 !important;
-    white-space: nowrap !important;
-    /* emoji 字体回退（修复 Windows 上 🔬 显示成乱码"❾"） */
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', sans-serif !important;
-}
-header h1 .h1-icon {
-    display: inline-block;
-    margin-right: 6px;
-    font-size: 1.25rem;
-    vertical-align: -2px;
-}
-header .nav-links, header > a[href="/"] {
-    margin-left: auto !important;
-    color: var(--dim, #888) !important;
-    text-decoration: none !important;
-    font-size: 0.85rem !important;
-    padding: 4px 12px !important;
-    border-radius: 6px !important;
-    transition: all 0.15s !important;
-    white-space: nowrap !important;
-}
-header .nav-links a, header > a[href="/"] {
-    color: var(--dim, #888) !important;
-    text-decoration: none !important;
-}
-header .nav-links a:hover, header > a[href="/"]:hover {
-    color: var(--accent, #4fc3f7) !important;
-    background: rgba(79, 195, 247, 0.08) !important;
-}
-header > span, header > .sub {
-    color: var(--dim, #888) !important;
-    font-size: 0.82rem !important;
-}
-
 </style>
-    {{ _api_auth_snippet | safe }}
-  </head>
-<body>
+</head>
 <header>
   <h1>🏭 行业板块分析</h1>
   <div class="nav">
@@ -301,5 +249,3 @@ async function showDetail(industry) {
 function closeDetail() { document.getElementById('detailModal').classList.remove('show'); }
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 </script>
-</body>
-</html>

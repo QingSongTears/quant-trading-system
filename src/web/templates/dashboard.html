@@ -3,9 +3,9 @@
 <head>
 {% set page_title = "数据总览 · 量化系统" %}
 {% set need_chartjs = true %}
+{% set need_echarts = false %}
 {% include "partials/_standalone_head.html" %}
-<title>{{ page_title }}</title>
-{# 2026-06-25 (Phase C2): head 抽公共, 保留页面特定 style 在下方 #}
+{# 页面特定 style (从 output/ 原样保留) #}
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--red:#ef5350;--green:#4caf50;--yellow:#ffa726}
@@ -40,69 +40,17 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .footer{text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border)}
 @keyframes spin{to{transform:rotate(360deg)}}
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.6s linear infinite;vertical-align:middle;margin-right:6px}
-
-/* 统一 header 修复（脚本自动注入） */
-header {
-    display: flex !important;
-    align-items: center !important;
-    gap: 16px !important;
-    padding: 12px 24px !important;
-    min-height: 56px !important;
-    background: var(--card, #1a1d27) !important;
-    border-bottom: 1px solid var(--border, #2a2d3a) !important;
-    position: relative !important;
-    z-index: 10 !important;
-}
-header h1 {
-    font-size: 1.15rem !important;
-    font-weight: 600 !important;
-    margin: 0 !important;
-    white-space: nowrap !important;
-    /* emoji 字体回退（修复 Windows 上 🔬 显示成乱码"❾"） */
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', sans-serif !important;
-}
-header h1 .h1-icon {
-    display: inline-block;
-    margin-right: 6px;
-    font-size: 1.25rem;
-    vertical-align: -2px;
-}
-header .nav-links, header > a[href="/"] {
-    margin-left: auto !important;
-    color: var(--dim, #888) !important;
-    text-decoration: none !important;
-    font-size: 0.85rem !important;
-    padding: 4px 12px !important;
-    border-radius: 6px !important;
-    transition: all 0.15s !important;
-    white-space: nowrap !important;
-}
-header .nav-links a, header > a[href="/"] {
-    color: var(--dim, #888) !important;
-    text-decoration: none !important;
-}
-header .nav-links a:hover, header > a[href="/"]:hover {
-    color: var(--accent, #4fc3f7) !important;
-    background: rgba(79, 195, 247, 0.08) !important;
-}
-header > span, header > .sub {
-    color: var(--dim, #888) !important;
-    font-size: 0.82rem !important;
-}
-
 </style>
-    {{ _api_auth_snippet | safe }}
-  </head>
-<body>
+</head>
 <header>
   <h1>📊 量化系统数据总览</h1>
-  <span style="font-size:0.75rem;color:var(--dim)">{{ "{:,}".format(total_records) }} 条日线记录 · {{ "{:,}".format(total_stocks) }} 只股票 · 数据区间 {{ date_range.start or 'N/A' }} ~ {{ date_range.end or 'N/A' }}</span>
+  <span style="font-size:0.75rem;color:var(--dim)" id="headerSub">加载中...</span>
   <div class="nav-links"><a href="/">← 返回首页</a></div>
 </header>
 <div class="container">
   <div class="loading" id="loadingState"><span class="spinner"></span> 加载数据...</div>
   <div id="content" style="display:none">
-    <!-- 总览 -->
+    <!-- 概览 -->
     <div class="card"><div class="card-title">📊 系统概览 <span class="badge" id="refreshBadge"></span></div>
       <div class="stats-grid" id="overviewGrid"></div>
     </div>
@@ -119,7 +67,7 @@ header > span, header > .sub {
       <div class="card"><div class="card-title">🎯 策略胜率对比</div><div class="chart-wrap"><canvas id="winChart"></canvas></div></div>
     </div>
     <!-- 模型精度 -->
-    <div class="card"><div class="card-title">🤖 XGBoost v4 模型精度</div>
+    <div class="card"><div class="card-title">🤖 XGBoost v4 模型精度 <span class="badge">基于全量回测验证</span></div>
       <div class="stats-grid" id="modelGrid"></div>
       <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
         <table><thead><tr><th>概率分组</th><th>数量</th><th>平均收益</th><th>盈利率</th><th>命中判定</th></tr></thead>
@@ -131,51 +79,67 @@ header > span, header > .sub {
       <div class="stats-grid" id="coverGrid"></div>
     </div>
     <!-- TOP 20 -->
-    <div class="card"><div class="card-title">🏆 TOP 20 牛股 <span class="badge">七维共振牛股策略</span></div>
+    <div class="card"><div class="card-title">🏆 TOP 20 牛股 <span class="badge"><select id="topStrategyPicker" style="background:var(--card);color:var(--accent);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:0.7rem;cursor:pointer"></select></span></div>
       <div class="table-wrap"><table><thead><tr>
         <th>#</th><th>代码</th><th>收益</th><th>夏普</th><th>胜率</th><th>交易</th><th>回撤</th><th>基准</th><th>超额</th>
       </tr></thead><tbody id="topBody"></tbody></table></div>
     </div>
   </div>
-  <div class="footer">数据截至 {{ generated_at }} · 量化回测系统 v4</div>
+  <div class="footer">数据截至 <span id="dataDate">2026-06-21</span> · 量化回测系统 v4</div>
 </div>
 <script>
-async function load() {
+const API = '/api/dashboard/stats';
+let lastData = null;
+let returnChart = null;
+let winChart = null;
+
+async function loadData() {
   try {
-    const r = await fetch('/api/strategy/compare');
+    const r = await fetch(API);
     const d = await r.json();
     document.getElementById('loadingState').style.display = 'none';
     document.getElementById('content').style.display = 'block';
-    document.getElementById('refreshBadge').textContent = d.total_records + '条记录';
+    document.getElementById('refreshBadge').textContent = (d.total_records||0).toLocaleString() + ' 条记录';
+    document.getElementById('dataDate').textContent = new Date().toISOString().slice(0,10);
+    lastData = d;
     renderOverview(d);
     renderStrategies(d);
     renderCharts(d);
     renderModel(d);
     renderCoverage(d);
-    renderTop(d);
+    renderTopPicker(d);
   } catch(e) {
     document.getElementById('loadingState').innerHTML = '❌ 加载失败: ' + e.message;
   }
 }
+
 function renderOverview(d) {
-  const s = d.strategies;
-  const best = s.reduce((a,b) => (a.avg_return||0) > (b.avg_return||0) ? a : b);
-  const avgAll = s.reduce((a,b) => a + (b.avg_return||0), 0) / s.length;
+  const s = (d.strategies||[]).sort((a,b) => (b.avg_return||0) - (a.avg_return||0));
+  const best = s[0] || {};
+  const totalStocks = s.length > 0 ? s[0].cnt : 0;
+  const avgAll = s.reduce((a,b) => a + (b.avg_return||0), 0) / (s.length||1);
+  const modelAcc = d.model_accuracy || {};
+  document.getElementById('headerSub').textContent =
+    (d.total_records||0).toLocaleString() + ' 条回测 · ' + (totalStocks||'?') + ' 只股票 · XGBoost v4';
   document.getElementById('overviewGrid').innerHTML =
-    `<div class="stat-card"><div class="stat-val">${d.total_records}</div><div class="stat-label">总回测</div></div>` +
-    `<div class="stat-card"><div class="stat-val" style="color:var(--red)">${d.strategies.length}</div><div class="stat-label">策略数</div></div>` +
-    `<div class="stat-card"><div class="stat-val" style="color:var(--red)">${(best.avg_return||0).toFixed(2)}%</div><div class="stat-label">最佳: ${best.name}</div></div>` +
+    `<div class="stat-card"><div class="stat-val">${(d.total_records||0).toLocaleString()}</div><div class="stat-label">总回测</div></div>` +
+    `<div class="stat-card"><div class="stat-val" style="color:var(--red)">${s.length}</div><div class="stat-label">策略数</div></div>` +
+    `<div class="stat-card"><div class="stat-val" style="color:var(--red)">${(best.avg_return||0).toFixed(2)}%</div><div class="stat-label">最佳: ${best.name||''}</div></div>` +
     `<div class="stat-card"><div class="stat-val">${avgAll.toFixed(2)}%</div><div class="stat-label">策略平均</div></div>` +
-    `<div class="stat-card"><div class="stat-val">{{ total_stocks }}</div><div class="stat-label">已覆盖股票</div></div>`;
+    `<div class="stat-card"><div class="stat-val" style="color:var(--green)">${(totalStocks||0).toLocaleString()}</div><div class="stat-label">已回测股票</div></div>`;
 }
+
 function renderStrategies(d) {
-  document.getElementById('strategyBody').innerHTML = d.strategies.map((s, i) => {
-    const active = s.cnt - (s.flat_count||0);
-    const wr = active > 0 ? (s.win_count / active * 100) : 0;
+  const s = (d.strategies||[]).sort((a,b) => (b.avg_return||0) - (a.avg_return||0));
+  const colors = ['#ef5350','#ffa726','#4fc3f7','#66bb6a','#ab47bc','#26c6da','#ec407a'];
+  document.getElementById('strategyBody').innerHTML = s.map((s, i) => {
+    const active = (s.cnt||0) - (s.flat_count||0);
+    const wr = active > 0 ? (s.win_count||0) / active * 100 : 0;
+    const col = colors[i] || '#888';
     return `<tr>
       <td><span class="rank-${i < 3 ? i+1 : 3}">#${i+1}</span></td>
-      <td style="text-align:left;font-weight:600">${s.name}</td>
-      <td>${s.cnt}</td>
+      <td style="text-align:left;font-weight:600">${s.name||'未知'}</td>
+      <td>${s.cnt||0}</td>
       <td class="${(s.avg_return||0) >= 0 ? 'pos' : 'neg'}">${(s.avg_return||0) >= 0 ? '+' : ''}${(s.avg_return||0).toFixed(2)}%</td>
       <td>${wr.toFixed(1)}%</td>
       <td style="color:var(--dim)">${s.flat_count||0}</td>
@@ -187,68 +151,95 @@ function renderStrategies(d) {
     </tr>`;
   }).join('');
 }
+
 function renderCharts(d) {
-  const labels = d.strategies.map(s => s.name);
-  const returns = d.strategies.map(s => s.avg_return||0);
-  const wins = d.strategies.map(s => {const a = s.cnt-(s.flat_count||0); return a>0 ? s.win_count/a*100 : 0});
+  const s = (d.strategies||[]).sort((a,b) => (b.avg_return||0) - (a.avg_return||0));
+  const labels = s.map(x => x.name);
+  const returns = s.map(x => x.avg_return||0);
+  const winRates = s.map(x => { const a = (x.cnt||0)-(x.flat_count||0); return a>0 ? (x.win_count||0)/a*100 : 0; });
   const colors = ['#ef5350','#ffa726','#4fc3f7','#66bb6a','#ab47bc','#26c6da','#ec407a'];
-  new Chart(document.getElementById('returnChart').getContext('2d'), {
+  if (returnChart) returnChart.destroy();
+  returnChart = new Chart(document.getElementById('returnChart').getContext('2d'), {
     type: 'bar', data: {labels, datasets: [{data: returns, backgroundColor: colors, borderRadius: 4}]},
     options: {responsive: true, maintainAspectRatio: false, indexAxis: 'y',
       plugins: {legend: {display: false}, tooltip: {callbacks: {label: ctx => (ctx.raw||0) >= 0 ? '+' + ctx.raw.toFixed(2) + '%' : ctx.raw.toFixed(2) + '%'}}},
-      scales: {x: {ticks: {color: '#888', callback: v => v + '%'}, grid: {color:'rgba(255,255,255,0.05)'}},
+      scales: {x: {ticks: {color: '#888'}, grid: {color:'rgba(255,255,255,0.05)'}},
                y: {ticks: {color: '#aaa', font: {size: 10}}, grid: {display: false}}}}
   });
-  new Chart(document.getElementById('winChart').getContext('2d'), {
-    type: 'bar', data: {labels, datasets: [{data: wins, backgroundColor: colors, borderRadius: 4}]},
+  if (winChart) winChart.destroy();
+  winChart = new Chart(document.getElementById('winChart').getContext('2d'), {
+    type: 'bar', data: {labels, datasets: [{data: winRates, backgroundColor: colors, borderRadius: 4}]},
     options: {responsive: true, maintainAspectRatio: false, indexAxis: 'y',
       plugins: {legend: {display: false}},
-      scales: {x: {min: 0, max: 100, ticks: {color: '#888', callback: v => v + '%'}, grid: {color:'rgba(255,255,255,0.05)'}},
+      scales: {x: {min: 0, max: 100, ticks: {color: '#888'}, grid: {color:'rgba(255,255,255,0.05)'}},
                y: {ticks: {color: '#aaa', font: {size: 10}}, grid: {display: false}}}}
   });
 }
+
 function renderModel(d) {
-  // 从全量验证结果获取模型精度
-  let html = '<div class="stat-card"><div class="stat-val">AUC 0.7912</div><div class="stat-label">XGBoost v4</div></div>' +
-    '<div class="stat-card"><div class="stat-val">74</div><div class="stat-label">特征数</div></div>' +
-    '<div class="stat-card"><div class="stat-val" style="color:var(--red)">+20.71%</div><div class="stat-label">买入-回避收益差</div></div>' +
-    '<div class="stat-card"><div class="stat-val" style="color:var(--red)">+38.25%</div><div class="stat-label">买入组平均收益</div></div>' +
-    '<div class="stat-card"><div class="stat-val" style="color:var(--green)">+17.54%</div><div class="stat-label">回避组平均收益</div></div>';
-  document.getElementById('modelGrid').innerHTML = html;
-  document.getElementById('modelDetailBody').innerHTML =
-    '<tr><td style="font-weight:600;color:var(--red)">≥0.55 买入</td><td>19只</td><td class="pos">+38.25%</td><td>84%</td><td class="pos">✅ 命中</td></tr>' +
-    '<tr><td style="font-weight:600;color:var(--yellow)">0.4-0.55 中性</td><td>66只</td><td class="pos">+37.40%</td><td>83%</td><td class="pos">✅ 中性</td></tr>' +
-    '<tr><td style="font-weight:600;color:var(--green)"><0.4 回避</td><td>415只</td><td class="pos">+17.54%</td><td>69%</td><td class="neg">❌ 未命中</td></tr>';
+  const acc = d.model_accuracy || {};
+  const bins = acc.bins || [];
+  const spread = (acc.buy_avg_return||0) - (acc.avoid_avg_return||0);
+  document.getElementById('modelGrid').innerHTML =
+    `<div class="stat-card"><div class="stat-val">AUC ${acc.auc||'N/A'}</div><div class="stat-label">XGBoost v4</div></div>` +
+    `<div class="stat-card"><div class="stat-val">${(acc.buy_avg_return||0).toFixed(2)}%</div><div class="stat-label">买入组平均收益</div></div>` +
+    `<div class="stat-card"><div class="stat-val" style="color:var(--green)">${(acc.avoid_avg_return||0).toFixed(2)}%</div><div class="stat-label">回避组平均收益</div></div>` +
+    `<div class="stat-card"><div class="stat-val" style="color:var(--red)">${spread.toFixed(2)}%</div><div class="stat-label">买入-回避差</div></div>`;
+  document.getElementById('modelDetailBody').innerHTML = bins.map(b => {
+    const hit = (b.avg_return||0) >= (acc.benchmark_return||0) ? '✅ 命中' : '❌ 未命中';
+    return `<tr>
+      <td style="font-weight:600;color:${b.label==='买入' ? 'var(--red)' : b.label==='回避' ? 'var(--green)' : 'var(--yellow)'}">${b.label}</td>
+      <td>${b.count||0}</td>
+      <td class="${(b.avg_return||0) >= 0 ? 'pos' : 'neg'}">${(b.avg_return||0).toFixed(2)}%</td>
+      <td>${(b.win_rate||0).toFixed(1)}%</td>
+      <td>${hit}</td>
+    </tr>`;
+  }).join('');
 }
+
 function renderCoverage(d) {
-  // 动态从 /api/coverage 或页面 ctx 取 (此处使用模板渲染时的总记录数)
-  const totalStocks = {{ total_stocks }};
-  const totalRecords = {{ total_records }};
+  const c = d.coverage || {};
   document.getElementById('coverGrid').innerHTML =
-    `<div class="stat-card"><div class="stat-val">${totalStocks.toLocaleString()}</div><div class="stat-label">已覆盖股票</div></div>` +
-    `<div class="stat-card"><div class="stat-val">${totalRecords.toLocaleString()}</div><div class="stat-label">日线记录</div></div>` +
-    `<div class="stat-card"><div class="stat-val" style="color:var(--dim)">—</div><div class="stat-label" style="font-size:0.62rem">评分记录(模型重训后更新)</div></div>` +
-    `<div class="stat-card"><div class="stat-val" style="color:var(--dim)">—</div><div class="stat-label" style="font-size:0.62rem">技术指标(由 daily_price 派生)</div></div>` +
-    `<div class="stat-card"><div class="stat-val">${totalStocks.toLocaleString()}</div><div class="stat-label">DB 中股票</div></div>`;
+    `<div class="stat-card"><div class="stat-val">${(c.score_stocks||0).toLocaleString()}</div><div class="stat-label">评分覆盖股票</div></div>` +
+    `<div class="stat-card"><div class="stat-val">${(c.kline_stocks||0).toLocaleString()}</div><div class="stat-label">有K线≥120天</div></div>` +
+    `<div class="stat-card"><div class="stat-val" style="color:var(--red)">${(c.backtest_done||0).toLocaleString()}</div><div class="stat-label">已回测(100%)</div></div>` +
+    `<div class="stat-card"><div class="stat-val">${(c.score_records||0).toLocaleString()}</div><div class="stat-label">评分记录</div></div>` +
+    `<div class="stat-card"><div class="stat-val">${(c.tech_indicators||0).toLocaleString()}</div><div class="stat-label">技术指标</div></div>`;
 }
-function renderTop(d) {
-  const tops = (d.top_by_strategy && d.top_by_strategy['6']) || [];
+
+function renderTopPicker(d) {
+  const picker = document.getElementById('topStrategyPicker');
+  if (!picker.options.length) {
+    (d.strategies||[]).forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.strategy_id;
+      opt.textContent = s.name;
+      if (s.strategy_id == 6) opt.selected = true;
+      picker.appendChild(opt);
+    });
+    picker.addEventListener('change', (e) => renderTop20(e.target.value));
+  }
+  renderTop20(6);  // 默认七维共振牛股
+}
+
+function renderTop20(strategyId) {
+  const key = String(strategyId);
+  const tops = (lastData && lastData.top_by_strategy && lastData.top_by_strategy[key]) || [];
   document.getElementById('topBody').innerHTML = tops.map((t, i) => {
     const ret = t.total_return || 0;
     return `<tr>
       <td><span class="rank-${i < 3 ? i+1 : 3}">#${i+1}</span></td>
-      <td style="font-family:monospace;font-weight:600">${t.stock_code}</td>
+      <td style="font-family:monospace;font-weight:600">${t.stock_code||'--'}</td>
       <td class="pos">${ret >= 0 ? '+' : ''}${ret.toFixed(2)}%</td>
       <td>${(t.sharpe_ratio||0).toFixed(2)}</td>
       <td>${(t.win_rate||0).toFixed(1)}%</td>
       <td>${t.total_trades||0}</td>
-      <td class="neg">-</td>
-      <td>-</td>
-      <td class="pos">-</td>
+      <td class="neg">${(t.max_drawdown||0).toFixed(2)}%</td>
+      <td>${(t.benchmark_return||0).toFixed(2)}%</td>
+      <td class="pos">${(t.excess_return||0).toFixed(2)}%</td>
     </tr>`;
   }).join('');
 }
-document.addEventListener('DOMContentLoaded', load);
+
+document.addEventListener('DOMContentLoaded', loadData);
 </script>
-</body>
-</html>

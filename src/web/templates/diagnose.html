@@ -3,10 +3,9 @@
 <head>
 {% set page_title = "个股诊断 · 8维量化选股" %}
 {% set need_chartjs = true %}
-{% set need_echarts = true %}
+{% set need_echarts = false %}
 {% include "partials/_standalone_head.html" %}
-<title>{{ page_title }}</title>
-{# 2026-06-25 (Phase C2): head 抽公共, 保留页面特定 style 在下方 #}
+{# 页面特定 style (从 output/ 原样保留) #}
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 :root {
@@ -63,8 +62,8 @@ header a:hover { color:var(--accent); }
 /* 雷达图 */
 .radar-wrap { height:260px; }
 
-/* K线图 — ECharts */
-.kline-wrap { height:420px; position:relative; }
+/* K线图 */
+.kline-wrap { height:380px; position:relative; }
 .kline-tabs { display:flex; gap:6px; margin-bottom:10px; }
 .kline-tabs button { padding:4px 14px; border:1px solid var(--border); border-radius:4px; background:transparent; color:var(--dim); cursor:pointer; font-size:0.78rem; }
 .kline-tabs button.active { background:var(--accent); color:#000; border-color:var(--accent); }
@@ -85,7 +84,7 @@ header a:hover { color:var(--accent); }
 .conclusion-text strong { color:var(--accent); }
 .tag { display:inline-block; padding:2px 10px; border-radius:4px; font-size:0.75rem; font-weight:600; margin-right:4px; }
 .tag-bull { background:rgba(239,83,80,0.2); color:var(--red); }
-.tag-bear { background:rgba(76,175,50,0.2); color:var(--green); }
+.tag-bear { background:rgba(76,175,80,0.2); color:var(--green); }
 .tag-neutral { background:rgba(255,167,38,0.2); color:var(--yellow); }
 
 /* 详情表格 */
@@ -112,59 +111,8 @@ header a:hover { color:var(--accent); }
 ::-webkit-scrollbar { width:6px; }
 ::-webkit-scrollbar-track { background:var(--bg); }
 ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
-
-/* 统一 header 修复（脚本自动注入） */
-header {
-    display: flex !important;
-    align-items: center !important;
-    gap: 16px !important;
-    padding: 12px 24px !important;
-    min-height: 56px !important;
-    background: var(--card, #1a1d27) !important;
-    border-bottom: 1px solid var(--border, #2a2d3a) !important;
-    position: relative !important;
-    z-index: 10 !important;
-}
-header h1 {
-    font-size: 1.15rem !important;
-    font-weight: 600 !important;
-    margin: 0 !important;
-    white-space: nowrap !important;
-    /* emoji 字体回退（修复 Windows 上 🔬 显示成乱码"❾"） */
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', sans-serif !important;
-}
-header h1 .h1-icon {
-    display: inline-block;
-    margin-right: 6px;
-    font-size: 1.25rem;
-    vertical-align: -2px;
-}
-header .nav-links, header > a[href="/"] {
-    margin-left: auto !important;
-    color: var(--dim, #888) !important;
-    text-decoration: none !important;
-    font-size: 0.85rem !important;
-    padding: 4px 12px !important;
-    border-radius: 6px !important;
-    transition: all 0.15s !important;
-    white-space: nowrap !important;
-}
-header .nav-links a, header > a[href="/"] {
-    color: var(--dim, #888) !important;
-    text-decoration: none !important;
-}
-header .nav-links a:hover, header > a[href="/"]:hover {
-    color: var(--accent, #4fc3f7) !important;
-    background: rgba(79, 195, 247, 0.08) !important;
-}
-header > span, header > .sub {
-    color: var(--dim, #888) !important;
-    font-size: 0.82rem !important;
-}
-
 </style>
 </head>
-<body>
 <header>
   <h1>🔬 个股诊断</h1>
   <div class="nav-links">
@@ -275,18 +223,6 @@ let charts = { gauge: null, radar: null, kline: null };
 let dimNames = ['technical','fundamental','fund_flow','institutional','lh_institutional','sentiment','news_event','chip'];
 let dimLabels = ['技术面','基本面','资金面','机构面','龙虎榜','情绪面','新闻面','筹码面'];
 const COLORS = ['#4fc3f7','#66bb6a','#ffa726','#ab47bc','#ef5350','#26c6da','#ec407a','#7c4dff'];
-
-// ECharts 实例管理 — 兼容 base.html 的 _registerChart 模式
-function ecDispose(name) {
-  if (charts[name]) {
-    try { charts[name].dispose(); } catch(e) {}
-    charts[name] = null;
-  }
-}
-function ecResize() {
-  Object.values(charts).forEach(c => { if (c && typeof c.resize === 'function') c.resize(); });
-}
-window.addEventListener('resize', ecResize);
 
 // ===== 搜索 =====
 let searchTimer = null;
@@ -514,163 +450,143 @@ async function loadScores(code) {
   }
 }
 
-// ===== K线 + 技术指标 (ECharts 蜡烛图) =====
+// ===== K线 + 技术指标 =====
 async function loadKline(code, period) {
   try {
     const r1 = await fetch('/api/stock/' + code + '/kline/' + period);
     const d = await r1.json();
     if (!d || !d.dates) { throw new Error('no kline data'); }
     klineData = d;
-    renderKlineChart(d);
+
+    // 计算技术指标 (后端只返回OHLC, 前端计算MA)
+    const closes = d.close;
+    const dates = d.dates;
+    const ma5 = calcMA(closes, 5);
+    const ma10 = calcMA(closes, 10);
+    const ma20 = calcMA(closes, 20);
+    const ma60 = calcMA(closes, 60);
+
+    renderKlineChart(dates, closes, d.open, d.high, d.low, d.volume, { ma5, ma10, ma20, ma60 });
   } catch(e) {
     // 静默失败
   }
 }
 
-function renderKlineChart(d) {
-  const dates = d.dates;
-  const opens = d.open;
-  const closes = d.close;
-  const lows = d.low;
-  const highs = d.high;
-  const volumes = d.volume || [];
+function calcMA(arr, n) {
+  const r = [];
+  for (let i = 0; i < arr.length; i++) {
+    if (i < n-1) { r.push(null); continue; }
+    let sum = 0;
+    for (let j = i-n+1; j <= i; j++) sum += arr[j];
+    r.push(sum / n);
+  }
+  return r;
+}
 
-  // 计算 MA
-  const ma = (n) => closes.map((_, i) => {
-    if (i < n - 1) return null;
-    let s = 0;
-    for (let j = i - n + 1; j <= i; j++) s += closes[j];
-    return +(s / n).toFixed(2);
-  });
-  const ma5 = ma(5), ma10 = ma(10), ma20 = ma(20), ma60 = ma(60);
+function renderKlineChart(dates, closes, opens, highs, lows, volumes, mas) {
+  if (charts.kline) charts.kline.destroy();
 
-  // 蜡烛图数据 [open, close, low, high]
-  const candleData = dates.map((dt, i) => [opens[i], closes[i], lows[i], highs[i]]);
-
-  // 成交量颜色
-  const volColors = dates.map((_, i) =>
-    closes[i] >= opens[i] ? 'rgba(239,83,80,0.65)' : 'rgba(76,175,80,0.65)'
-  );
-  const volData = volumes.map((v, i) => ({
-    value: v,
-    itemStyle: { color: volColors[i] },
-  }));
-
-  // 用户勾选的指标
-  const enabled = {};
+  const activeMas = {};
   document.querySelectorAll('.indicator-toggle input').forEach(cb => {
-    enabled[cb.getAttribute('onchange').match(/'([^']+)'/)[1]] = cb.checked;
+    if (cb.checked) activeMas[cb.getAttribute('onchange').match(/'([^']+)'/)[1]] = true;
   });
-  const showVol = enabled['volume'] !== false;
 
-  // 销毁旧实例
-  ecDispose('kline');
-  const dom = document.getElementById('klineChart');
-  const chart = echarts.init(dom, null, { renderer: 'canvas' });
-  charts.kline = chart;
+  const datasets = [{
+    label: '收盘价',
+    data: closes,
+    borderColor: '#4fc3f7',
+    backgroundColor: 'rgba(79,195,247,0.1)',
+    borderWidth: 2,
+    pointRadius: 0,
+    fill: true,
+    yAxisID: 'y',
+    order: 2,
+  }];
 
-  // 上下布局: 主图 70% + 成交量 22%(留 8% 给工具条)
-  const grids = [];
-  const xAxes = [];
-  const yAxes = [];
-  if (showVol) {
-    grids.push(
-      { left: 60, right: 20, top: 30,  height: '62%' },
-      { left: 60, right: 20, top: '76%', height: '18%' }
-    );
-    xAxes.push(
-      { type: 'category', data: dates, gridIndex: 0, axisLabel: { show: false }, axisLine: { lineStyle: { color: '#2a2d3a' } }, splitLine: { show: false }, axisPointer: { z: 100 } },
-      { type: 'category', data: dates, gridIndex: 1, axisLabel: { color: '#666', fontSize: 9, formatter: v => v ? v.slice(2, 10) : '' }, axisLine: { lineStyle: { color: '#2a2d3a' } }, splitLine: { show: false } }
-    );
-    yAxes.push(
-      { scale: true, gridIndex: 0, axisLabel: { color: '#888', fontSize: 9, formatter: v => '¥' + v.toFixed(2) }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }, axisLine: { lineStyle: { color: '#2a2d3a' } }, position: 'left' },
-      { scale: true, gridIndex: 1, axisLabel: { color: '#888', fontSize: 9, formatter: v => v >= 1e8 ? (v/1e8).toFixed(1) + '亿' : v >= 1e4 ? (v/1e4).toFixed(0) + '万' : v.toFixed(0) }, splitLine: { show: false }, axisLine: { lineStyle: { color: '#2a2d3a' } }, position: 'left' }
-    );
-  } else {
-    grids.push({ left: 60, right: 20, top: 30, height: '88%' });
-    xAxes.push({ type: 'category', data: dates, gridIndex: 0, axisLabel: { color: '#666', fontSize: 9, formatter: v => v ? v.slice(2, 10) : '' }, axisLine: { lineStyle: { color: '#2a2d3a' } } });
-    yAxes.push({ scale: true, gridIndex: 0, axisLabel: { color: '#888', fontSize: 9, formatter: v => '¥' + v.toFixed(2) }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }, axisLine: { lineStyle: { color: '#2a2d3a' } }, position: 'left' });
+  const maColors = { ma5:'#ef5350', ma10:'#ffa726', ma20:'#66bb6a', ma60:'#ab47bc' };
+  const maLabels = { ma5:'MA5', ma10:'MA10', ma20:'MA20', ma60:'MA60' };
+  Object.keys(mas).forEach(key => {
+    if (!activeMas[key]) return;
+    datasets.push({
+      label: maLabels[key],
+      data: mas[key],
+      borderColor: maColors[key],
+      borderWidth: 1.5,
+      pointRadius: 0,
+      borderDash: key === 'ma60' ? [4,4] : [],
+      yAxisID: 'y',
+      order: 1,
+    });
+  });
+
+  const showVolume = activeMas['volume'];
+  if (showVolume && volumes) {
+    const volColors = volumes.map((v, i) => closes[i] >= (opens[i]||closes[i]) ? 'rgba(76,175,80,0.4' : 'rgba(239,83,80,0.4');
+    datasets.push({
+      label: '成交量',
+      data: volumes,
+      type: 'bar',
+      backgroundColor: volColors,
+      borderWidth: 0,
+      yAxisID: 'y1',
+      order: 3,
+      barPercentage: 0.6,
+    });
   }
 
-  const series = [
-    {
-      name: 'K线',
-      type: 'candlestick',
-      data: candleData,
-      xAxisIndex: 0,
-      yAxisIndex: 0,
-      itemStyle: {
-        color: '#ef5350', color0: '#4caf50',
-        borderColor: '#ef5350', borderColor0: '#4caf50',
-      },
-      barWidth: '60%',
+  const ctx = document.getElementById('klineChart').getContext('2d');
+  charts.kline = new Chart(ctx, {
+    type: 'scatter',
+    data: {
+      labels: dates,
+      datasets: datasets.filter(d => d.type !== 'bar').concat(datasets.filter(d => d.type === 'bar')),
     },
-  ];
-  if (enabled.ma5)  series.push({ name: 'MA5',  type: 'line', data: ma5,  smooth: true, showSymbol: false, lineStyle: { width: 1, color: '#ef5350' }, xAxisIndex: 0, yAxisIndex: 0 });
-  if (enabled.ma10) series.push({ name: 'MA10', type: 'line', data: ma10, smooth: true, showSymbol: false, lineStyle: { width: 1, color: '#ffa726' }, xAxisIndex: 0, yAxisIndex: 0 });
-  if (enabled.ma20) series.push({ name: 'MA20', type: 'line', data: ma20, smooth: true, showSymbol: false, lineStyle: { width: 1, color: '#66bb6a' }, xAxisIndex: 0, yAxisIndex: 0 });
-  if (enabled.ma60) series.push({ name: 'MA60', type: 'line', data: ma60, smooth: true, showSymbol: false, lineStyle: { width: 1, color: '#ab47bc', type: 'dashed' }, xAxisIndex: 0, yAxisIndex: 0 });
-  if (showVol && volumes.length) {
-    series.push({ name: '成交量', type: 'bar', data: volData, xAxisIndex: 1, yAxisIndex: 1, barWidth: '60%' });
-  }
-
-  chart.setOption({
-    backgroundColor: 'transparent',
-    animation: false,
-    legend: {
-      data: series.filter(s => s.type !== 'candlestick').map(s => s.name),
-      textStyle: { color: '#aaa', fontSize: 10 },
-      top: 4, itemWidth: 14, itemHeight: 8,
-    },
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'cross', lineStyle: { color: '#666', width: 1 } },
-      backgroundColor: 'rgba(26,29,39,0.95)', borderColor: '#2a2d3a', borderWidth: 1,
-      textStyle: { color: '#e0e0e0', fontSize: 11 },
-      formatter: function(params) {
-        const date = params[0].axisValue;
-        let html = `<div style="font-weight:600;margin-bottom:6px;">${date}</div>`;
-        // K线 OHLC
-        const k = params.find(p => p.seriesType === 'candlestick');
-        if (k && k.data) {
-          const [o, c, l, h] = k.data;
-          const chg = c - o;
-          const chgPct = o ? (chg / o * 100) : 0;
-          const color = chg >= 0 ? '#ef5350' : '#4caf50';
-          html += `<div style="display:grid;grid-template-columns:auto auto;gap:4px 14px;font-size:11px;">`;
-          html += `<span style="color:#888">开</span><span style="font-family:monospace">¥${o.toFixed(2)}</span>`;
-          html += `<span style="color:#888">收</span><span style="font-family:monospace;color:${color}">¥${c.toFixed(2)}</span>`;
-          html += `<span style="color:#888">高</span><span style="font-family:monospace">¥${h.toFixed(2)}</span>`;
-          html += `<span style="color:#888">低</span><span style="font-family:monospace">¥${l.toFixed(2)}</span>`;
-          html += `<span style="color:#888">涨跌</span><span style="font-family:monospace;color:${color}">${chg>=0?'+':''}${chg.toFixed(2)} (${chgPct>=0?'+':''}${chgPct.toFixed(2)}%)</span>`;
-          html += `</div>`;
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#aaa', font: { size: 10 }, boxWidth: 12, padding: 8 }, position: 'top' },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          callbacks: {
+            title: items => items[0].label,
+          }
         }
-        // MA + 量
-        const others = params.filter(p => p.seriesType !== 'candlestick' && !['蜡烛', 'K线'].includes(p.seriesName));
-        if (others.length) {
-          html += `<div style="margin-top:6px;border-top:1px solid #2a2d3a;padding-top:4px;font-size:11px;">`;
-          others.forEach(p => {
-            const v = typeof p.data === 'object' ? p.data.value : p.data;
-            const fmt = p.seriesName === '成交量'
-              ? (v >= 1e8 ? (v/1e8).toFixed(2) + '亿' : (v/1e4).toFixed(0) + '万')
-              : (v != null ? '¥' + v.toFixed(2) : '-');
-            html += `<div style="display:flex;justify-content:space-between;gap:14px;"><span style="color:${p.color}">${p.seriesName}</span><span style="font-family:monospace">${fmt}</span></div>`;
-          });
-          html += `</div>`;
-        }
-        return html;
       },
-    },
-    axisPointer: { link: [{ xAxisIndex: 'all' }] },
-    grid: grids,
-    xAxis: xAxes,
-    yAxis: yAxes,
-    dataZoom: [
-      { type: 'inside', xAxisIndex: showVol ? [0, 1] : [0], start: 70, end: 100 },
-      { type: 'slider', xAxisIndex: showVol ? [0, 1] : [0], start: 70, end: 100, height: 14, bottom: 4, borderColor: '#2a2d3a', fillerColor: 'rgba(79,195,247,0.15)', handleStyle: { color: '#4fc3f7' }, textStyle: { color: '#888', fontSize: 9 } },
-    ],
-    series: series,
+      scales: {
+        x: {
+          ticks: {
+            color: '#666', font: { size: 9 },
+            maxTicksLimit: 12,
+            callback: function(v) { const d = this.getLabelForValue(v); return d ? d.slice(0,7) : ''; }
+          },
+          grid: { color: 'rgba(255,255,255,0.03)' },
+        },
+        y: {
+          position: 'left',
+          ticks: { color: '#666', font: { size: 9 }, callback: v => '¥' + v.toFixed(2) },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+        },
+        y1: showVolume ? {
+          position: 'right',
+          ticks: { color: '#666', font: { size: 9 }, callback: v => formatVol(v) },
+          grid: { display: false },
+        } : undefined,
+      },
+      elements: {
+        point: { radius: 0 },
+        line: { tension: 0.2 },
+      },
+    }
   });
+}
+
+function formatVol(v) {
+  if (v >= 1e8) return (v/1e8).toFixed(1) + '亿';
+  if (v >= 1e4) return (v/1e4).toFixed(0) + '万';
+  return v.toFixed(0);
 }
 
 function switchPeriod(period, btn) {
@@ -681,7 +597,17 @@ function switchPeriod(period, btn) {
 }
 
 function toggleIndicator(key) {
-  if (currentCode && klineData) renderKlineChart(klineData);
+  if (currentCode && klineData) {
+    const closes = klineData.close;
+    const dates = klineData.dates;
+    const mas = {
+      ma5: calcMA(closes, 5),
+      ma10: calcMA(closes, 10),
+      ma20: calcMA(closes, 20),
+      ma60: calcMA(closes, 60),
+    };
+    renderKlineChart(dates, closes, klineData.open, klineData.high, klineData.low, klineData.volume, mas);
+  }
 }
 
 // ===== 策略信号 =====
@@ -931,5 +857,3 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-</body>
-</html>
