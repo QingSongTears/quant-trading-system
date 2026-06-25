@@ -109,21 +109,86 @@ header a:hover { color:var(--accent); }
     </script>
 
     {% elif research_type == 'ic' %}
-    <p class="note">IC 分析 — 因子预测能力 (Rank IC, 5 日 / 20 日)</p>
+    <p class="note">IC 分析 — 因子预测能力 (Rank IC, 5 日 / 20 日, 2026-06-25 接 /api/research/ic)</p>
+    <div id="ic-summary" style="margin-bottom:12px"></div>
     <div id="ic-chart"><canvas id="ic-canvas"></canvas></div>
     <script>
-    // IC 数据可通过后端 /api/research/ic?window=5 拉 (后续 PR 加)
-    // 现在显示 placeholder 提示
-    document.getElementById('ic-chart').innerHTML =
-      '<p class="note" style="padding:40px 0;text-align:center">📊 IC 分析数据接口待接入 (调用 /api/research/ic)</p>';
+    (async function() {
+      try {
+        const resp = await window.QT.fetch('/api/research/ic?window=5&stock_limit=30');
+        const data = resp.ok ? await resp.json() : { factors: [] };
+        if (!data.factors || data.factors.length === 0) {
+          document.getElementById('ic-chart').innerHTML =
+            '<p class="note" style="padding:40px 0;text-align:center">📊 无 IC 数据 (DB 缺技术指标表)</p>';
+          return;
+        }
+        // 表格汇总
+        const summary = data.factors.map(f => {
+          const ic = f.mean_ic !== null ? f.mean_ic.toFixed(4) : '—';
+          const icir = f.icir !== null && f.icir !== undefined ? f.icir.toFixed(2) : '—';
+          return `<tr><td>${f.name}</td><td>${f.window}日</td><td>${ic}</td><td>${icir}</td><td>${f.n}</td></tr>`;
+        }).join('');
+        document.getElementById('ic-summary').innerHTML = `
+          <table style="width:100%;font-size:0.85rem;border-collapse:collapse">
+            <tr style="background:var(--card)"><th>因子</th><th>窗口</th><th>Mean IC</th><th>ICIR</th><th>N</th></tr>
+            ${summary}
+          </table>
+        `;
+        // 时序图: 每个因子一条线
+        const palette = ['#4fc3f7', '#ef5350', '#4caf50', '#ffa726', '#7c4dff'];
+        const datasets = data.factors.map((f, i) => ({
+          label: f.name,
+          data: (f.series || []).map(s => s.ic),
+          borderColor: palette[i % palette.length],
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: false,
+        }));
+        const labels = (data.factors[0].series || []).map(s => s.date);
+        new Chart(document.getElementById('ic-canvas'), {
+          type: 'line',
+          data: { labels, datasets },
+          options: { responsive: true, plugins: { legend: { labels: { color: 'var(--text)' } } } },
+        });
+      } catch (e) {
+        document.getElementById('ic-chart').innerHTML =
+          '<p class="note" style="padding:40px 0;text-align:center">❌ IC 数据加载失败: ' + e.message + '</p>';
+      }
+    })();
     </script>
 
     {% elif research_type == 'dim' %}
-    <p class="note">维度 IC 对比 — 7 维评分维度对收益的 IC 贡献</p>
+    <p class="note">维度 IC 对比 — 7 维评分维度对收益的 IC 贡献 (2026-06-25 接 /api/research/dim-ic)</p>
     <div id="dim-chart"><canvas id="dim-canvas"></canvas></div>
     <script>
-    document.getElementById('dim-chart').innerHTML =
-      '<p class="note" style="padding:40px 0;text-align:center">📊 维度 IC 数据接口待接入 (调用 /api/research/dim-ic)</p>';
+    (async function() {
+      try {
+        const resp = await window.QT.fetch('/api/research/dim-ic?window=5&stock_limit=30');
+        const data = resp.ok ? await resp.json() : { dims: [] };
+        if (!data.dims || data.dims.length === 0) {
+          document.getElementById('dim-chart').innerHTML =
+            '<p class="note" style="padding:40px 0;text-align:center">📊 无维度数据</p>';
+          return;
+        }
+        const labels = data.dims.map(d => d.name);
+        const values = data.dims.map(d => d.mean_ic !== null ? d.mean_ic : 0);
+        new Chart(document.getElementById('dim-canvas'), {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Rank IC (5日)',
+              data: values,
+              backgroundColor: values.map(v => v >= 0 ? 'rgba(76,175,80,0.6)' : 'rgba(239,83,80,0.6)'),
+            }],
+          },
+          options: { responsive: true, plugins: { legend: { labels: { color: 'var(--text)' } } } },
+        });
+      } catch (e) {
+        document.getElementById('dim-chart').innerHTML =
+          '<p class="note" style="padding:40px 0;text-align:center">❌ 维度 IC 加载失败: ' + e.message + '</p>';
+      }
+    })();
     </script>
 
     {% endif %}
