@@ -387,45 +387,12 @@
     </footer>
 
     <script src="{{ cdn.bootstrap }}/js/bootstrap.bundle.min.js"></script>
-    <!-- 全局工具 JS — Bearer token 拦截器从 Jinja2 globals 注入 (兼容独立模板) -->
+    <!-- 2026-06-25 (Phase C4): 删 base.html 内嵌的 fetch 拦截, 改用 common.js 统一拦截 -->
+    <!-- 注入 api_key meta 标签 (供 common.js 读) -->
     {{ _api_auth_snippet | safe }}
+    <script src="/static/js/common.js"></script>
     <!-- 全局工具 JS -->
     <script>
-    /* =============================================
-       自动注入 Bearer token 到所有 /api/* 请求
-       后端在 _get_global_context() 注入 api_key,这里拦截 fetch 自动带 header
-       ============================================= */
-    (function() {
-        const API_KEY = {{ api_key | tojson }};
-        if (!API_KEY) return;
-        const origFetch = window.fetch.bind(window);
-        window.fetch = function(input, init) {
-            const url = typeof input === 'string' ? input : (input && input.url) || '';
-            if (url.indexOf('/api/') === 0 || url.indexOf(window.location.origin + '/api/') === 0) {
-                init = init || {};
-                const headers = new Headers(init.headers || {});
-                if (!headers.has('Authorization')) {
-                    headers.set('Authorization', 'Bearer ' + API_KEY);
-                }
-                init.headers = headers;
-            }
-            return origFetch(input, init);
-        };
-        // 也拦截 XMLHttpRequest (老代码可能用)
-        const origOpen = XMLHttpRequest.prototype.open;
-        const origSend = XMLHttpRequest.prototype.send;
-        XMLHttpRequest.prototype.open = function(method, url) {
-            this.__url = url;
-            return origOpen.apply(this, arguments);
-        };
-        XMLHttpRequest.prototype.send = function() {
-            if (this.__url && (this.__url.indexOf('/api/') === 0 || this.__url.indexOf(window.location.origin + '/api/') === 0)) {
-                try { this.setRequestHeader('Authorization', 'Bearer ' + API_KEY); } catch(e){}
-            }
-            return origSend.apply(this, arguments);
-        };
-    })();
-
     /* =============================================
        ECharts Resize 统一管理
        注意：Chrome 136+ 移除了 WeakMap.prototype.forEach
