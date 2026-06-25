@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>研究面板 · 量化调优与归因</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root { --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a; --text:#e0e0e0; --dim:#888; --accent:#4fc3f7; --green:#4caf50; --red:#ef5350; --yellow:#ffa726; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+header { background:var(--card); border-bottom:1px solid var(--border); padding:14px 24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+header h1 { font-size:1.1rem; font-weight:600; }
+header a { color:var(--dim); text-decoration:none; font-size:0.8rem; margin-left:auto; }
+header a:hover { color:var(--accent); }
+.container { max-width:1300px; margin:0 auto; padding:20px; }
+
+/* Tabs 切换 */
+.tabs { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
+.tab { padding:8px 18px; border-radius:8px; background:var(--card); border:1px solid var(--border); color:var(--dim); text-decoration:none; font-size:0.9rem; transition:0.15s; }
+.tab:hover { color:var(--accent); border-color:var(--accent); }
+.tab.active { background:var(--accent); color:#000; border-color:var(--accent); font-weight:600; }
+
+.card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:16px; }
+.card-title { font-size:0.75rem; text-transform:uppercase; color:var(--dim); letter-spacing:0.8px; margin-bottom:12px; font-weight:600; }
+
+.note { color:var(--dim); font-size:0.9rem; line-height:1.6; }
+.note a { color:var(--accent); text-decoration:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 研究面板 · 量化调优与归因</h1>
+  <a href="/">🏠 返回首页</a>
+</header>
+
+<div class="container">
+  {# 5 tab 切换 — 2026-06-25 合并 v5/v6-compare/tuning/ic/dim-compare #}
+  <div class="tabs">
+    <a class="tab {% if research_type == 'v5' %}active{% endif %}" href="/research?type=v5">V5 调优</a>
+    <a class="tab {% if research_type == 'v6' %}active{% endif %}" href="/research?type=v6">V6 对比</a>
+    <a class="tab {% if research_type == 'tuning' %}active{% endif %}" href="/research?type=tuning">参数调优</a>
+    <a class="tab {% if research_type == 'ic' %}active{% endif %}" href="/research?type=ic">IC 分析</a>
+    <a class="tab {% if research_type == 'dim' %}active{% endif %}" href="/research?type=dim">维度 IC 对比</a>
+  </div>
+
+  <div class="card">
+    <div class="card-title">{{ research_type|upper }} 研究视图</div>
+    <p class="note">
+      2026-06-25 重构: 此页面合并原 5 个独立页面
+      (<a href="/v5">/v5</a>, <a href="/v6-compare">/v6-compare</a>,
+       <a href="/tuning">/tuning</a>, <a href="/ic">/ic</a>, <a href="/dim-compare">/dim-compare</a>)
+      为单一入口, 通过 <code>?type={{ research_type }}</code> 切换。
+    </p>
+    <p class="note">
+      旧路径已用 301 永久重定向, 浏览器/爬虫/书签自动跳转。
+    </p>
+    <p class="note">
+      模板内容待补: 当前 <code>research_type={{ research_type }}</code> 的具体渲染逻辑
+      (调优曲线 / IC 分布 / 维度对比图) 后续 PR 逐步迁移。原 5 个 .html 模板暂不删
+      (作为参考 + 提供 JS 数据接口)。
+    </p>
+  </div>
+</div>
+</body>
+</html>
