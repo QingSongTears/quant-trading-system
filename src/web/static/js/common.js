@@ -29,6 +29,7 @@
   };
 
   // ============== fetch 拦截器 (Bearer token) ==============
+  // 2026-06-25: 既挂 QT.fetch 命名空间, 又覆盖 window.fetch 让老代码 (window.fetch) 自动生效
   const _originalFetch = global.fetch ? global.fetch.bind(global) : null;
   function authedFetch(url, options) {
     options = options || {};
@@ -45,10 +46,12 @@
     }
     return Promise.reject(new Error('fetch 未定义'));
   }
-  // 不覆盖 window.fetch, 提供命名空间
+  // 2026-06-25: 覆盖 window.fetch 让老 fetch('/api/...') 调用自动带 Bearer
+  // (页面用 window.fetch 时不用改代码就能鉴权)
   global.QT = global.QT || {};
   global.QT.fetch = authedFetch;
   global.QT.COLOR = COLOR;
+  global.fetch = authedFetch;
 
   // ============== smartDateInterval ==============
   // 净值曲线 / K 线图: 数据 > 100 时跳过中间 label, 避免拥挤
