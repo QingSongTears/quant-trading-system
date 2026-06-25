@@ -295,9 +295,15 @@ async def strategies_page(request: Request):
 @router.get("/compare", response_class=HTMLResponse)
 async def compare_page(
     request: Request,
-    ids: str | None = Query(None, description="逗号分隔的回测ID")
+    ids: str | None = Query(None, description="逗号分隔的回测ID"),
+    type: str = "backtest",  # backtest | strategy  (2026-06-25 合并 strategy-compare)
 ):
-    """多模型对比页"""
+    """多模型对比页 (2026-06-25 合并 strategy-compare)
+
+    Args:
+        ids: 回测 ID 列表 (逗号分隔, backtest 模式)
+        type: backtest (默认, 多次回测叠加) | strategy (按策略名聚合)
+    """
     repo = _get_repo()
     results = []
     if ids:
@@ -313,8 +319,17 @@ async def compare_page(
     ctx.update({
         "results": results,
         "all_backtests": repo.get_recent_backtests(limit=50),
+        "compare_type": type,
     })
     return templates.TemplateResponse(request, "compare.html", ctx)
+
+
+# 2026-06-25 (Phase C3b): strategy-compare 合并到 /compare?type=strategy
+@router.get("/strategy-compare", response_class=HTMLResponse)
+async def strategy_compare_redirect(request: Request):
+    """重定向到 /compare?type=strategy"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/compare?type=strategy", status_code=301)
 
 
 @router.get("/workbench", response_class=HTMLResponse)
@@ -392,7 +407,7 @@ _STANDALONE_PAGES = {
     # 2026-06-25 (Phase C3a): 合并到 /workbench?mode=lab / mode=view
     # "/backtest-lab": "backtest-lab.html",
     # "/backtest-view": "backtest-view.html",
-    "/strategy-compare": "strategy-compare.html",
+    # "/strategy-compare": "strategy-compare.html",  # 2026-06-25 合并到 /compare?type=strategy
     "/bull-report": "bull-report.html",
     "/signal": "signal.html",
     "/verify": "verify.html",
