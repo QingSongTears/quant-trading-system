@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>个股诊断 · 8维量化选股</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+{% include "partials/_standalone_head.html" %}
+{% set page_title = "个股诊断 · 8维量化选股" %}
+{% set need_chartjs = true %}
+{% set need_echarts = true %}
+<title>{{ page_title }}</title>
+{# 2026-06-25 (Phase C2): head 抽公共, 保留页面特定 style 在下方 #}
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 :root {

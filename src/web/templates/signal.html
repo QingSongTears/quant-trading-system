@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>综合信号 · 多维度共振</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% include "partials/_standalone_head.html" %}
+{% set page_title = "综合信号 · 多维度共振" %}
+{% set need_chartjs = true %}
+<title>{{ page_title }}</title>
+{# 2026-06-25 (Phase C2): head 抽公共, 保留页面特定 style 在下方 #}
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
