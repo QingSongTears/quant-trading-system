@@ -108,4 +108,3 @@ from .chip_scorer import ChipScorer  # noqa: E402,F401
 from .institutional_scorer import InstitutionalScorer  # noqa: E402,F401
 from .sentiment_scorer import SentimentScorer  # noqa: E402,F401
 from .news_event_scorer import NewsEventScorer  # noqa: E402,F401
-from .lhb_institutional_scorer import LhbInstitutionalScorer  # noqa: E402,F401

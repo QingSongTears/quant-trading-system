@@ -237,16 +237,16 @@ def test_subclass_score_can_return_extra_keys():
 
 EXPECTED_SCORERS = {
     "technical", "fundamental", "fund_flow", "chip",
-    "institutional", "sentiment", "news_event", "lhb_institutional",
+    "institutional", "sentiment", "news_event",
 }
 
 
 def test_all_eight_scorers_registered():
-    """导入 src.scoring 应自动注册全部 8 个真实 scorer"""
+    """导入 src.scoring 应自动注册全部 7 个真实 scorer (lhb_institutional 2026-06-25 删除)"""
     # 触发 import
     from src.scoring import (
         TechnicalScorer, FundamentalScorer, FundFlowScorer, ChipScorer,
-        InstitutionalScorer, SentimentScorer, NewsEventScorer, LhbInstitutionalScorer,
+        InstitutionalScorer, SentimentScorer, NewsEventScorer,
     )
     registered = set(ScorerRegistry._registry.keys())
     missing = EXPECTED_SCORERS - registered
@@ -257,10 +257,10 @@ def test_every_scorer_declares_required_metadata():
     """每个 scorer 必须有 name/label_zh/weight/score"""
     from src.scoring import (
         TechnicalScorer, FundamentalScorer, FundFlowScorer, ChipScorer,
-        InstitutionalScorer, SentimentScorer, NewsEventScorer, LhbInstitutionalScorer,
+        InstitutionalScorer, SentimentScorer, NewsEventScorer,
     )
     for cls in (TechnicalScorer, FundamentalScorer, FundFlowScorer, ChipScorer,
-                InstitutionalScorer, SentimentScorer, NewsEventScorer, LhbInstitutionalScorer):
+                InstitutionalScorer, SentimentScorer, NewsEventScorer):
         assert cls.name and cls.name != "base", f"{cls.__name__} 缺 name"
         assert cls.label_zh, f"{cls.__name__} 缺 label_zh"
         assert isinstance(cls.weight, (int, float)), f"{cls.__name__} 缺 weight"

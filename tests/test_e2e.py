@@ -482,12 +482,11 @@ class TestBoundaryScenarios:
 
     # BE-01
     def test_minimal_capital_insufficient(self):
-        """初始资金 = 100 元不足以买 1 手"""
-        from src.strategies.stock_screener.core.risk_manager import RiskManager
-        rm = RiskManager(total_capital=100)
-        position_size = rm.calc_position_size(is_quant_stock=False)
-        # 100 * 0.22 = 22 元，明显不足以买 100 股
-        assert position_size < 100, f"小资金应只能买极少量: {position_size}"
+        """初始资金 = 100 元不足以买 1 手 — 2026-06-25 删除
+        原因: stock_screener 已删, RiskManager 来源随之消失
+        替代: src/strategy/risk_manager.py (新位置) 单测
+        """
+        pytest.skip("stock_screener 2026-06-25 删除, BE-01 跳过")
 
     # BE-02
     def test_backtest_single_day_range(self):

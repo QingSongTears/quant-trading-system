@@ -10,7 +10,7 @@ V龙头 特征工程模块 — vnpy.alpha.dataset 角色
   - 缺失数据**安全降级** (返回默认值, 不抛异常) — 实战中很多数据不全
 
 特征 schema (与 train_xgb_v4.py 一致, 共 74 维):
-  1. 8 维评分 raw          tech/fundam/fund/institutional/lh_institutional/
+  1. 7 维评分 raw          tech/fundam/fund/institutional/sentiment/news/chip
                            sentiment/news_event/chip (each _weighted)
   2. 8 维评分 截面 pct     ..._pct
   3. 1 维 综合 pct         avg_score_pct
@@ -40,26 +40,24 @@ from sqlalchemy.engine import Engine
 
 # ── 特征 schema 常量 (与 train_xgb_v4.py 严格一致) ──
 
-# 8 维评分列名 (训练时 dim_cols 顺序)
+# 7 维评分列名 (训练时 dim_cols 顺序, 2026-06-25 删 lh_institutional)
 DIM_COLS: list[str] = [
     "tech_weighted",
     "fundam_weighted",
     "fund_weighted",
     "institutional_weighted",
-    "lh_institutional_weighted",
     "sentiment_weighted",
     "news_event_weighted",
     "chip_weighted",
 ]
 
-# 8 维评分 → ScorerRegistry name 映射
+# 7 维评分 → ScorerRegistry name 映射
 # 注意:fundam_weighted 列名对应 fundamental scorer,fund_weighted 对应 fund_flow scorer
 DIM_TO_SCORER: dict[str, str] = {
     "tech_weighted": "technical",
     "fundam_weighted": "fundamental",
     "fund_weighted": "fund_flow",
     "institutional_weighted": "institutional",
-    "lh_institutional_weighted": "lhb_institutional",
     "sentiment_weighted": "sentiment",
     "news_event_weighted": "news_event",
     "chip_weighted": "chip",
@@ -83,7 +81,6 @@ SCORERS_WITH_DATE: set[str] = {
     "technical",
     "fund_flow",
     "institutional",
-    "lhb_institutional",
     "sentiment",
     "news_event",
 }
