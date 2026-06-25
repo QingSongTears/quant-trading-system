@@ -57,3 +57,16 @@ output/*.png
 output/*.jpg
 output/*.jpeg
 output/*_audit/*.png
+
+# 2026-06-25: server PID 文件 (run.py 每次启动生成)
+.run_server.pid
+.run_server.port
+
+# 2026-06-25: 临时数据审计 / 状态报告 (按日期生成, 不入 git)
+market_data/DATA_*_2026-*.md
+market_data/数据*_2026-*.md
+market_data/*_审查报告_2026-*.md
+market_data/*_健全方案_2026-*.md
+
+# 2026-06-25: 临时数据快照 (按日期生成, 不入 git)
+market_data/*.csv.tmp
