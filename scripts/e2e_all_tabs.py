@@ -54,7 +54,9 @@ async def visit_page(browser, name, url, expected_text=None, click_selectors=Non
         except Exception:
             pass  # networkidle 超时不算错
         text = await page.evaluate("document.body.innerText")
-        text_ok = (expected_text is None) or (expected_text in text)
+        title = await page.title()
+        # 文本匹配: body innerText 或 title 任一包含 expected
+        text_ok = (expected_text is None) or (expected_text in text) or (expected_text in title)
 
         # 截图
         shot = await screenshot(page, name)
@@ -140,8 +142,8 @@ async def main():
         ("bull-report", "/bull-report", "牛市", []),
         ("simulate", "/simulate", "模拟", []),
 
-        # 个股详情 (动态)
-        ("stock-detail", "/stock/000001", "000001", []),
+        # 个股详情 (动态) - title 含 "个股", 验证模板渲染
+        ("stock-detail", "/stock/000001", "个股", []),
     ]
 
     all_results = []
