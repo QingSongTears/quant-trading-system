@@ -188,11 +188,12 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     # 注册路由
-    from .routes import main, api
+    from .routes import main, api, research
     app.include_router(main.router)
     # /api/* 全部需要 Bearer token
     # 依赖在路由模块内部用 Depends 显式标注,这里不再做 router 级依赖
     # (避免影响未来添加的 public 端点)
     app.include_router(api.router, prefix="/api")
+    app.include_router(research.router, prefix="/api")  # 2026-06-25 Phase 12: IC/Dim-IC API
 
     return app
