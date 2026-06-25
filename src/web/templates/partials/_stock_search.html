@@ -1,0 +1,84 @@
+{# ============================================================================
+   _stock_search.html — 股票代码搜索框 (2026-06-25)
+
+   替换 6+ 模板中重复的"股票代码搜索框"代码
+
+   用法:
+     {% include "partials/_stock_search.html" %}
+     {% set search_id = "stock-input-workbench" %}
+     {% set search_placeholder = "输入股票代码/名称" %}
+
+   JS API (由 common.js 提供):
+     QT.searchStock(query) -> Promise<[{code, name}, ...]>
+   ============================================================================ #}
+{% set search_id = search_id|default("stock-input") %}
+{% set search_placeholder = search_placeholder|default("输入股票代码或名称") %}
+<div class="search-line">
+  <input type="search"
+         id="{{ search_id }}"
+         placeholder="{{ search_placeholder }}"
+         autocomplete="off"
+         {% if search_value is defined %}value="{{ search_value }}"{% endif %}>
+  <button type="button" id="{{ search_id }}-btn">查询</button>
+  <div class="suggestions" id="{{ search_id }}-suggestions"></div>
+</div>
+
+<script>
+(function() {
+  const input = document.getElementById('{{ search_id }}');
+  const btn = document.getElementById('{{ search_id }}-btn');
+  const sug = document.getElementById('{{ search_id }}-suggestions');
+  let activeIdx = -1;
+
+  if (!input) return;
+
+  // 防抖搜索
+  const doSearch = window.QT.debounce(async function() {
+    const q = input.value.trim();
+    if (q.length < 1) {
+      sug.style.display = 'none';
+      return;
+    }
+    const results = await window.QT.searchStock(q);
+    if (!results || results.length === 0) {
+      sug.style.display = 'none';
+      return;
+    }
+    sug.innerHTML = results.slice(0, 10).map((r, i) => {
+      return `<div data-idx="${i}" data-code="${r.code}">
+        <span class="code">${r.code}</span>
+        <span class="name">${r.name || ''}</span>
+      </div>`;
+    }).join('');
+    sug.style.display = 'block';
+
+    sug.querySelectorAll('div').forEach(d => {
+      d.addEventListener('click', () => {
+        input.value = d.dataset.code;
+        sug.style.display = 'none';
+        if (window.{{ search_id|replace('-', '_') }}_onPick) {
+          window.{{ search_id|replace('-', '_') }}_onPick(d.dataset.code);
+        }
+      });
+    });
+  }, 250);
+
+  input.addEventListener('input', doSearch);
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') btn.click();
+  });
+  document.addEventListener('click', function(e) {
+    if (e.target !== input) sug.style.display = 'none';
+  });
+
+  if (btn) {
+    btn.addEventListener('click', function() {
+      const code = input.value.trim();
+      if (!code) return;
+      if (window.{{ search_id|replace('-', '_') }}_onPick) {
+        window.{{ search_id|replace('-', '_') }}_onPick(code);
+      }
+    });
+  }
+})();
+</script>

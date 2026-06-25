@@ -1,0 +1,95 @@
+{# ============================================================================
+   _backtest_form.html — 回测参数表单 (2026-06-25)
+
+   替换 workbench / backtest-lab / backtest-view / simulate 的表单重复
+
+   用法:
+     {% include "partials/_backtest_form.html" %}
+     {% set form_id = "workbench-form" %}
+     {% set show_capital = true %}
+     {% set show_fee = true %}
+     {% set show_mode = false %}
+   ============================================================================ #}
+{% set form_id = form_id|default("backtest-form") %}
+<form id="{{ form_id }}" class="backtest-form" onsubmit="return false;">
+  <div class="form-row">
+    <label>策略:
+      <select id="{{ form_id }}-strategy" name="strategy">
+        {% for s in strategies or [] %}
+        <option value="{{ s.name }}"
+                {% if selected_strategy and s.name == selected_strategy %}selected{% endif %}>
+          {{ s.label or s.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>股票代码:
+      <input type="text" id="{{ form_id }}-code" name="code"
+             placeholder="000001.SZ 或 sh600000"
+             value="{{ selected_code|default('') }}">
+    </label>
+
+    <label>起:
+      <input type="date" id="{{ form_id }}-start" name="start"
+             value="{{ selected_start|default('') }}">
+    </label>
+
+    <label>止:
+      <input type="date" id="{{ form_id }}-end" name="end"
+             value="{{ selected_end|default('') }}">
+    </label>
+  </div>
+
+  {% if show_capital %}
+  <div class="form-row">
+    <label>初始资金:
+      <input type="number" id="{{ form_id }}-capital" name="capital"
+             value="100000" min="10000" step="10000">
+    </label>
+
+    {% if show_fee %}
+    <label>佣金(%):
+      <input type="number" id="{{ form_id }}-commission" name="commission"
+             value="0.025" min="0" step="0.001">
+    </label>
+
+    <label>印花税(%):
+      <input type="number" id="{{ form_id }}-stamp" name="stamp_tax"
+             value="0.1" min="0" step="0.01">
+    </label>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if show_mode %}
+  <div class="form-row">
+    <label>模式:
+      <select id="{{ form_id }}-mode" name="mode">
+        <option value="default">默认</option>
+        <option value="lab">参数调节 (Lab)</option>
+        <option value="view">可视化 (View)</option>
+      </select>
+    </label>
+  </div>
+  {% endif %}
+
+  <div class="form-row">
+    <button type="button" class="btn" id="{{ form_id }}-submit">运行回测</button>
+    <span id="{{ form_id }}-status" class="status"></span>
+  </div>
+</form>
+
+<style>
+.backtest-form .form-row {
+  display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.backtest-form label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.85rem; color: var(--dim);
+}
+.backtest-form .status {
+  color: var(--dim); font-size: 0.85rem; margin-left: 12px;
+}
+</style>

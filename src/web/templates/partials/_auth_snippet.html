@@ -1,0 +1,16 @@
+{# ============================================================================
+   _auth_snippet.html — Bearer 鉴权注入 (2026-06-25)
+
+   之前 app.py 也注入了一份 (双注入 bug, 修 Phase C4)
+   现在统一从 partial 注入, 一次即可
+
+   用法: 在 <head> 中:
+     {% include "partials/_auth_snippet.html" %}
+   ============================================================================ #}
+{% if api_key is defined and api_key %}
+<meta name="api-key" content="{{ api_key }}">
+<script>
+// 兼容老代码: 仍暴露 window.QUANT_API_KEY (供 base.html 拦截器使用)
+window.QUANT_API_KEY = {{ api_key|tojson }};
+</script>
+{% endif %}

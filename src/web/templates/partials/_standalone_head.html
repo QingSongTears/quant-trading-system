@@ -1,0 +1,37 @@
+{# ============================================================================
+   _standalone_head.html — 独立页面 <head> 公共部分 (2026-06-25)
+
+   替换 20 个独立 HTML 模板中重复的 ~30 行 <head>:
+     - meta + 标题块
+     - standalone-base.css
+     - common.js (Bearer fetch + QT 命名空间)
+     - echarts/chart.js CDN (按需)
+
+   用法:
+     {% include "partials/_standalone_head.html" %}
+     {% set page_title = "个股诊断" %}
+     {% set page_icon = "🔍" %}
+     {% set need_echarts = true %}
+   ============================================================================ #}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+{% if page_api_key is defined %}
+<meta name="api-key" content="{{ page_api_key }}">
+{% endif %}
+<title>{% block title %}{{ page_title|default('Quant Trading') }}{% endblock %}</title>
+
+{# 公共 CSS + JS #}
+<link rel="stylesheet" href="/static/css/standalone-base.css">
+<script src="/static/js/common.js"></script>
+
+{# 图表库 CDN — 按需 #}
+{% if need_echarts %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script src="/static/js/echarts-helpers.js"></script>
+{% endif %}
+{% if need_chartjs %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endif %}
+
+{# 页面特定 style (各页 layout 不同) #}
+{% block extra_head %}{% endblock %}
