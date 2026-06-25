@@ -383,15 +383,60 @@ def main():
     print()
 
     import uvicorn
+    # 2026-06-25: 写 PID 文件 + 自动检测老进程 + 端口检查
+    PID_FILE = PROJECT_ROOT / ".run_server.pid"
+    PORT_FILE = PROJECT_ROOT / ".run_server.port"
+
+    def _check_port_free(port: int) -> bool:
+        """检查端口是否空闲"""
+        import socket
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind((args.host, port))
+                return True
+        except OSError:
+            return False
+
+    # 检测端口被占 + 旧 PID 文件 → 自动停止老 server
+    if not _check_port_free(args.port):
+        print(f"⚠️  端口 {args.port} 被占用, 尝试停止老 server...")
+        if PID_FILE.exists():
+            try:
+                old_pid = int(PID_FILE.read_text().strip())
+                if sys.platform == "win32":
+                    import subprocess as sp
+                    sp.run(["taskkill", "/PID", str(old_pid), "/F"],
+                           capture_output=True)
+                    print(f"   停止老 server (PID={old_pid})")
+                else:
+                    os.kill(old_pid, signal.SIGTERM)
+            except Exception as e:
+                print(f"   停止老 server 失败: {e}")
+                print(f"   手动: lsof -i :{args.port} 找 PID 后 kill")
+        import time
+        time.sleep(2)  # 等端口释放
+
+    # 写新 PID 文件
+    PID_FILE.write_text(str(os.getpid()))
+    PORT_FILE.write_text(str(args.port))
+
     reload_enabled = args.debug and not args.no_reload  # 2026-06-25: 默认 reload
-    uvicorn.run(
-        "src.web.app:create_app",
-        host=args.host,
-        port=args.port,
-        reload=reload_enabled,
-        factory=True,
-        log_level="debug" if args.debug else "info",
-    )
+    try:
+        uvicorn.run(
+            "src.web.app:create_app",
+            host=args.host,
+            port=args.port,
+            reload=reload_enabled,
+            factory=True,
+            log_level="debug" if args.debug else "info",
+        )
+    finally:
+        # 清理 PID 文件
+        if PID_FILE.exists():
+            try:
+                PID_FILE.unlink()
+            except Exception:
+                pass
     if reload_enabled:
         print("\n🔄 Auto-reload 已启用, 修改代码会自动重启")
         print("   生产部署: python run.py --no-reload")

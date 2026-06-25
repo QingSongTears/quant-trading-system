@@ -15,8 +15,9 @@
    ============================================================================ #}
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-{% if page_api_key is defined %}
-<meta name="api-key" content="{{ page_api_key }}">
+{# 2026-06-25: api_key 由 _get_global_context() 注入, common.js QT.fetch 读 meta 拦截 API 请求 #}
+{% if api_key is defined and api_key %}
+<meta name="api-key" content="{{ api_key }}">
 {% endif %}
 <title>{% block title %}{{ page_title|default('Quant Trading') }}{% endblock %}</title>
 
