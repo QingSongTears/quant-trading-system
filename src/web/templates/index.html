@@ -104,6 +104,20 @@
   .recent-card .ret-pos { color: var(--profit-green, #22c55e); font-weight: 700; font-family: monospace; }
   .recent-card .ret-neg { color: var(--loss-red, #ef4444); font-weight: 700; font-family: monospace; }
   .recent-card .sharpe { color: #888; font-family: monospace; font-size: 0.72rem; }
+
+  @media (max-width: 576px) {
+      .card .card-body > .d-flex.align-items-center.gap-3 {
+          flex-wrap: wrap;
+      }
+      .card .card-body > .d-flex.align-items-center.gap-3 > .ms-auto {
+          margin-left: 0 !important;
+          width: 100%;
+          text-align: left !important;
+      }
+      .card .card-body > .d-flex.align-items-center.gap-3 > .ms-auto .d-flex {
+          flex-wrap: wrap;
+      }
+  }
 </style>
 {% endblock %}
 
@@ -345,4 +359,3 @@ document.getElementById('quick-stock').addEventListener('keypress', e => {
 })();
 </script>
 {% endblock %}
-

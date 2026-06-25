@@ -19,6 +19,7 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 from ...models.repository import DataRepository
+from ...data import get_data_manager
 from ...data.downloader import DataDownloader
 from ...data.westock_downloader import WestockDownloader
 from ...backtest.engine import BacktestEngine
@@ -29,6 +30,11 @@ from ..auth import safe_import_strategy, verify_api_key
 
 # 所有 /api/* 端点统一要求 Bearer token
 router = APIRouter(dependencies=[Depends(verify_api_key)])
+
+
+def _get_repo():
+    """统一从 data 层获取数据库访问入口。"""
+    return get_data_manager().repository
 
 
 # ===== 序列化辅助函数 (处理 np.nan / np.float64) =====
@@ -122,7 +128,7 @@ class VotingBacktestRequest(BaseModel):
 @router.get("/data/coverage")
 async def get_data_coverage():
     """获取数据覆盖概览"""
-    repo = DataRepository()
+    repo = _get_repo()
     try:
         return {"success": True, "data": repo.get_data_coverage()}
     except Exception as e:
@@ -133,7 +139,7 @@ async def get_data_coverage():
 @router.get("/data/search")
 async def search_stocks(q: str = Query(..., min_length=1)):
     """搜索股票"""
-    repo = DataRepository()
+    repo = _get_repo()
     try:
         df = repo.get_stock_list()
         # 兼容 NaN: name 可能含 NaN
@@ -176,7 +182,7 @@ async def get_sector_distribution(
 
     数据接口统一: 基于 stock_basic.industry 字段聚合,前端可直接使用
     """
-    repo = DataRepository()
+    repo = _get_repo()
     try:
         df = repo.get_stock_list()
         if df.empty or "industry" not in df.columns:
@@ -217,7 +223,7 @@ async def stock_screener(
     数据接口统一: 行业筛选 + 排除 ST/退市,返回基础数据
     注: 完整评分筛选需要 scoring 管线,这里只做基础筛选
     """
-    repo = DataRepository()
+    repo = _get_repo()
     try:
         df = repo.get_stock_list()
         if df.empty:
@@ -375,7 +381,7 @@ async def run_backtest(req: BacktestRequest):
         )
 
         # 持久化 (PR3.3: 简化 session 生命周期,用 repo 封装方法替代直 ORM query)
-        repo = DataRepository()
+        repo = _get_repo()
         with repo.get_session() as session:
             # 先保存策略配置
             for s in strategies_config.get("strategies", []):
@@ -466,7 +472,7 @@ async def run_portfolio_backtest(req: PortfolioBacktestRequest):
         )
 
         # 持久化 (PR3.3)
-        repo = DataRepository()
+        repo = _get_repo()
         with repo.get_session() as session:
             for s in strategies_config.get("strategies", []):
                 if s["name"] == req.strategy_name:
@@ -525,9 +531,7 @@ async def run_voting_backtest(req: VotingBacktestRequest):
     """执行技术投票模型回测"""
     try:
         from ...models.technical_voting import TechnicalVotingModel
-        from ...models.repository import DataRepository
-
-        repo = DataRepository()
+        repo = _get_repo()
 
         # 获取股票池: 从 daily_price 中取有足够数据的股票
         stock_list = repo.get_stock_list()
@@ -626,7 +630,7 @@ async def get_strategy_compare(
     from ...config import load_strategies
     from collections import defaultdict
 
-    repo = DataRepository()
+    repo = _get_repo()
 
     if stock_code:
         # 单股多模型对比 (与 models/summary 行为一致)
@@ -711,7 +715,7 @@ async def get_models_summary(
     strategies_config = load_strategies()
     models = strategies_config.get("strategies", [])
 
-    repo = DataRepository()
+    repo = _get_repo()
     # PR3.3: 用 repo 封装方法替代直 ORM 查询
     summaries = repo.get_models_summary_for_stock(models, stock_code)
     return {"success": True, "data": summaries}
@@ -728,7 +732,7 @@ async def get_backtest_results(limit: int = 20):
       旧数据 (PR2.2 前) 存的是正数,在此处统一转负值
     - 所有 None 字段转 None (前端可直接判断)
     """
-    repo = DataRepository()
+    repo = _get_repo()
     results = repo.get_recent_backtests(limit)
     data = []
     for r in results:
@@ -904,7 +908,7 @@ async def get_stock_pool(
     - 分页: 支持 page+page_size (新) 和 max_stocks (旧,二选一)
     - 名称清洗: 全角空格 / 连续空格 → 单空格
     """
-    repo = DataRepository()
+    repo = _get_repo()
     df = repo.get_stock_list()
 
     if exclude_st:
@@ -1079,14 +1083,19 @@ async def api_simulate_equity(run_id: str = Query(...)):
 async def api_status():
     """通用服务状态 — data-monitor.html 用"""
     from datetime import datetime
-    repo = DataRepository()
+    repo = _get_repo()
     try:
         coverage = repo.get_data_coverage()
+        db_status = repo.get_db_status()
+        tables = db_status.get("tables", [])
         return {
             "success": True,
             "status": "ok",
             "time": datetime.now().isoformat(timespec="seconds"),
             "coverage": coverage,
+            "loaded": coverage.get("total_records", 0),
+            "dims": [t.get("name") for t in tables if t.get("row_count", 0) > 0],
+            "task": {"status": "idle", "progress": 0},
             "service": "quant-trading-system",
             "version": "v2.0",
         }
@@ -1097,9 +1106,10 @@ async def api_status():
 @router.get("/data/db-status")
 async def api_data_db_status():
     """数据库健康度 — data-monitor.html 用"""
-    repo = DataRepository()
+    repo = _get_repo()
     try:
-        return {"success": True, "available": True, "data": repo.get_db_status()}
+        status = repo.get_db_status()
+        return {"success": True, "available": True, "data": status, **status}
     except Exception as e:
         return {"success": False, "available": False, "error": str(e)[:200]}
 
@@ -1109,7 +1119,7 @@ async def api_data_db_status():
 @router.get("/walk_forward/runs")
 async def api_walk_forward_runs(limit: int = Query(50, ge=1, le=200)):
     """列出所有 walk_forward OOS 验证运行 (按创建时间倒序)"""
-    repo = DataRepository()
+    repo = _get_repo()
     try:
         runs = repo.list_walk_forward_runs(limit=limit)
         return {"success": True, "available": True, "total": len(runs), "data": runs}
@@ -1121,7 +1131,7 @@ async def api_walk_forward_runs(limit: int = Query(50, ge=1, le=200)):
 @router.get("/walk_forward/runs/{run_id}")
 async def api_walk_forward_run_detail(run_id: int):
     """单次 walk_forward 运行详情 (含 N 个窗口明细)"""
-    repo = DataRepository()
+    repo = _get_repo()
     try:
         detail = repo.get_walk_forward_run(int(run_id))
         if detail is None:
@@ -1135,7 +1145,7 @@ async def api_walk_forward_run_detail(run_id: int):
 @router.get("/walk_forward/summary")
 async def api_walk_forward_summary():
     """Walk-Forward 全局汇总 (跨 run) — dashboard 顶部卡片用"""
-    repo = DataRepository()
+    repo = _get_repo()
     try:
         summary = repo.get_walk_forward_summary()
         return {"success": True, "data": summary}
@@ -1147,7 +1157,7 @@ async def api_walk_forward_summary():
 @router.get("/backtest/history")
 async def api_backtest_history(limit: int = Query(50, ge=1, le=500)):
     """回测历史列表 — backtest-lab.html 用 (兼容旧 URL 命名)"""
-    repo = DataRepository()
+    repo = _get_repo()
     try:
         rows = repo.get_recent_backtests(limit=limit)
         out = []
@@ -1174,7 +1184,7 @@ async def api_backtest_history(limit: int = Query(50, ge=1, le=500)):
 @router.get("/v5/scan-results")
 async def api_v5_scan_results(limit: int = Query(20, ge=1, le=200)):
     """v5 扫描结果 — v5.html 用 (兼容旧版移植)"""
-    repo = DataRepository()
+    repo = _get_repo()
     try:
         # 复用 get_recent_backtests 拿最新回测, 前端按 strategy='v5_hybrid' 过滤
         rows = repo.get_recent_backtests(limit=limit * 4)

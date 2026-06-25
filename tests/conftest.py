@@ -91,6 +91,11 @@ def _ensure_test_api_key():
     except ImportError:
         pass
     yield
+    try:
+        from src.db.engine import reset_engine_cache
+        reset_engine_cache()
+    except Exception:
+        pass
 
 
 @pytest.fixture
