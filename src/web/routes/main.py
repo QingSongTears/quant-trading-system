@@ -375,6 +375,35 @@ async def backtest_view_redirect(request: Request):
     return RedirectResponse(url="/workbench?mode=view", status_code=301)
 
 
+# 2026-06-25 (Phase C3c): v5/v6/tuning/ic/dim 合并到 /research?type=
+RESEARCH_REDIRECTS = {
+    "/v5": "/research?type=v5",
+    "/v6-compare": "/research?type=v6",
+    "/tuning": "/research?type=tuning",
+    "/ic": "/research?type=ic",
+    "/dim-compare": "/research?type=dim",
+}
+for _path, _target in RESEARCH_REDIRECTS.items():
+    @router.get(_path, response_class=HTMLResponse)
+    async def _research_redirect(_t=_target):
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=_t, status_code=301)
+
+
+@router.get("/research", response_class=HTMLResponse)
+async def research_page(request: Request, type: str = "v5"):
+    """研究类页面 — 2026-06-25 合并 5 个 (v5/v6-compare/tuning/ic/dim-compare)
+
+    Args:
+        type: v5 | v6 | tuning | ic | dim
+    """
+    if type not in ("v5", "v6", "tuning", "ic", "dim"):
+        type = "v5"
+    ctx = _get_global_context()
+    ctx.update({"research_type": type})
+    return templates.TemplateResponse(request, "research.html", ctx)
+
+
 @router.get("/simulate", response_class=HTMLResponse)
 async def simulate_page(request: Request):
     """模拟交易工作台"""
@@ -414,10 +443,11 @@ _STANDALONE_PAGES = {
     "/predict": "predict.html",
     "/tuning": "tuning.html",
     "/data-monitor": "data-monitor.html",
-    "/v5": "v5.html",
-    "/v6-compare": "v6-compare.html",
-    "/dim-compare": "dim-compare.html",
-    "/ic": "ic.html",
+    # "/v5": "v5.html",                          # 2026-06-25 合并到 /research?type=v5
+    # "/v6-compare": "v6-compare.html",          # 2026-06-25 合并到 /research?type=v6
+    # "/tuning": "tuning.html",                  # 2026-06-25 合并到 /research?type=tuning
+    # "/dim-compare": "dim-compare.html",        # 2026-06-25 合并到 /research?type=dim
+    # "/ic": "ic.html",                          # 2026-06-25 合并到 /research?type=ic
     "/walk_forward": "walk_forward.html",
 }
 
