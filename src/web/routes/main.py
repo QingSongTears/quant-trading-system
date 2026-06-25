@@ -435,11 +435,6 @@ async def fund_flow_report_page(request: Request):
 
 
 _register_standalone_routes()
-
-
-# ============================================================
-# 占位页面 (待数据接入) — 避免主页 404, 清晰标注 TODO
-# ============================================================
 _PLACEHOLDER_PAGES = []  # 全部已实时接入
 
 

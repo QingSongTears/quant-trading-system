@@ -231,7 +231,8 @@ class TestFeatureBuilderSchema:
     """schema 一致性测试 (不需要 DB)"""
 
     def test_dim_cols_count(self):
-        assert len(DIM_COLS) == 8
+        # 2026-06-25: lhb_institutional 删除后, DIM_COLS 从 8 维 → 7 维
+        assert len(DIM_COLS) == 7
 
     def test_dim_to_scorer_keys_match_dim_cols(self):
         assert set(DIM_TO_SCORER.keys()) == set(DIM_COLS)

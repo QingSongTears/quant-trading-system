@@ -318,57 +318,6 @@ class TestBacktestEdgeCases:
 
 
 # ============================================================
-# stock_screener 策略组件测试
+# stock_screener 策略组件测试 — 2026-06-25 删除
+# 原因: stock_screener/ 整目录已删 (LEGACY 子系统), 测试连带删除
 # ============================================================
-
-class TestStockScreenerComponents:
-    """选股策略核心组件单元测试"""
-
-    def test_risk_manager_init(self):
-        """风控管理器初始化"""
-        from src.strategies.stock_screener.core.risk_manager import RiskManager
-        rm = RiskManager(total_capital=500000)
-        assert rm.can_open_position()
-        assert rm.max_positions == 5
-
-    def test_risk_manager_position_limit(self):
-        """仓位上限控制"""
-        from src.strategies.stock_screener.core.risk_manager import RiskManager
-        rm = RiskManager(total_capital=1000000)
-        rm.max_positions = 2
-
-        rm.add_position("000001", 10.0, 10000)
-        rm.add_position("000002", 20.0, 5000)
-        assert not rm.can_open_position()
-
-    def test_stop_loss_calculation(self):
-        """止损价计算"""
-        from src.strategies.stock_screener.core.risk_manager import RiskManager
-        rm = RiskManager(total_capital=1000000)
-        stop = rm.get_stop_loss_price(10.0)
-        # STOP_LOSS_PCT = -0.10, 所以止损价 = 10 * (1-0.10) = 9.0
-        assert stop == pytest.approx(9.0, 0.01)
-
-    def test_take_profit_calculation(self):
-        """止盈价计算"""
-        from src.strategies.stock_screener.core.risk_manager import RiskManager
-        rm = RiskManager(total_capital=1000000)
-        # 普通票止盈 +15%
-        tp_normal = rm.get_take_profit_price(10.0, is_quant_stock=False)
-        assert tp_normal == pytest.approx(11.5, 0.01)
-        # 量化票止盈 +8%
-        tp_quant = rm.get_take_profit_price(10.0, is_quant_stock=True)
-        assert tp_quant == pytest.approx(10.8, 0.01)
-
-    def test_screener_config_import(self):
-        """验证选股配置可正常导入"""
-        from src.strategies.stock_screener.config import (
-            MIN_MARKET_CAP, MIN_DAILY_TURNOVER, EMA_FAST, EMA_SLOW,
-            QUANT_THRESHOLD, STOP_LOSS_PCT, MAX_POSITIONS,
-        )
-        assert MIN_MARKET_CAP == 100
-        assert EMA_FAST == 20
-        assert EMA_SLOW == 60
-        assert 0 < QUANT_THRESHOLD <= 1
-        assert STOP_LOSS_PCT < 0
-        assert MAX_POSITIONS > 0
