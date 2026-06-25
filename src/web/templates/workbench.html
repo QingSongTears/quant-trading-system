@@ -4,8 +4,23 @@
 {% block content %}
 <div class="d-flex align-items-center mb-4">
     <div>
-        <h2 class="mb-1"><i class="bi bi-tools"></i> 回测工作台</h2>
-        <p class="text-muted mb-0">选择模型 → 设定参数 → 实时回测 → 多模型对比，一站式完成</p>
+        <h2 class="mb-1"><i class="bi bi-tools"></i> 回测工作台
+            {# 2026-06-25 (Phase C3a): mode 标识 (default/lab/view), 由后端 ?mode= 控制 #}
+            {% if page_mode == 'lab' %}
+            <span class="badge bg-warning text-dark ms-2">Lab 模式</span>
+            {% elif page_mode == 'view' %}
+            <span class="badge bg-info text-dark ms-2">View 模式</span>
+            {% endif %}
+        </h2>
+        <p class="text-muted mb-0">
+            {% if page_mode == 'lab' %}
+            参数调节模式 — 滑块调参, 实时看收益曲线变化
+            {% elif page_mode == 'view' %}
+            可视化模式 — 多模型净值叠加, 含买卖点
+            {% else %}
+            选择模型 → 设定参数 → 实时回测 → 多模型对比，一站式完成
+            {% endif %}
+        </p>
     </div>
     <div class="ms-auto">
         <span class="badge bg-indigo-soft text-indigo px-3 py-2 fs-6">
