@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+{% set page_title = "量化交易系统 · 请使用在线服务" %}
+{% set need_chartjs = false %}
+{% set need_echarts = false %}
+{% include "partials/_standalone_head.html" %}
+{# 页面特定 style (从 output/ 原样保留) #}
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:'Segoe UI',system-ui,sans-serif;
+  background:#0f1117;color:#e0e0e0;min-height:100vh;
+  display:flex;align-items:center;justify-content:center;padding:20px;
+}
+.box{
+  background:#1a1d27;border:1px solid #2a2d3a;border-radius:12px;
+  padding:32px 36px;max-width:560px;text-align:center;
+}
+h1{font-size:1.4rem;margin-bottom:8px;color:#4fc3f7}
+p{color:#aaa;font-size:0.9rem;line-height:1.6;margin-bottom:14px}
+.warn{
+  background:#1a1d2e;border-left:3px solid #ffa726;padding:12px 14px;
+  border-radius:4px;font-size:0.82rem;color:#ccc;text-align:left;margin-bottom:18px;
+}
+.btn{
+  display:inline-block;padding:10px 22px;border-radius:6px;
+  background:#4fc3f7;color:#000;text-decoration:none;font-weight:600;font-size:0.9rem;
+  margin:6px;
+}
+.btn.gray{background:#2a2d3a;color:#e0e0e0}
+code{background:#2a2d3a;padding:2px 6px;border-radius:3px;font-family:monospace;font-size:0.85em;color:#4fc3f7}
+.path-list{text-align:left;background:#1a1d2e;border-radius:6px;padding:14px 18px;margin-top:14px;font-size:0.82rem}
+.path-list b{color:#4fc3f7}
+</style>
+</head>
+<div class="box">
+  <h1>📊 量化交易系统 · 入口迁移提示</h1>
+  <p>此页面是<strong style="color:#ffa726">历史离线副本</strong>(快照),数据不会自动更新。</p>
+  <p>所有页面已统一接入 FastAPI 服务,数据从 <code>quant.db</code> <strong>实时读取</strong>。</p>
+
+  <div class="warn">
+    <strong>启动服务:</strong><br>
+    <code>python run.py</code> (默认端口 5050)<br>
+    启动后访问: <a href="http://localhost:5050/" style="color:#4fc3f7">http://localhost:5050/</a>
+  </div>
+
+  <a class="btn" href="http://localhost:5050/">🚀 打开在线主页</a>
+  <a class="btn gray" href="http://localhost:5050/fund-flow-report">💰 资金面融合报告</a>
+
+  <div class="path-list">
+    <b>已稳定的实时页面</b> (从 <code>quant.db</code> 实时读):<br>
+    · <a href="http://localhost:5050/">/</a> — 主页 (数据覆盖 + 最近回测 + 一键对比)<br>
+    · <a href="http://localhost:5050/diagnose">/diagnose</a> — 个股诊断 (8 维评分 + K线 + 信号)<br>
+    · <a href="http://localhost:5050/screener">/screener</a> — 选股工作台 (8 维评分 + 行业过滤)<br>
+    · <a href="http://localhost:5050/fund-flow-report">/fund-flow-report</a> — 资金面融合回测 (实时数据)<br>
+    · <a href="http://localhost:5050/workbench">/workbench</a> — 回测工作台<br>
+    · <a href="http://localhost:5050/strategies">/strategies</a> — 策略管理<br>
+    · <a href="http://localhost:5050/compare">/compare</a> — 多模型对比<br>
+    · <a href="http://localhost:5050/data">/data</a> — 数据管理
+  </div>
+
+  <p style="margin-top:18px;font-size:0.78rem;color:#666">
+    占位页面 (实时版接入中): /predict /verify /bull-report /signal /tuning
+  </p>
+</div>

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+{% set page_title = "选股工作台 · 8维量化选股" %}
+{% set need_chartjs = true %}
+{% set need_echarts = false %}
+{% include "partials/_standalone_head.html" %}
+{# 页面特定 style (从 output/ 原样保留) #}
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text)}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:1.1rem;font-weight:600}
+header a{color:var(--dim);text-decoration:none;font-size:0.8rem}
+header a:hover{color:var(--accent)}
+header .nav{margin-left:auto;display:flex;gap:12px}
+.container{max-width:1400px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px}
+.card-title{font-size:0.72rem;text-transform:uppercase;color:var(--dim);letter-spacing:0.8px;margin-bottom:10px;font-weight:600}
+
+/* 筛选栏 */
+.filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:14px}
+.filter-group{display:flex;flex-direction:column;gap:3px}
+.filter-group label{font-size:0.7rem;color:var(--dim)}
+.filter-group input,.filter-group select{padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.82rem;outline:none;width:120px}
+.filter-group input:focus,.filter-group select:focus{border-color:var(--accent)}
+.filter-group input[type="range"]{width:100px;padding:0;border:none;background:none}
+.btn{padding:7px 20px;border:none;border-radius:6px;background:var(--accent);color:#000;font-weight:600;cursor:pointer;font-size:0.82rem}
+.btn:hover{opacity:0.85}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+.result-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:0.85rem}
+.result-bar span{color:var(--dim)}
+.result-bar strong{color:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:0.8rem}
+th{text-align:left;padding:7px 8px;color:var(--dim);font-weight:600;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);font-size:0.72rem}
+td{padding:6px 8px;border-bottom:1px solid rgba(42,45,58,0.3)}
+tr:hover td{background:rgba(255,255,255,0.02)}
+tr.clickable{cursor:pointer}
+.m-up{color:var(--red)}.m-down{color:var(--green)}
+.table-wrap{max-height:600px;overflow-y:auto}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.slider-val{font-size:0.78rem;color:var(--accent);font-weight:600;min-width:28px;text-align:right}
+</style>
+</head>
+<header>
+  <h1>🔍 选股工作台</h1>
+  <div class="nav">
+    <a href="/diagnose">诊断</a><a href="/sector">板块</a><a href="/backtest-lab">回测</a><a href="/">全部</a>
+  </div>
+</header>
+<div class="container">
+  <div class="card">
+    <div class="card-title">🎯 筛选条件</div>
+    <div class="filter-bar" id="filterBar">
+      <div class="filter-group">
+        <label>综合评分</label>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input type="range" id="minScore" min="0" max="15" step="0.5" value="7" oninput="document.getElementById('scoreVal').textContent=this.value">
+          <span class="slider-val" id="scoreVal">7</span>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label>技术面 ≥</label>
+        <input type="number" id="techMin" value="0" step="1" min="0" max="15" style="width:70px;">
+      </div>
+      <div class="filter-group">
+        <label>资金面 ≥</label>
+        <input type="number" id="fundMin" value="0" step="1" min="0" max="15" style="width:70px;">
+      </div>
+      <div class="filter-group">
+        <label>机构面 ≥</label>
+        <input type="number" id="instMin" value="0" step="1" min="0" max="15" style="width:70px;">
+      </div>
+      <div class="filter-group">
+        <label>筹码面 ≥</label>
+        <input type="number" id="chipMin" value="0" step="1" min="0" max="15" style="width:70px;">
+      </div>
+      <div class="filter-group">
+        <label>行业</label>
+        <select id="industry" style="width:110px;"><option value="全部">全部</option></select>
+      </div>
+      <div class="filter-group">
+        <label>排序</label>
+        <select id="sortBy" style="width:110px;">
+          <option value="avg_score">综合评分</option>
+          <option value="ret_20d">20日收益</option>
+          <option value="tech_weighted">技术面评分</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label> </label>
+        <button class="btn" onclick="search()">🔍 筛选</button>
+      </div>
+      <div class="filter-group" style="margin-left:auto">
+        <label>搜索股票</label>
+        <input type="text" id="stockSearchInput" placeholder="代码/中文/拼音" style="width:160px;" oninput="searchStockSuggest()" onkeydown="if(event.key==='Enter')goToStock()">
+        <div id="sugBox" style="display:none;position:absolute;z-index:100;background:var(--card);border:1px solid var(--border);border-radius:6px;max-height:200px;overflow-y:auto;width:200px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="result-bar"><span>共 <strong id="resultCount">0</strong> 只股票符合条件</span><span id="resultHint" style="font-size:0.75rem;"></span></div>
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>代码</th><th>名称</th><th>行业</th><th>综合</th><th>技术</th><th>基本面</th><th>资金</th><th>机构</th><th>龙虎榜</th><th>情绪</th><th>筹码</th><th>20日</th><th>60日</th>
+      </tr></thead>
+      <tbody id="resultBody"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<script>
+let sugTimer = null;
+async function searchStockSuggest() {
+  clearTimeout(sugTimer);
+  const q = document.getElementById('stockSearchInput').value.trim();
+  if (q.length < 1) { document.getElementById('sugBox').style.display = 'none'; return; }
+  sugTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/stock/search?q=' + encodeURIComponent(q));
+      const d = await r.json();
+      const items = d.results || [];
+      if (!items.length) { document.getElementById('sugBox').style.display = 'none'; return; }
+      document.getElementById('sugBox').innerHTML = items.slice(0,8).map(s =>
+        `<div onclick="goToStockCode('${s.code}')" style="padding:8px 12px;cursor:pointer;font-size:0.8rem;border-bottom:1px solid var(--border)"><span style="color:var(--accent);font-family:monospace">${s.code}</span> ${s.name}</div>`
+      ).join('');
+      document.getElementById('sugBox').style.display = 'block';
+    } catch(e) {}
+  }, 200);
+}
+function goToStockCode(code) {
+  window.location.href = '/diagnose?code=' + code;
+}
+function goToStock() {
+  const v = document.getElementById('stockSearchInput').value.trim();
+  if (v) goToStockCode(v.replace(/[^0-9]/g,'').padStart(6,'0'));
+}
+document.addEventListener('click', e => { if (!e.target.closest('#stockSearchInput')) document.getElementById('sugBox').style.display = 'none'; });
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadIndustries();
+  search();
+});
+
+async function loadIndustries() {
+  try {
+    const r = await fetch('/api/sector?sort_by=name&min_stocks=1');
+    const d = await r.json();
+    const sel = document.getElementById('industry');
+    (d.sectors||[]).forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.industry; opt.textContent = s.industry;
+      sel.appendChild(opt);
+    });
+  } catch(e) {}
+}
+
+async function search() {
+  document.getElementById('resultBody').innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--dim);padding:20px;">搜索中...</td></tr>';
+  const params = new URLSearchParams();
+  params.set('min_score', document.getElementById('minScore').value);
+  params.set('tech_min', document.getElementById('techMin').value || 0);
+  params.set('fund_min', document.getElementById('fundMin').value || 0);
+  params.set('inst_min', document.getElementById('instMin').value || 0);
+  params.set('chip_min', document.getElementById('chipMin').value || 0);
+  const ind = document.getElementById('industry').value;
+  if (ind !== '全部') params.set('industry', ind);
+  params.set('sort_by', document.getElementById('sortBy').value);
+  params.set('limit', 200);
+
+  try {
+    const r = await fetch('/api/stock/screener?' + params.toString());
+    const d = await r.json();
+    const stocks = d.stocks || [];
+    document.getElementById('resultCount').textContent = stocks.length;
+    if (!stocks.length) {
+      document.getElementById('resultBody').innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--dim);padding:20px;">无匹配结果，请放宽筛选条件</td></tr>';
+      return;
+    }
+    document.getElementById('resultBody').innerHTML = stocks.map(s => {
+      const ds = s.dim_scores || {};
+      return `<tr class="clickable" onclick="window.open('/diagnose','_blank').focus()">
+        <td style="font-family:monospace;color:var(--accent)">${s.code}</td>
+        <td>${escHtml(s.name)}</td>
+        <td style="color:var(--dim);font-size:0.75rem">${escHtml(s.industry)}</td>
+        <td style="font-weight:700;color:${colorScore(s.avg_score)}">${s.avg_score.toFixed(1)}</td>
+        <td style="color:${colorScore(ds.tech_weighted)}">${(ds.tech_weighted||0).toFixed(1)}</td>
+        <td style="color:${colorScore(ds.fundam_weighted)}">${(ds.fundam_weighted||0).toFixed(1)}</td>
+        <td style="color:${colorScore(ds.fund_weighted)}">${(ds.fund_weighted||0).toFixed(1)}</td>
+        <td style="color:${colorScore(ds.institutional_weighted)}">${(ds.institutional_weighted||0).toFixed(1)}</td>
+        <td style="color:${colorScore(ds.lh_institutional_weighted)}">${(ds.lh_institutional_weighted||0).toFixed(1)}</td>
+        <td style="color:${colorScore(ds.sentiment_weighted)}">${(ds.sentiment_weighted||0).toFixed(1)}</td>
+        <td style="color:${colorScore(ds.chip_weighted)}">${(ds.chip_weighted||0).toFixed(1)}</td>
+        <td style="color:${(s.ret_20d||0)>=0?'var(--red)':'var(--green)'}">${s.ret_20d!=null?(s.ret_20d>=0?'+':'')+s.ret_20d.toFixed(1)+'%':'-'}</td>
+        <td style="color:${(s.ret_60d||0)>=0?'var(--red)':'var(--green)'}">${s.ret_60d!=null?(s.ret_60d>=0?'+':'')+s.ret_60d.toFixed(1)+'%':'-'}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    document.getElementById('resultBody').innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--red);padding:20px;">请求失败: ' + e.message + '</td></tr>';
+  }
+}
+
+function colorScore(v) {
+  return v >= 8 ? 'var(--red)' : v >= 5 ? 'var(--yellow)' : 'var(--green)';
+}
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+</script>
