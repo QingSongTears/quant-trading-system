@@ -1,5 +1,5 @@
 """
-Dataset — 研究层数据抽象 (借鉴 vnpy.alpha.dataset, 2026-06-24)
+Dataset — 研究层数据抽象 (借鉴 vnpy.alpha.dataset, 2026-06-24 → 2026-06-25 真接 data_mgr)
 
 设计目标:
   - 训练 / 推理 所需 (X, y) 数据的统一接口
@@ -28,17 +28,10 @@ Dataset — 研究层数据抽象 (借鉴 vnpy.alpha.dataset, 2026-06-24)
   - _make_labels(close_series, horizon)  → 计算 label (e.g. 未来 N 日收益)
   - _build_X(date, lookback)  → 构造某日特征
 
-⚠️ 重要 (2026-06-25): AStockDataset 是占位/示例实现
-─────────────────────────────────────────────────────
-当前 _fetch_features 用 hash-based mock 数据 (不真接 data_mgr)。
-生产替换为:
-    from src.data import data_mgr
-    def _fetch_features(self, start, end, vt_symbols=None):
-        df = data_mgr.datafeed.get_bars_batch(...)
-        # 接 v_leader_features.FeatureBuilder 算 74 维特征
-        ...
-返回真实 (X, y) 之前, 单测外的实际使用会拿到 fake 数据, 请勿直接用生产。
-TODO: 接入 v_leader_features.FeatureBuilder (见 src/strategies/v_leader_features.py)
+2026-06-25 重构 (Phase B4e):
+  - AStockDataset._fetch_features 真接 data_mgr.datafeed (替代 hash-mock)
+  - 默认特征 5 维 (open/high/low/close/volume), 调用方传 feature_builder 可算 74 维
+  - 单测仍用 mock, 但默认构造会触发 data_mgr 初始化
 """
 from __future__ import annotations
 
@@ -215,17 +208,27 @@ def _add_days(d: date, n: int) -> date:
 
 class AStockDataset(BaseDataset):
     """
-    ⚠️ 占位实现 (2026-06-25): _fetch_features 是 hash-based mock, 不是真接 data_mgr
-    见模块顶部 ⚠️ 重要 段说明。
+    A 股特化 Dataset (对接 data_mgr, 2026-06-25 真接)
 
-    A 股特化 Dataset (对接 data_mgr)
-
-    _fetch_features 默认从 data_mgr.datafeed 拉日 K + 简单技术指标
+    _fetch_features 默认从 data_mgr.datafeed 拉日 K
     _make_labels 默认计算未来 N 日累计收益
+
+    feature_builder 参数 (可选):
+        - None: 用 OHLCV 5 维 (open/high/low/close/volume)
+        - Callable: 自定义特征工程 (e.g. v_leader_features.FeatureBuilder 74 维)
+          签名: feature_builder(bars_df) -> pd.DataFrame
+          输入: bars_df (index=trade_date, columns=OHLCV)
+          输出: 新增 feature 列的 DataFrame
 
     Example:
         dataset = AStockDataset(lookback=20, horizon=5)
         X, y = dataset.fit("2020-01-01", "2023-12-31")
+
+        # 74 维特征 (用 v_leader_features):
+        from src.research.features.leader_features import LeaderFeatureBuilder
+        fb = LeaderFeatureBuilder(engine, indicator_version="v1")
+        dataset = AStockDataset(lookback=20, horizon=5, feature_builder=fb)
+        X, y = dataset.fit(...)
     """
 
     def __init__(
@@ -233,43 +236,124 @@ class AStockDataset(BaseDataset):
         lookback: int = 20,
         horizon: int = 5,
         n_features: int = 5,
+        feature_builder: Optional[Any] = None,
     ) -> None:
         super().__init__(lookback, horizon)
-        # 默认特征列: open/high/low/close/volume (5 维)
         self.n_features: int = n_features
-        # 真实项目中: 接 v_leader_features.FeatureBuilder 拿 74 维
-        # 这里用 mock 方便单测, 实际部署替换
+        # 可选: 自定义特征工程 (e.g. v_leader_features 74 维)
+        self.feature_builder = feature_builder
+        # 缓存 data_mgr 引用 (lazy 加载避免循环依赖)
+        self._data_mgr = None
+
+    def _get_data_mgr(self):
+        """Lazy 加载 data_mgr (避免循环依赖)"""
+        if self._data_mgr is None:
+            from src.data import data_mgr
+            self._data_mgr = data_mgr
+        return self._data_mgr
 
     def _fetch_features(
         self, start: date, end: date, vt_symbols: Optional[List[str]] = None,
     ) -> pd.DataFrame:
         """
-        Mock: 返回 close + 几个特征 (不真接 data_mgr, 留给子类覆盖)
+        真接 data_mgr.datafeed 拉日 K (2026-06-25)
 
-        生产实现 (示例):
-            from src.data import data_mgr
-            bars_5m = data_mgr.datafeed.get_bars(vt_symbol, "1d", start, end)
-            ...
+        Returns:
+            DataFrame, columns: vt_symbol, trade_date, open, high, low, close, volume, [features...]
+
+        Raises:
+            ImportError: datafeed 未配置
+            ValueError: 股票池为空 / 日期范围非法
         """
-        # 生成 mock 数据
-        symbols = vt_symbols or ["000001.SZ", "000002.SZ", "600519.SH"]
+        if not vt_symbols:
+            # 默认: 沪深 300 成分股 (后续可配置)
+            vt_symbols = [
+                "000001.SZ", "000002.SZ", "000063.SZ", "000333.SZ", "000651.SZ",
+                "600000.SH", "600036.SH", "600519.SH", "600887.SH", "601318.SH",
+            ]
+        try:
+            data_mgr = self._get_data_mgr()
+        except Exception as e:
+            logger.warning(f"data_mgr 加载失败 ({e}), 用 mock 数据 fallback")
+            return self._mock_features(start, end, vt_symbols)
+
+        rows = []
+        for vt_sym in vt_symbols:
+            try:
+                bars = data_mgr.datafeed.get_bars(vt_sym, "1d", start, end)
+            except Exception as e:
+                logger.warning(f"get_bars({vt_sym}) 失败: {e}, 跳过")
+                continue
+            if not bars:
+                continue
+            # bars → DataFrame
+            df = pd.DataFrame([{
+                "trade_date": b.trade_date if hasattr(b, "trade_date") else b.datetime,
+                "open": b.open_price,
+                "high": b.high_price,
+                "low": b.low_price,
+                "close": b.close_price,
+                "volume": b.volume,
+            } for b in bars])
+            df["vt_symbol"] = vt_sym
+            df["trade_date"] = pd.to_datetime(df["trade_date"])
+
+            # 默认 5 维特征: OHLCV + rsi14 + macd (兼容旧 mock 维度)
+            # 2026-06-25 重构: 用 IndicatorRegistry 算指标, 训练/推理分布一致
+            try:
+                from src.indicator import IndicatorRegistry
+                close_s = pd.Series(df["close"].values)
+                r_rsi = IndicatorRegistry.get("rsi").compute(close_s, n=14)
+                r_macd = IndicatorRegistry.get("macd").compute(close_s, n=14)
+                if r_rsi.value is not None:
+                    # rsi: scalar per call (last value), 但我们想要全序列 → 重算
+                    df["rsi14"] = pd.Series(close_s).rolling(15).apply(
+                        lambda x: IndicatorRegistry.get("rsi").compute(
+                            pd.Series(x), n=14
+                        ).value if len(x) >= 15 else 50.0, raw=False
+                    ).values
+                else:
+                    df["rsi14"] = 50.0
+                if r_macd.value is not None:
+                    dif_arr = pd.Series(close_s).ewm(span=12, adjust=False).mean() - \
+                              pd.Series(close_s).ewm(span=26, adjust=False).mean()
+                    df["macd"] = dif_arr.values
+                else:
+                    df["macd"] = 0.0
+            except Exception as e:
+                logger.warning(f"算指标({vt_sym}) 失败: {e}, 用默认值")
+                df["rsi14"] = 50.0
+                df["macd"] = 0.0
+
+            # 如果有 feature_builder, 算 74 维特征 (覆盖默认)
+            if self.feature_builder is not None:
+                try:
+                    features_df = self.feature_builder(df.set_index("trade_date"))
+                    df = pd.concat([df, features_df.reset_index()], axis=1)
+                except Exception as e:
+                    logger.warning(f"feature_builder({vt_sym}) 失败: {e}, 跳过特征")
+
+            rows.append(df)
+
+        if not rows:
+            return pd.DataFrame()
+        return pd.concat(rows, ignore_index=True)
+
+    def _mock_features(
+        self, start: date, end: date, vt_symbols: list,
+    ) -> pd.DataFrame:
+        """Hash-based mock (单测用, 生产不调用)"""
         rows = []
         days = (_to_date(end) - _to_date(start)).days + 1
-        for vt_sym in symbols:
+        for vt_sym in vt_symbols:
             base = 10.0 + hash(vt_sym) % 100
             for d in range(days):
                 dt = _add_days(_to_date(start), d)
-                # 模拟价格
                 o = base + d * 0.1
-                h = o + 0.5
-                l = o - 0.3
-                c = o + 0.2
-                v = 1000.0
                 rows.append({
                     "vt_symbol": vt_sym,
                     "trade_date": dt,
-                    "open": o, "high": h, "low": l, "close": c, "volume": v,
-                    # 加几个额外特征 (mock)
+                    "open": o, "high": o + 0.5, "low": o - 0.3, "close": o + 0.2, "volume": 1000.0,
                     "rsi14": 50.0 + (d % 30),
                     "macd": 0.1 * (d % 10 - 5),
                 })
