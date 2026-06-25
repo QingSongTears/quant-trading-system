@@ -7,11 +7,10 @@
      - common.js (Bearer fetch + QT 命名空间)
      - echarts/chart.js CDN (按需)
 
-   用法:
-     {% include "partials/_standalone_head.html" %}
+   用法 (2026-06-25 修: set 必须在 include 之前):
      {% set page_title = "个股诊断" %}
-     {% set page_icon = "🔍" %}
      {% set need_echarts = true %}
+     {% include "partials/_standalone_head.html" %}
    ============================================================================ #}
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -26,11 +25,11 @@
 <script src="/static/js/common.js"></script>
 
 {# 图表库 CDN — 按需 #}
-{% if need_echarts %}
+{% if need_echarts|default(false) %}
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <script src="/static/js/echarts-helpers.js"></script>
 {% endif %}
-{% if need_chartjs %}
+{% if need_chartjs|default(false) %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 {% endif %}
 
