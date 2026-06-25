@@ -1,0 +1,45 @@
+{# ============================================================================
+   _metric_card.html — 指标卡 macro (2026-06-25)
+
+   用法 (Jinja macro):
+     {% from "partials/_metric_card.html" import metric_card %}
+     {{ metric_card("年化收益", "+18.5%", "up", "近 1 年") }}
+     {{ metric_card("最大回撤", "-12.3%", "down") }}
+   ============================================================================ #}
+{% macro metric_card(title, value, color, sub) -%}
+<div class="metric-card">
+  <div class="metric-title">{{ title }}</div>
+  <div class="metric-value {{ color|default('') }}">{{ value }}</div>
+  {% if sub %}<div class="metric-sub">{{ sub }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+<style>
+.metric-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  flex: 1 1 160px;
+  min-width: 160px;
+}
+.metric-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--dim);
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.metric-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+}
+.metric-value.up { color: var(--red); }
+.metric-value.down { color: var(--green); }
+.metric-sub {
+  font-size: 0.75rem;
+  color: var(--dim);
+  margin-top: 4px;
+}
+</style>

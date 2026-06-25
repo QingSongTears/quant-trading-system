@@ -1,0 +1,33 @@
+{# ============================================================================
+   _echarts_init.html — ECharts 通用 init 块 (2026-06-25)
+
+   替换 6+ 模板中重复的 echarts.init + ResizeObserver
+
+   用法:
+     {% include "partials/_echarts_init.html" %}
+     {% set chart_id = "workbench-equity-chart" %}
+     {% set chart_height = 400 %}
+   ============================================================================ #}
+{% set chart_id = chart_id|default("echart-" + range(1000, 9999) | random | string) %}
+{% set chart_height = chart_height|default(400) %}
+<div id="{{ chart_id }}" class="echart-container" style="height: {{ chart_height }}px;"></div>
+
+<script>
+// 自动 Resize (替换各模板手写的 ResizeObserver)
+(function() {
+  if (!window.echarts) return;
+  const dom = document.getElementById('{{ chart_id }}');
+  if (!dom) return;
+  const chart = echarts.init(dom);
+  if (window.{{ chart_id|replace('-', '_') }}_setOption) {
+    chart.setOption(window.{{ chart_id|replace('-', '_') }}_setOption());
+  }
+  window.addEventListener('resize', () => chart.resize());
+  // 暴露 chart 给外部
+  window['chart_{{ chart_id|replace('-', '_') }}'] = chart;
+})();
+</script>
+
+<style>
+.echart-container { width: 100%; }
+</style>

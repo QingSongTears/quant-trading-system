@@ -1,0 +1,206 @@
+/*
+ * standalone-base.css — 独立页面公共 CSS (2026-06-25)
+ *
+ * 替换 20 个独立 HTML 模板中重复的 ~50 行 CSS:
+ *   - reset + 字体 (emoji 字体回退)
+ *   - CSS 变量 (暗色主题)
+ *   - header (h1-icon, nav-links)
+ *   - 容器
+ *   - 基础卡片
+ *   - 按钮
+ *   - 表格基础
+ *
+ * 用法 (在 HTML <head>):
+ *   <link rel="stylesheet" href="/static/css/standalone-base.css">
+ *
+ * 注意: 这是 base.css (覆盖全局), 各页的独特 style 仍在 <style> 块里
+ */
+
+/* ============== Reset ============== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #0f1117;
+  --card: #1a1d27;
+  --border: #2a2d3a;
+  --text: #e0e0e0;
+  --dim: #888;
+  --accent: #4fc3f7;
+  --green: #4caf50;
+  --red: #ef5350;
+  --yellow: #ffa726;
+  --orange: #ff7043;
+  --indigo: #7c4dff;
+}
+
+/* ============== 字体 (emoji 回退) ============== */
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑', sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+/* ============== Header (顶部导航) ============== */
+header {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+header h1 {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+/* h1-icon: 标题前的 emoji 图标 */
+header h1 .h1-icon {
+  margin-right: 6px;
+  font-size: 1.2rem;
+}
+
+header a {
+  color: var(--dim);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+header a:hover {
+  color: var(--accent);
+}
+
+header .nav-links {
+  margin-left: auto;
+  display: flex;
+  gap: 16px;
+}
+
+/* ============== 容器 ============== */
+.container {
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* ============== 基础卡片 ============== */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.card-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--dim);
+  letter-spacing: 0.8px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+/* ============== 按钮 ============== */
+.btn {
+  display: inline-block;
+  padding: 8px 18px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #000;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.85rem;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn:hover { opacity: 0.85; }
+
+.btn.gray {
+  background: var(--border);
+  color: var(--text);
+}
+
+.btn.danger {
+  background: var(--red);
+  color: #fff;
+}
+
+/* ============== 表格 ============== */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th, td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--dim);
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+tr:hover { background: rgba(255, 255, 255, 0.02); }
+
+/* ============== 输入框 ============== */
+input[type="text"],
+input[type="number"],
+input[type="date"],
+input[type="search"],
+select,
+textarea {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 0.9rem;
+  outline: none;
+  font-family: inherit;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+}
+
+/* ============== 股票代码样式 ============== */
+.stock-code {
+  color: var(--accent);
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+}
+
+.up { color: var(--red); }
+.down { color: var(--green); }
+
+/* ============== Loading 状态 ============== */
+.loading {
+  color: var(--dim);
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
+
+.error {
+  color: var(--red);
+  padding: 12px;
+  background: rgba(239, 83, 80, 0.1);
+  border-left: 3px solid var(--red);
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
