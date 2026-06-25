@@ -1,49 +1,44 @@
-"""验证浏览器实际 fetch 是否带 token 通过 API"""
-import asyncio
-from playwright.async_api import async_playwright
+#!/usr/bin/env python3
+"""端到端验证：访问页面，console 不报错 + 关键元素渲染"""
+from playwright.sync_api import sync_playwright
 
+PAGES_WITH_API = [
+    ("/dashboard", "data-stat", "stat-card"),
+    ("/diagnose", "stock-input", "code-input"),
+    ("/sector", "sector-list", "stats-grid"),
+    ("/screener", "screener-result", "table"),
+    ("/portfolio", "portfolio-input", "input"),
+    ("/data-monitor", "data-monitor", "table"),
+    ("/fund-flow-report", "scenarios-table", "table"),
+    ("/backtest-lab", "lab-strategy", "lab-layout"),
+    ("/tuning-panel", "dim-技术面", "weight"),
+]
 
-async def main():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        ctx = await browser.new_context(viewport={"width": 1600, "height": 900})
-        page = await ctx.new_page()
+console_errors = []
 
-        # 拦截网络请求,看 Authorization header
-        auth_seen = []
+def log_err(msg):
+    console_errors.append(msg)
+    print(f"  [ERR] {msg[:150]}")
 
-        def on_request(req):
-            if "/api/" in req.url:
-                auth = req.headers.get("authorization", "MISSING")
-                auth_seen.append((req.url.split("/api/")[-1], auth[:30]))
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=True)
+    context = browser.new_context(
+        viewport={"width": 1440, "height": 900},
+        extra_http_headers={"X-API-Key": "w_rXe0YKrwhrwBa9pt-b_I6DvzU3ca_9ZnedwHjNLt4"},
+    )
+    page = context.new_page()
+    page.on("pageerror", log_err)
+    page.on("console", lambda m: log_err(f"console.{m.type}: {m.text}") if m.type in ("error",) else None)
 
-        page.on("request", on_request)
+    for path, probe, css_class in PAGES_WITH_API:
+        try:
+            page.goto(f"http://127.0.0.1:5050{path}", wait_until="domcontentloaded", timeout=10000)
+            page.wait_for_timeout(1500)
+            bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
+            has_class = page.locator(f".{css_class}").count() > 0
+            print(f"  {path:30s} bg={bg:30s} .{css_class}={'✓' if has_class else '✗'}")
+        except Exception as e:
+            print(f"  {path:30s} ERR {e}")
 
-        await page.goto("http://localhost:5054/workbench", wait_until="networkidle", timeout=20000)
-        await page.wait_for_timeout(3000)
-
-        # 看页面上是否有"加载失败"提示
-        err_visible = await page.evaluate("""() => {
-            const errs = Array.from(document.querySelectorAll('.alert-danger, .error, [class*="error"]'))
-                .filter(el => el.offsetParent !== null)
-                .map(el => el.innerText.trim().slice(0, 100));
-            return errs;
-        }""")
-
-        print(f"可见错误元素: {len(err_visible)} 个")
-        for e in err_visible[:3]:
-            print(f"  > {e}")
-
-        print(f"\nAPI 请求共 {len(auth_seen)} 次:")
-        for path, auth in auth_seen[:8]:
-            print(f"  {path} | auth: {auth}")
-
-        # 全部带 token?
-        all_with_auth = all(a != "MISSING" for _, a in auth_seen if auth_seen)
-        print(f"\n所有请求都带 Authorization: {all_with_auth}")
-
-        await ctx.close()
-        await browser.close()
-
-
-asyncio.run(main())
+    browser.close()
+print(f"\nErrors: {len(console_errors)}")

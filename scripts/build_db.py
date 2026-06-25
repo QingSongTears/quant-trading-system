@@ -716,10 +716,12 @@ def import_stock_profile(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int
                 "reg_address": r["regAddress"] or None,
             })
     # 1. UPDATE stock_basic 扩展列 (兜底路径)
+    # 2026-06-25 修复: 原来 UPDATE 到 listed_date_alt, 应写到 list_date
     n_updated = 0
     for row in rows:
         cur.execute("""
             UPDATE stock_basic SET
+                list_date = COALESCE(list_date, ?),
                 industry = COALESCE(?, industry),
                 sector = COALESCE(?, sector),
                 listed_date_alt = COALESCE(?, listed_date_alt),
@@ -732,6 +734,7 @@ def import_stock_profile(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int
                 reg_address = COALESCE(?, reg_address)
             WHERE code = ?
         """, (
+            row["listed_date"],
             row["industry"], row["sector"], row["listed_date"],
             row["issue_price"], row["reg_capital"], row["establish_date"],
             row["chairman"], row["website"], row["business"], row["reg_address"],
@@ -817,18 +820,34 @@ def import_research_report(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> i
 
 
 def import_em_global_news(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int:
-    """财经新闻 ← raw/reference/em_global_news.csv"""
+    """财经新闻 ← raw/reference/em_global_news.csv
+
+    CSV 字段: time,title,summary,source,url (time 是 'YYYY-MM-DD HH:MM:SS')
+    DB 字段:  date,title,url,summary,source (date 是 'YYYY-MM-DD')
+
+    2026-06-25 修复: 原来读 r.get("date") 拿到空 → date 全 NULL; 现改读 r["time"][:10]
+    """
     import csv as _csv
     csv_path = data_dir / "raw" / "reference" / "em_global_news.csv"
     if not csv_path.exists():
         print(f"   ⚠️ {csv_path.name} 不存在, 跳过")
         return 0
-    rows = [
-        (r.get("date", "")[:10] if r.get("date") else None,
-         r.get("title") or None, r.get("url") or None,
-         r.get("summary") or None, r.get("source") or None)
-        for r in _csv.DictReader(open(csv_path, "r", encoding="utf-8-sig", newline=""))
-    ]
+    rows = []
+    for r in _csv.DictReader(open(csv_path, "r", encoding="utf-8-sig", newline="")):
+        # CSV 列名是 time, 取前 10 字符作为 date
+        time_val = r.get("time") or ""
+        date_val = time_val[:10] if time_val else None
+        if not date_val or len(date_val) != 10:
+            continue  # 跳过空日期或格式异常的行
+        rows.append((
+            date_val,
+            r.get("title") or None,
+            r.get("url") or None,
+            r.get("summary") or None,
+            r.get("source") or None,
+        ))
+    if full:
+        cur.execute("DELETE FROM em_global_news")
     cur.executemany(
         "INSERT OR IGNORE INTO em_global_news "
         "(date, title, url, summary, source) "
