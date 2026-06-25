@@ -70,3 +70,7 @@ market_data/*_健全方案_2026-*.md
 
 # 2026-06-25: 临时数据快照 (按日期生成, 不入 git)
 market_data/*.csv.tmp
+
+# 2026-06-26: 根目录临时 HTML 测试输出 (不入 git)
+dashboard_test.html
+*_test.html
