@@ -384,6 +384,12 @@
         </div>
         <br>
         <span class="mt-2 d-inline-block">QuantTradingSystem v0.1.0 · 数据来源: AKShare / WeStock Data / Baostock</span>
+        {# 2026-06-25: 显示当前 API key, 方便用户测试 API (生产部署建议 QUANT_API_KEY=env) #}
+        <br>
+        <span class="mt-1 d-inline-block" style="opacity:0.7;font-family:monospace;font-size:0.75rem">
+            🔑 API Key: <code id="footer-api-key">{{ api_key }}</code>
+            <button type="button" class="btn btn-sm btn-outline-secondary ms-1 py-0 px-1" style="font-size:0.7rem" onclick="navigator.clipboard.writeText('{{ api_key }}'); this.textContent='已复制 ✓'; setTimeout(()=>this.textContent='复制', 1500)">复制</button>
+        </span>
     </footer>
 
     <script src="{{ cdn.bootstrap }}/js/bootstrap.bundle.min.js"></script>

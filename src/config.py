@@ -41,12 +41,15 @@ def load_config() -> dict[str, Any]:
 
 
 def load_strategies() -> dict[str, Any]:
-    """加载策略注册表"""
-    if not STRATEGIES_FILE.exists():
-        return {"strategies": []}
-
-    with open(STRATEGIES_FILE, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    """加载策略注册表 (带缓存, 2026-06-25 加 cache 避免 hot path 重复 IO)"""
+    global _strategies
+    if _strategies is None:
+        if not STRATEGIES_FILE.exists():
+            _strategies = {"strategies": []}
+        else:
+            with open(STRATEGIES_FILE, "r", encoding="utf-8") as f:
+                _strategies = yaml.safe_load(f)
+    return _strategies
 
 
 def get_db_url(config: dict[str, Any]) -> str:
@@ -59,6 +62,7 @@ def get_db_url(config: dict[str, Any]) -> str:
 
 # 模块级配置缓存
 _config: dict[str, Any] | None = None
+_strategies: dict[str, Any] | None = None  # 2026-06-25: 策略注册表 cache
 
 
 def get_config() -> dict[str, Any]:

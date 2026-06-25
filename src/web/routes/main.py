@@ -507,52 +507,5 @@ async def fund_flow_report_page(request: Request):
 
 
 _register_standalone_routes()
-_PLACEHOLDER_PAGES = []  # 全部已实时接入
-
-
-def _placeholder_html(title: str, subtitle: str) -> str:
-    """占位页面 HTML — 数据接入中, 临时跳转到 output/ 看历史快照"""
-    safe_title = title.replace("<", "&lt;").replace(">", "&gt;")
-    safe_sub = subtitle.replace("<", "&lt;").replace(">", "&gt;")
-    return f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<title>{safe_title} · 数据接入中</title>
-<style>
-*{{margin:0;padding:0;box-sizing:border-box}}
-body{{font-family:'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e0e0e0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}}
-.box{{background:#1a1d27;border:1px solid #2a2d3a;border-radius:12px;padding:32px 36px;max-width:520px;text-align:center}}
-h1{{font-size:1.3rem;margin-bottom:8px;color:#4fc3f7}}
-.sub{{color:#888;font-size:0.9rem;margin-bottom:18px;line-height:1.5}}
-.warn{{background:#1a1d2e;border-left:3px solid #ffa726;padding:12px 14px;border-radius:4px;font-size:0.82rem;color:#ccc;text-align:left;margin-bottom:18px}}
-.btn{{display:inline-block;padding:8px 18px;border-radius:6px;background:#4fc3f7;color:#000;text-decoration:none;font-weight:600;font-size:0.85rem;margin:4px}}
-.btn.gray{{background:#2a2d3a;color:#e0e0e0}}
-a{{color:#4fc3f7}}
-</style>
-</head>
-<body>
-<div class="box">
-  <h1>{safe_title}</h1>
-  <p class="sub">{safe_sub}</p>
-  <div class="warn">
-    ⚠️ <strong>实时数据接入中</strong><br>
-    本页面的实时版本正在重构, 数据从 <code>quant.db</code> 实时读取.<br>
-    临时可通过下方按钮查看历史快照 (output/ 下的离线报告).
-  </div>
-  <a class="btn" href="/">← 返回主页</a>
-</div>
-</body>
-</html>"""
-
-
-def _register_placeholder_routes():
-    """注册 5 个死链的占位路由"""
-    for path, title, subtitle in _PLACEHOLDER_PAGES:
-        async def _handler(_p=path, _t=title, _s=subtitle):
-            return HTMLResponse(_placeholder_html(_t, _s))
-        router.add_api_route(path, _handler, response_class=HTMLResponse, methods=["GET"])
-
-
-if _PLACEHOLDER_PAGES:
-    _register_placeholder_routes()
+# 2026-06-25: 删 _register_placeholder_routes / _placeholder_html / _PLACEHOLDER_PAGES 死代码
+# 死代码从 509-558 行, 原本就是空 list + 不调用, 全删. 减 50 行 + 减少加载时间
