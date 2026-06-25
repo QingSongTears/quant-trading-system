@@ -8,12 +8,17 @@ Web 层认证与策略加载安全工具
 - require_api_key: Flask before_request / view decorator
 - safe_import_strategy: 白名单 importlib,只允许 src.strategies.* / src.models.*
 - get_api_key: API key 来源(env QUANT_API_KEY > 临时生成)
+- 2026-06-25 (Phase P4): RBAC 角色
+  - get_role: env QUANT_USER_ROLE > 默认 admin
+  - require_role: FastAPI Depends 装饰器,按角色控制 API 访问
+  - 3 档角色: readonly / can-run-backtest / can-manage-data
 """
 from __future__ import annotations
 import importlib
 import logging
 import os
 import secrets
+from enum import Enum
 from typing import Type
 
 from fastapi import Depends, HTTPException, status
@@ -95,6 +100,109 @@ def verify_api_key(
             detail="invalid API key",
         )
     return creds.credentials
+
+
+# ===== RBAC 角色 (2026-06-25 Phase P4) =====
+
+
+class Role(str, Enum):
+    """用户角色 (3 档, 权限递增)"""
+    READONLY = "readonly"             # 只读: dashboard / stock / backtest 历史
+    CAN_RUN_BACKTEST = "can-run-backtest"  # + 跑回测 / 信号
+    CAN_MANAGE_DATA = "can-manage-data"    # + 下载数据 / 模拟交易 / 写操作
+
+
+# 角色权限矩阵
+ROLE_PERMISSIONS: dict[Role, set[str]] = {
+    Role.READONLY: {
+        "read_dashboard", "read_stock", "read_backtest_history",
+        "read_backtest_detail", "read_strategies", "read_compare",
+        "read_screener", "read_portfolio", "read_diagnose", "read_signal",
+    },
+    Role.CAN_RUN_BACKTEST: {
+        # 包含 readonly 全部
+        "read_dashboard", "read_stock", "read_backtest_history",
+        "read_backtest_detail", "read_strategies", "read_compare",
+        "read_screener", "read_portfolio", "read_diagnose", "read_signal",
+        # 增量
+        "run_backtest", "run_walk_forward", "run_batch_backtest",
+    },
+    Role.CAN_MANAGE_DATA: {
+        # 包含 can_run_backtest 全部
+        "read_dashboard", "read_stock", "read_backtest_history",
+        "read_backtest_detail", "read_strategies", "read_compare",
+        "read_screener", "read_portfolio", "read_diagnose", "read_signal",
+        "run_backtest", "run_walk_forward", "run_batch_backtest",
+        # 增量
+        "download_data", "run_simulate", "delete_backtest", "write_backtest",
+    },
+}
+
+
+_role_cache: Role | None = None
+
+
+def get_role() -> Role:
+    """获取当前角色, 优先级:
+    1. 环境变量 QUANT_USER_ROLE (推荐)
+    2. 默认 CAN_MANAGE_DATA (开发用, 启动时打 warning)
+
+    进程级稳定, 首次调用确定后保持不变.
+    """
+    global _role_cache
+    if _role_cache is not None:
+        return _role_cache
+
+    role_str = os.environ.get("QUANT_USER_ROLE", "").strip().lower()
+    try:
+        role = Role(role_str)
+    except ValueError:
+        role = Role.CAN_MANAGE_DATA
+        if not role_str:
+            logger.warning(
+                "QUANT_USER_ROLE 未设置, 默认 admin (can-manage-data)."
+                " 生产建议显式设 readonly 或 can-run-backtest."
+            )
+        else:
+            logger.warning(
+                "QUANT_USER_ROLE=%r 不识别, 合法值: %s, 默认 admin",
+                role_str, [r.value for r in Role],
+            )
+    _role_cache = role
+    return _role_cache
+
+
+def has_permission(perm: str, role: Role | None = None) -> bool:
+    """检查某角色是否有某权限"""
+    if role is None:
+        role = get_role()
+    return perm in ROLE_PERMISSIONS.get(role, set())
+
+
+def require_permission(perm: str):
+    """FastAPI Depends 工厂: 要求调用方有某权限, 否则 403
+
+    用法:
+        @router.post("/backtest/run", dependencies=[Depends(require_permission("run_backtest"))])
+        async def run_backtest(...):
+            ...
+
+    Returns:
+        FastAPI dependency function
+    """
+    def _check(api_key: str = Depends(verify_api_key)) -> str:
+        if not has_permission(perm):
+            role = get_role()
+            logger.warning(
+                "拒绝 %s — role=%s 缺权限 %s",
+                perm, role.value, perm,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"role '{role.value}' lacks permission '{perm}'",
+            )
+        return api_key
+    return _check
 
 
 # ===== Flask 适配 =====

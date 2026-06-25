@@ -25,6 +25,7 @@ from ...data.westock_downloader import WestockDownloader
 from ...backtest.engine import BacktestEngine
 from ...backtest.portfolio_engine import PortfolioBacktestEngine
 from ..app import download_status as _download_status
+from ..auth import require_permission  # 2026-06-25 (Phase P4): RBAC
 from ..app import update_download_status, get_download_status as _get_status
 from ..auth import safe_import_strategy, verify_api_key
 
@@ -256,7 +257,7 @@ async def stock_screener(
 
 # ===== 下载 API =====
 
-@router.post("/data/download")
+@router.post("/data/download", dependencies=[Depends(require_permission("download_data"))])
 async def trigger_download(mode: str = "incremental"):
     """
     触发数据下载
@@ -337,7 +338,7 @@ async def get_download_status():
 
 # ===== 回测 API =====
 
-@router.post("/backtest/run")
+@router.post("/backtest/run", dependencies=[Depends(require_permission("run_backtest"))])
 async def run_backtest(req: BacktestRequest):
     """执行单次回测"""
     try:
@@ -437,7 +438,7 @@ async def run_backtest(req: BacktestRequest):
 
 # ===== 组合回测 API (选股策略) =====
 
-@router.post("/backtest/portfolio/run")
+@router.post("/backtest/portfolio/run", dependencies=[Depends(require_permission("run_backtest"))])
 async def run_portfolio_backtest(req: PortfolioBacktestRequest):
     """执行组合回测 (选股策略)"""
     try:
@@ -526,7 +527,7 @@ async def run_portfolio_backtest(req: PortfolioBacktestRequest):
 
 # ===== 投票模型回测 API (技术投票模型) =====
 
-@router.post("/backtest/voting/run")
+@router.post("/backtest/voting/run", dependencies=[Depends(require_permission("run_backtest"))])
 async def run_voting_backtest(req: VotingBacktestRequest):
     """执行技术投票模型回测"""
     try:
@@ -756,7 +757,7 @@ async def get_backtest_results(limit: int = 20):
 
 # ===== 批量回测 API =====
 
-@router.post("/backtest/batch/run")
+@router.post("/backtest/batch/run", dependencies=[Depends(require_permission("run_batch_backtest"))])
 async def run_batch_backtest(req: BatchBacktestRequest):
     """批量回测: 多策略 × 多股票"""
     try:
@@ -810,7 +811,7 @@ class ParamSearchRequest(BaseModel):
     n_iter: int = 50         # random/bayesian 采样次数
 
 
-@router.post("/backtest/paramsearch/run")
+@router.post("/backtest/paramsearch/run", dependencies=[Depends(require_permission("run_batch_backtest"))])
 async def run_param_search(req: ParamSearchRequest):
     """参数搜索: 网格/随机/贝叶斯"""
     try:
@@ -967,7 +968,7 @@ async def get_stock_pool(
 # 模拟交易 API
 # ============================================================
 
-@router.post("/simulate/run")
+@router.post("/simulate/run", dependencies=[Depends(require_permission("run_simulate"))])
 async def api_simulate_run(body: dict):
     """运行模拟交易"""
     try:
