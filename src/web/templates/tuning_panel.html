@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+{% set page_title = "七维量化评分 · 参数调优面板" %}
+{% set need_chartjs = false %}
+{% set need_echarts = false %}
+{% include "partials/_standalone_head.html" %}
+{# 页面特定 style (从 output/ 原样保留) #}
+<style>
+:root { --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a; --text:#e0e0e0; --dim:#888; --accent:#4fc3f7; --green:#4caf50; --red:#ef5350; --yellow:#ffa726; --orange:#ff7043; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+header { background:var(--card); border-bottom:1px solid var(--border); padding:14px 24px; display:flex; align-items:center; gap:12px; justify-content:space-between; }
+header h1 { font-size:1.2rem; font-weight:600; }
+.status-badge { font-size:0.72rem; padding:4px 10px; border-radius:10px; }
+.status-badge.ok { background:#1b3a1b; color:var(--green); }
+.status-badge.busy { background:#3a3a1b; color:var(--yellow); }
+.status-badge.err { background:#3a1b1b; color:var(--red); }
+main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-template-columns:380px 1fr; gap:20px; }
+.panel { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:20px; margin-bottom:14px; }
+.panel h3 { font-size:0.85rem; color:var(--dim); margin-bottom:14px; text-transform:uppercase; letter-spacing:1px; }
+.dim-row { display:flex; align-items:center; gap:8px; margin-bottom:10px; padding:6px 8px; border-radius:6px; transition:background .2s; }
+.dim-row:hover { background:#1e2130; }
+.dim-label { width:75px; font-size:0.82rem; font-weight:500; }
+.dim-slider { flex:1; -webkit-appearance:none; height:6px; border-radius:3px; background:linear-gradient(to right, var(--red) 0%, var(--yellow) 50%, var(--green) 100%); outline:none; }
+.dim-slider::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%; background:var(--accent); cursor:pointer; border:2px solid #fff; }
+.dim-value { width:36px; text-align:center; font-size:0.82rem; font-weight:600; }
+.dim-ic { width:50px; text-align:right; font-size:0.7rem; font-family:monospace; }
+.dim-ic.pos { color:var(--red); }
+.dim-ic.neg { color:var(--green); }
+.dim-ic.zero { color:var(--dim); }
+.btn-row { display:flex; gap:6px; margin:12px 0; flex-wrap:wrap; }
+.btn { padding:7px 14px; border:none; border-radius:6px; cursor:pointer; font-size:0.8rem; font-weight:500; transition:opacity .2s; }
+.btn:hover { opacity:.85; }
+.btn:disabled { opacity:0.35; cursor:not-allowed; }
+.btn-primary { background:var(--accent); color:#000; }
+.btn-warning { background:var(--yellow); color:#000; }
+.btn-danger { background:#3a1f1f; color:var(--red); }
+.btn-secondary { background:var(--border); color:var(--text); }
+.btn-green { background:#1b3a1b; color:var(--green); }
+.btn-ghost { background:transparent; border:1px solid var(--border); color:var(--dim); }
+.btn-period.active { background:var(--accent); color:#000; border-color:var(--accent); }
+
+/* ── Tab 页签 ── */
+.tabs { display:flex; gap:0; background:var(--card); border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:0; }
+.tab-btn { padding:10px 20px; border:none; background:transparent; color:var(--dim); cursor:pointer; font-size:0.85rem; transition:all .2s; border-bottom:2px solid transparent; }
+.tab-btn:hover { color:var(--text); background:#1e2130; }
+.tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); background:#1a1d2e; }
+.tab-panel { display:none; }
+.tab-panel.active { display:block; }
+.tab-panel.active.grid-layout { display:grid; }
+
+/* ── 回测面板 ── */
+.bt-metrics { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; }
+.bt-chart-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
+@media (max-width:900px) { .bt-chart-row { grid-template-columns:1fr; } }
+.signal-row { display:flex; gap:8px; align-items:center; padding:4px 8px; margin:2px 0; border-radius:4px; font-size:0.72rem; }
+.signal-row.buy { background:#281818; color:var(--red); }
+.signal-row.sell { background:#0d2818; color:var(--green); }
+.threshold-slider { width:100%; margin:8px 0; }
+.control-bar { display:flex; gap:6px; align-items:center; }
+.progress-bar { flex:1; height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+.progress-fill { height:100%; background:var(--accent); border-radius:3px; transition:width .3s; }
+.progress-fill.paused { background:var(--yellow); }
+.progress-fill.done { background:var(--green); }
+.progress-text { font-size:0.7rem; color:var(--dim); min-width:36px; text-align:right; }
+.metrics-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:8px; margin-bottom:12px; }
+.metric { background:#111318; border:1px solid var(--border); border-radius:6px; padding:10px; text-align:center; }
+.metric .val { font-size:1.3rem; font-weight:700; }
+.metric .lbl { font-size:0.65rem; color:var(--dim); margin-top:2px; }
+.metric.best { border-color:var(--red); background:#281818; }
+.combo-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+.combo-table th { text-align:left; padding:5px 8px; border-bottom:2px solid var(--border); color:var(--dim); font-size:0.68rem; }
+.combo-table td { padding:5px 8px; border-bottom:1px solid var(--border); }
+.combo-table tr:hover { background:#1e2130; }
+.rank-1 { color:var(--red); font-weight:700; }
+.rank-2 { color:var(--red); }
+.rank-3 { color:var(--accent); }
+.ic-bar { display:inline-block; height:10px; border-radius:2px; margin-right:4px; }
+.ic-bar.pos { background:var(--red); }
+.ic-bar.neg { background:var(--green); }
+.spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top:2px solid var(--accent); border-radius:50%; animation:spin .8s linear infinite; vertical-align:middle; margin-right:6px; }
+@keyframes spin { to{transform:rotate(360deg);} }
+.preset-item { display:flex; justify-content:space-between; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.78rem; transition:background .2s; }
+.preset-item:hover { background:#1e2130; }
+.preset-item .ic { font-family:monospace; font-size:0.72rem; }
+.chip-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.chip-row .dim-ic { width:auto; font-size:0.7rem; padding:2px 6px; border-radius:4px; }
+.chip-row .dim-ic.pos { background:#281818; }
+.chip-row .dim-ic.neg { background:#0d2818; }
+
+/* ── Tooltip ── */
+[data-tip] { position:relative; cursor:help; border-bottom:1px dotted var(--dim); }
+[data-tip]:hover::after {
+  content:attr(data-tip);
+  position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+  background:#2a2a35; color:var(--text); font-size:0.72rem; font-weight:400;
+  padding:6px 12px; border-radius:6px; white-space:nowrap; z-index:999;
+  border:1px solid var(--border); box-shadow:0 4px 12px rgba(0,0,0,.4);
+  pointer-events:none; line-height:1.4;
+}
+th[data-tip]:hover::after { font-weight:400; }
+
+/* ── 图例卡片 ── */
+.legend { display:flex; gap:16px; flex-wrap:wrap; font-size:0.72rem; color:var(--dim); padding:8px 12px; background:#111318; border-radius:6px; margin-bottom:12px; }
+.legend-item { display:flex; align-items:center; gap:4px; }
+.legend-dot { width:8px; height:8px; border-radius:50%; }
+.legend-dot.good { background:var(--red); }
+.legend-dot.ok { background:var(--yellow); }
+.legend-dot.bad { background:var(--green); }
+</style>
+</head>
+<header>
+  <div style="display:flex;align-items:center;gap:12px">
+    <h1>🎯 七维量化评分 · 参数调优</h1>
+    <span class="status-badge load" id="serverStatus">连接中...</span>
+  </div>
+  <div class="control-bar">
+    <button class="btn btn-primary" id="btnRun" onclick="runBacktest()" disabled>▶ 运行</button>
+    <button class="btn btn-warning" id="btnPause" onclick="pauseBacktest()" disabled>⏸ 暂停</button>
+    <button class="btn btn-danger" id="btnStop" onclick="stopBacktest()" disabled>⏹ 停止</button>
+    <a href="/" style="color:var(--dim);text-decoration:none;font-size:0.8rem;margin-left:auto">← 返回首页</a>
+  </div>
+</header>
+
+<div class="tabs" style="max-width:1400px; margin:0 auto; border-radius:0; border-top:none">
+  <button class="tab-btn active" onclick="switchTab('tuning')">📊 参数调优</button>
+  <button class="tab-btn" onclick="switchTab('stock')">📈 单股分析</button>
+  <button class="tab-btn" onclick="switchTab('backtest')">💰 策略回测</button>
+</div>
+
+<main class="tab-panel active grid-layout" id="tab-tuning">
+  <!-- 左侧：参数面板 -->
+  <aside>
+    <div class="panel">
+      <h3>⚖️ 维度权重 <span id="updateBadge" style="font-size:0.65rem;color:var(--yellow);display:none">(已修改)</span></h3>
+      <div id="sliders"></div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="preset('equal')">等权</button>
+        <button class="btn btn-secondary" onclick="preset('best')">最优组</button>
+        <button class="btn btn-secondary" onclick="preset('techOnly')">纯技术</button>
+        <button class="btn btn-ghost" onclick="preset('reset')">重置默认</button>
+      </div>
+      <!-- 配置保存/加载 -->
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+          <select id="configSelect" onchange="loadConfig()" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#111318;color:var(--text);font-size:0.78rem">
+            <option value="">— 选择已保存配置 —</option>
+          </select>
+          <button class="btn btn-ghost" onclick="deleteConfig()" style="font-size:0.7rem;padding:5px 8px" title="删除选中配置">🗑</button>
+        </div>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="configName" placeholder="配置名称" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#111318;color:var(--text);font-size:0.78rem">
+          <button class="btn btn-green" onclick="saveConfig()" style="font-size:0.72rem;white-space:nowrap">💾 保存</button>
+        </div>
+        <p id="configMsg" style="font-size:0.65rem;color:var(--dim);margin-top:4px;min-height:16px"></p>
+      </div>
+    </div>
+    <!-- 进度条 -->
+    <div class="panel" id="progressPanel" style="display:none">
+      <h3>⏳ 回测进度</h3>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+        <span class="progress-text" id="progressLabel">0%</span>
+      </div>
+      <p style="font-size:0.7rem;color:var(--dim);margin-top:6px" id="progressStatus">等待中...</p>
+    </div>
+    <div class="panel">
+      <h3>📋 预设方案</h3>
+      <div id="presetList"></div>
+    </div>
+    <!-- 参数扫描 -->
+    <div class="panel">
+      <h3>🔬 参数网格扫描</h3>
+      <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">
+        <button class="btn btn-ghost" onclick="runScan('fast')" style="font-size:0.68rem;padding:3px 10px" data-tip="0/1二分扫描, ~128组合, 秒级完成">⚡快速</button>
+        <button class="btn btn-ghost" onclick="runScan('medium')" style="font-size:0.68rem;padding:3px 10px" data-tip="0/0.5/1三步扫描, ~2187组合">📐标准</button>
+        <button class="btn btn-ghost" onclick="runScan('full')" style="font-size:0.68rem;padding:3px 10px" data-tip="0/0.25/0.5/0.75/1五步扫描, ~78125组合, 较慢">🔬精细</button>
+      </div>
+      <div id="scanStatus" style="font-size:0.65rem;color:var(--dim);min-height:16px"></div>
+      <div id="scanResults" style="font-size:0.68rem"></div>
+    </div>
+  </aside>
+
+  <!-- 右侧：结果 -->
+  <section>
+    <div class="legend">
+      <div class="legend-item"><span class="legend-dot good"></span> IC>0.05 有效</div>
+      <div class="legend-item"><span class="legend-dot ok"></span> IC>0 微弱正向</div>
+      <div class="legend-item"><span class="legend-dot bad"></span> IC<0 负相关</div>
+      <span style="margin-left:auto;font-size:0.65rem">💡 鼠标悬停表头查看指标说明</span>
+    </div>
+    <div id="topMetrics" class="metrics-grid"></div>
+
+    <div class="panel">
+      <h3>🏆 组合 IC 排名 (60日)</h3>
+      <table class="combo-table">
+        <thead><tr><th>#</th><th>组合</th><th data-tip="评分与未来60日收益的Spearman相关系数, >0.05有效, >0.08优秀">IC(60d)</th><th data-tip="评分与未来40日收益的相关系数">IC(40d)</th><th data-tip="评分与未来20日收益的相关系数, 短期信号噪声较大">IC(20d)</th><th></th></tr></thead>
+        <tbody id="comboBody">
+          <tr><td colspan="6" style="text-align:center;color:var(--dim);padding:30px">👆 调整权重后点击「运行」</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h3>📈 五分位收益 (60日)</h3>
+      <div class="metrics-grid" id="quintileGrid"></div>
+    </div>
+
+    <div class="panel">
+      <h3>📊 各维度独立 IC</h3>
+      <div id="dimICs" style="font-size:0.78rem;color:var(--dim)">👆 点击运行回测查看</div>
+    </div>
+
+    <div class="panel">
+      <h3>🏭 行业 IC 分析 <span style="font-size:0.65rem;color:var(--dim)" id="industryCombo"></span></h3>
+      <div id="industryICs" style="font-size:0.72rem;color:var(--dim)">👆 点击运行回测查看行业暴露</div>
+    </div>
+
+  </section>
+</main>
+
+<!-- 单股分析 Tab -->
+<main class="tab-panel" id="tab-stock" style="max-width:1400px; margin:0 auto; padding:20px;">
+  <section>
+    <div class="panel">
+      <h3>🔍 单股查询</h3>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <input type="text" id="stockCode" placeholder="输入代码如 000001" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:#111318;color:var(--text);font-size:0.82rem" onkeydown="if(event.key==='Enter')loadStock()">
+        <button class="btn btn-primary" onclick="loadStock()">查询</button>
+      </div>
+      <p style="font-size:0.68rem;color:var(--dim)">查看单只股票过去2年的七维评分走势与收益关系</p>
+    </div>
+    <div class="panel" id="stockPanel">
+      <h3>📈 单股评分走势 <span id="stockTitle" style="font-weight:400;color:var(--dim);font-size:0.8rem"></span></h3>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px" id="dimToggles"></div>
+      <canvas id="stockChart" width="800" height="300" style="width:100%;border-radius:6px;background:#111318;margin-bottom:6px"></canvas>
+      <div style="display:flex;gap:12px;margin-top:4px;font-size:0.7rem;color:var(--dim);flex-wrap:wrap" id="stockStats"></div>
+      <hr style="border-color:var(--border);margin:12px 0 8px">
+      <h3 style="font-size:0.82rem;margin-bottom:8px">🕯️ K线图
+        <span style="display:inline-flex;gap:4px;margin-left:8px;vertical-align:middle">
+          <button class="btn btn-ghost btn-period active" data-p="day" onclick="switchPeriod('day')" style="font-size:0.65rem;padding:2px 8px">日</button>
+          <button class="btn btn-ghost btn-period" data-p="week" onclick="switchPeriod('week')" style="font-size:0.65rem;padding:2px 8px">周</button>
+          <button class="btn btn-ghost btn-period" data-p="month" onclick="switchPeriod('month')" style="font-size:0.65rem;padding:2px 8px">月</button>
+        </span>
+        <span style="font-weight:400;color:var(--dim);font-size:0.7rem;margin-left:6px">(近120根)</span>
+        <span id="klineSource" style="font-size:0.65rem;margin-left:8px;padding:2px 6px;border-radius:4px;background:var(--border);color:var(--dim)"></span>
+      </h3>
+      <canvas id="klineChart" width="800" height="280" style="width:100%;border-radius:6px;background:#111318"></canvas>
+    </div>
+  </section>
+</main>
+
+<!-- 策略回测 Tab -->
+<main class="tab-panel" id="tab-backtest" style="max-width:1400px; margin:20px auto; padding:0 20px;">
+  <section>
+    <!-- 控制面板 -->
+    <div class="panel">
+      <h3>💰 单股策略回测 <span id="btTitle" style="font-weight:400;color:var(--dim);font-size:0.8rem"></span></h3>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+        <input type="text" id="btStockCode" placeholder="股票代码" style="width:100px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:#111318;color:var(--text);font-size:0.82rem" onkeydown="if(event.key==='Enter')runStockBacktest()">
+        <select id="btStrategy" onchange="onStrategyChange()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:#111318;color:var(--text);font-size:0.82rem">
+          <option value="score_cross">七维评分穿越</option>
+          <option value="ma_cross">均线金叉</option>
+          <option value="oversold">超卖反转</option>
+          <option value="trend_follow">趋势跟踪</option>
+          <option value="bollinger">布林突破</option>
+          <option value="bull_wave">七维共振牛股</option>
+          <option value="combo">综合多信号</option>
+        </select>
+        <button class="btn btn-primary" onclick="runStockBacktest()">▶ 运行回测</button>
+      </div>
+      <p id="btStrategyDesc" style="font-size:0.72rem;color:var(--dim);margin-bottom:8px"></p>
+      <div id="btParams" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:4px"></div>
+      <div id="btStatus" style="font-size:0.7rem;color:var(--accent);min-height:18px"></div>
+    </div>
+
+    <!-- 汇总指标 -->
+    <div class="bt-metrics" id="btMetrics" style="margin-bottom:12px"></div>
+
+    <!-- 权益曲线 + 逐笔累计 -->
+    <div class="bt-chart-row">
+      <div>
+        <canvas id="btEquityChart" width="400" height="250" style="width:100%;border-radius:6px;background:#111318"></canvas>
+      </div>
+      <div style="max-height:250px;overflow-y:auto">
+        <h4 style="font-size:0.75rem;margin-bottom:4px">📊 逐笔累计盈亏</h4>
+        <div id="btCumulative"></div>
+      </div>
+    </div>
+
+    <!-- 详细交易记录表 -->
+    <div class="panel" style="margin-top:12px">
+      <h3>📋 交易明细 <span style="font-weight:400;font-size:0.7rem;color:var(--dim)">(可对照K线数据验证)</span></h3>
+      <div style="overflow-x:auto">
+        <table class="combo-table" style="min-width:900px">
+          <thead><tr>
+            <th>#</th><th data-tip="买入日期">买入日</th><th data-tip="买入价(收盘)">买价</th>
+            <th data-tip="卖出日期">卖出日</th><th data-tip="卖出价(收盘)">卖价</th>
+            <th data-tip="持仓期间收益率">收益%</th><th>持仓天</th>
+            <th data-tip="离场原因: 信号/止损/止盈/期末清仓">离场原因</th>
+            <th data-tip="持仓期间最大浮盈">最大盈%</th><th data-tip="持仓期间最大浮亏">最大亏%</th>
+            <th data-tip="买入信号描述">买入信号</th>
+          </tr></thead>
+          <tbody id="btTradeBody">
+            <tr><td colspan="11" style="text-align:center;color:var(--dim);padding:20px">👆 输入股票代码并选择策略后运行</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 对账验证区 -->
+    <div class="panel" style="margin-top:12px">
+      <h3>🔍 对账验证 <span style="font-weight:400;font-size:0.7rem;color:var(--dim)">(最近100个交易日K线+技术指标，可与行情软件对照)</span></h3>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="btn btn-ghost btn-period active" onclick="showVerifyTab('price')" id="vtabPrice" style="font-size:0.68rem;padding:3px 10px">📈 K线数据</button>
+        <button class="btn btn-ghost btn-period" onclick="showVerifyTab('indicator')" id="vtabIndicator" style="font-size:0.68rem;padding:3px 10px">📊 技术指标</button>
+      </div>
+      <div id="verifyPriceTable" style="overflow-x:auto;max-height:300px;overflow-y:auto"></div>
+      <div id="verifyIndicatorTable" style="overflow-x:auto;max-height:300px;overflow-y:auto;display:none"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const API = '/api';
+const POLL_INTERVAL = 400; // 轮询间隔 ms
+
+let dimConfig = [
+  {id:'tech_weighted',     name:'技术面 v3',   defIC:'+0.094', defW:1.0},
+  {id:'fundam_weighted',   name:'基本面 v3',   defIC:'+0.043', defW:1.0},
+  {id:'fund_weighted',     name:'资金面 v2.1', defIC:'+0.033', defW:0.5},
+  {id:'institutional_weighted', name:'机构面 v2', defIC:'+0.005', defW:0.3},
+  {id:'lh_institutional_weighted', name:'龙虎榜 v1', defIC:'N/A', defW:0.3},
+  {id:'sentiment_weighted',     name:'情绪面 v2', defIC:'+0.061', defW:0.5},
+  {id:'news_event_weighted',    name:'新闻面 v1', defIC:'-0.020', defW:0.2},
+  {id:'chip_weighted',          name:'筹码面 v1', defIC:'-0.139', defW:0.0},
+];
+let weights = {};
+let pollTimer = null;
+let taskStatus = 'idle';
+
+// ── 按钮状态管理 ──
+function setButtons(run, pause, stop) {
+  document.getElementById('btnRun').disabled = !run;
+  document.getElementById('btnPause').disabled = !pause;
+  document.getElementById('btnStop').disabled = !stop;
+}
+
+function updateButtonsByStatus() {
+  switch(taskStatus) {
+    case 'idle':    setButtons(true, false, false); break;
+    case 'running': setButtons(false, true, true); break;
+    case 'paused':  setButtons(true, false, true); break;
+    case 'done':
+    case 'stopped':
+    case 'error':   setButtons(true, false, false); break;
+  }
+}
+
+// ── 初始化 ──
+async function init() {
+  try {
+    let r = await fetch(API+'/status');
+    let s = await r.json();
+    document.getElementById('serverStatus').textContent = s.loaded.toLocaleString()+' 条';
+    document.getElementById('serverStatus').className = 'status-badge ok';
+    // 恢复任务状态
+    if (s.task) {
+      taskStatus = s.task.status;
+      updateButtonsByStatus();
+      if (s.task.status === 'running' || s.task.status === 'paused') {
+        startPolling();
+      }
+      if (s.task.result) {
+        renderResults(s.task.result);
+      }
+    }
+  } catch(e) {
+    document.getElementById('serverStatus').textContent = '⚠ 未连接';
+    document.getElementById('serverStatus').className = 'status-badge err';
+    return;
+  }
+
+  buildSliders();
+  dimConfig.forEach(d => weights[d.id] = d.defW);
+  document.getElementById('btnRun').disabled = false;
+  initConfigs();
+  loadStrategies();
+}
+
+function buildSliders() {
+  let html = '';
+  dimConfig.forEach(d => {
+    let icCls = (d.defIC||'').startsWith('-') ? 'neg' : 'pos';
+    html += `<div class="dim-row">
+      <span class="dim-label">${d.name}</span>
+      <input type="range" class="dim-slider" id="slider_${d.id}" min="0" max="2" step="0.05" value="${d.defW}"
+             oninput="onSliderChange('${d.id}', this.value)">
+      <span class="dim-value" id="val_${d.id}">${d.defW.toFixed(1)}</span>
+      <span class="dim-ic ${icCls}" id="ic_${d.id}" data-tip="该维度独立60日IC, 回测后更新为实时值">${d.defIC}</span>
+    </div>`;
+  });
+  document.getElementById('sliders').innerHTML = html;
+}
+
+function onSliderChange(id, val) {
+  let v = parseFloat(val);
+  document.getElementById('val_'+id).textContent = v.toFixed(2);
+  weights[id] = v;
+  document.getElementById('updateBadge').style.display = 'inline';
+}
+
+// ── 预设 ──
+function preset(type) {
+  let map = {};
+  if (type === 'equal') dimConfig.forEach(d => map[d.id] = 1.0);
+  else if (type === 'best') map = {tech_weighted:1.0, fundam_weighted:1.0, fund_weighted:0.5, institutional_weighted:0.3, sentiment_weighted:0.5, news_event_weighted:0.2, chip_weighted:0};
+  else if (type === 'techOnly') map = {tech_weighted:1.0, fundam_weighted:0, fund_weighted:0, institutional_weighted:0, sentiment_weighted:0, news_event_weighted:0, chip_weighted:0};
+  else if (type === 'reset') dimConfig.forEach(d => map[d.id] = d.defW);
+
+  for (let id in map) {
+    weights[id] = map[id];
+    let sl = document.getElementById('slider_'+id);
+    if (sl) { sl.value = map[id]; document.getElementById('val_'+id).textContent = map[id].toFixed(2); }
+  }
+  document.getElementById('updateBadge').style.display = 'inline';
+}
+
+// ── 回测控制 ──
+async function runBacktest() {
+  if (taskStatus === 'paused') {
+    // 继续运行
+    let r = await fetch(API+'/backtest/resume', {method:'POST'});
+    let d = await r.json();
+    if (d.ok) { taskStatus = 'running'; updateButtonsByStatus(); startPolling(); showProgress('running'); }
+    return;
+  }
+
+  // 新回测
+  let r = await fetch(API+'/backtest', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({weights:weights})
+  });
+  let d = await r.json();
+  if (!d.ok) { alert(d.msg); return; }
+  taskStatus = 'running';
+  updateButtonsByStatus();
+  showProgress('running');
+  document.getElementById('updateBadge').style.display = 'none';
+  startPolling();
+}
+
+async function pauseBacktest() {
+  let r = await fetch(API+'/backtest/pause', {method:'POST'});
+  let d = await r.json();
+  if (d.ok) { taskStatus = 'paused'; updateButtonsByStatus(); showProgress('paused'); }
+}
+
+async function stopBacktest() {
+  let r = await fetch(API+'/backtest/stop', {method:'POST'});
+  let d = await r.json();
+  if (d.ok) {
+    taskStatus = 'stopped';
+    updateButtonsByStatus();
+    stopPolling();
+    hideProgress();
+  }
+}
+
+// ── 轮询 ──
+function startPolling() {
+  stopPolling();
+  showProgress('running');
+  pollTimer = setInterval(pollStatus, POLL_INTERVAL);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function pollStatus() {
+  try {
+    let r = await fetch(API+'/backtest/status');
+    let d = await r.json();
+    taskStatus = d.status;
+    updateButtonsByStatus();
+
+    // 更新进度
+    let pf = document.getElementById('progressFill');
+    pf.style.width = d.progress + '%';
+    document.getElementById('progressLabel').textContent = d.progress + '%';
+
+    if (d.status === 'paused') {
+      pf.className = 'progress-fill paused';
+      document.getElementById('progressStatus').textContent = '⏸ 已暂停 — 点「运行」继续';
+    } else if (d.status === 'running') {
+      pf.className = 'progress-fill';
+      document.getElementById('progressStatus').textContent = '计算中...';
+    }
+
+    if (d.status === 'done' && d.result) {
+      pf.className = 'progress-fill done';
+      document.getElementById('progressStatus').textContent = '✅ 完成';
+      stopPolling();
+      renderResults(d.result);
+      setTimeout(hideProgress, 2000);
+      taskStatus = 'done';
+      updateButtonsByStatus();
+    }
+    if (d.status === 'stopped') {
+      document.getElementById('progressStatus').textContent = '⏹ 已停止';
+      stopPolling();
+      setTimeout(hideProgress, 1500);
+    }
+    if (d.status === 'error') {
+      document.getElementById('progressStatus').textContent = '❌ ' + (d.error||'错误');
+      stopPolling();
+      setTimeout(hideProgress, 2000);
+    }
+  } catch(e) {
+    stopPolling();
+  }
+}
+
+function showProgress(status) {
+  let p = document.getElementById('progressPanel');
+  p.style.display = 'block';
+  if (status === 'running') {
+    document.getElementById('progressStatus').textContent = '计算中...';
+    document.getElementById('progressFill').className = 'progress-fill';
+  }
+}
+
+function hideProgress() {
+  document.getElementById('progressPanel').style.display = 'none';
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('progressFill').className = 'progress-fill';
+}
+
+// ── 渲染结果 ──
+function renderResults(data) {
+  // 更新各维度实时IC tooltip
+  if (data.dimICs) {
+    for (let id in data.dimICs) {
+      let icEl = document.getElementById('ic_'+id);
+      if (icEl) {
+        let v = data.dimICs[id];
+        if (v != null) {
+          icEl.textContent = (v>=0?'+':'') + v.toFixed(3);
+          icEl.className = 'dim-ic ' + (v>=0?'pos':'neg');
+          icEl.setAttribute('data-tip', `该维度独立60日IC=${(v>=0?'+':'')+v.toFixed(3)}, 回测后实时更新`);
+        }
+      }
+    }
+  }
+
+  // 顶部指标
+  let top = '';
+    if (data.bestCombo && data.combos && data.combos.length > 0) {
+    top += `<div class="metric best"><div class="val" data-tip="当前权重下60日IC最高的维度组合">${data.bestCombo}</div><div class="lbl">最优组合</div></div>`;
+    let best = data.combos[0];
+    if (best.ic60 != null) {
+      top += `<div class="metric"><div class="val" style="color:${best.ic60>0?'var(--red)':'var(--green)'}" data-tip="Spearman秩相关系数, 衡量评分排序与收益排序的一致性">${best.ic60.toFixed(4)}</div><div class="lbl">IC(60d)</div></div>`;
+    }
+    if (data.spread != null) {
+      top += `<div class="metric"><div class="val" data-tip="最高分组(Q5)与最低分组(Q1)的60日平均收益差, 正值=高分跑赢低分">${data.spread>0?'+':''}${data.spread}%</div><div class="lbl">Q5-Q1利差</div></div>`;
+    }
+  }
+  document.getElementById('topMetrics').innerHTML = top || '';
+
+  // 组合排名表
+  let thtml = '';
+  if (data.combos) {
+    data.combos.forEach((c, i) => {
+      let ic60 = c.ic60 != null ? c.ic60 : 0;
+      let rc = i<3 ? 'rank-'+(i+1) : '';
+      let barW = Math.min(Math.abs(ic60)*200, 30);
+      let barCls = ic60>=0 ? 'pos' : 'neg';
+      thtml += `<tr>
+        <td class="${rc}">${i+1}</td>
+        <td>${c.name}</td>
+        <td style="font-weight:600;color:${ic60>=0?'var(--red)':'var(--green)'}">${ic60>=0?'+':''}${ic60.toFixed(4)}</td>
+        <td style="font-size:0.7rem;color:var(--dim)">${c.ic40!=null?(c.ic40>=0?'+':'')+c.ic40.toFixed(4):'—'}</td>
+        <td style="font-size:0.7rem;color:var(--dim)">${c.ic20!=null?(c.ic20>=0?'+':'')+c.ic20.toFixed(4):'—'}</td>
+        <td><span class="ic-bar ${barCls}" style="width:${barW}px"></span></td>
+      </tr>`;
+    });
+  }
+  document.getElementById('comboBody').innerHTML = thtml;
+
+  // 五分位
+  let qhtml = '';
+  if (data.quintile) {
+    data.quintile.forEach(q => {
+      qhtml += `<div class="metric"><div class="val">${q.mean}%</div><div class="lbl">Q${q.q} · 胜率${q.winRate}% · n=${q.n}</div></div>`;
+    });
+  }
+  document.getElementById('quintileGrid').innerHTML = qhtml;
+
+  // 维度IC chips
+  let dhtml = '<div class="chip-row">';
+  if (data.dimICs) {
+    for (let id in data.dimICs) {
+      let v = data.dimICs[id];
+      if (v != null) {
+        let label = dimConfig.find(d=>d.id===id)?.name || id;
+        dhtml += `<span class="dim-ic ${v>=0?'pos':'neg'}">${label}: ${(v>=0?'+':'')+v.toFixed(3)}</span>`;
+      }
+    }
+  }
+  dhtml += '</div>';
+  document.getElementById('dimICs').innerHTML = dhtml;
+
+  // 行业IC
+  if (data.industryICs && data.industryICs.length > 0) {
+    document.getElementById('industryCombo').textContent = `(${data.bestCombo})`;
+    let ihtml = '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:stretch">';
+    // 排序: IC最高前15 + IC最低后5
+    let top15 = data.industryICs.slice(0, 15);
+    let bottom5 = data.industryICs.slice(-5);
+    let shown = [...top15];
+    // top15已经是按IC降序排列的
+    ihtml += '<div style="flex:1;min-width:280px"><div style="font-size:0.65rem;color:var(--dim);margin-bottom:4px">📈 IC最高行业 (评分最有效)</div>';
+    shown.forEach(ind => {
+      if (ind.ic == null) return;
+      let color = ind.ic >= 0.05 ? 'var(--red)' : (ind.ic > 0 ? 'var(--yellow)' : 'var(--red)');
+      let barW = Math.abs(ind.ic) * 150;
+      ihtml += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:0.7rem">
+        <span style="width:70px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ind.industry}">${ind.industry}</span>
+        <span style="display:inline-block;width:${barW}px;height:8px;border-radius:2px;background:${color};opacity:0.7;min-width:2px"></span>
+        <span style="font-family:monospace;color:${color};width:50px">${ind.ic>=0?'+':''}${ind.ic.toFixed(3)}</span>
+        <span style="font-size:0.6rem;color:var(--dim)">n=${ind.n}</span>
+      </div>`;
+    });
+    ihtml += '</div>';
+    // 最低5个
+    ihtml += '<div style="flex:1;min-width:280px"><div style="font-size:0.65rem;color:var(--dim);margin-bottom:4px">📉 IC最低行业 (评分失效/反向)</div>';
+    let reversed = [...data.industryICs].reverse().slice(0, 15);
+    reversed.forEach(ind => {
+      if (ind.ic == null) return;
+      let color = ind.ic >= 0.05 ? 'var(--red)' : (ind.ic > 0 ? 'var(--yellow)' : 'var(--red)');
+      let barW = Math.abs(ind.ic) * 150;
+      ihtml += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:0.7rem">
+        <span style="width:70px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ind.industry}">${ind.industry}</span>
+        <span style="display:inline-block;width:${barW}px;height:8px;border-radius:2px;background:${color};opacity:0.7;min-width:2px"></span>
+        <span style="font-family:monospace;color:${color};width:50px">${ind.ic>=0?'+':''}${ind.ic.toFixed(3)}</span>
+        <span style="font-size:0.6rem;color:var(--dim)">n=${ind.n}</span>
+      </div>`;
+    });
+    ihtml += '</div></div>';
+    document.getElementById('industryICs').innerHTML = ihtml;
+  }
+}
+
+// ── 预设列表 ──
+document.getElementById('presetList').innerHTML = `
+  <div class="preset-item" onclick="preset('best')"><span>🥇 技术+基本面 (1.0/1.0)</span><span class="ic pos">IC +0.097</span></div>
+  <div class="preset-item" onclick="preset('techOnly')"><span>🥈 纯技术面 (1.0)</span><span class="ic pos">IC +0.094</span></div>
+  <div class="preset-item" onclick="preset('equal')"><span>⚖️ 七维等权</span><span class="ic pos">IC +0.083</span></div>
+  <div style="margin-top:12px;color:var(--red);font-size:0.72rem">⚠ 筹码面 IC=-0.139, 建议权重=0</div>
+`;
+
+// ── 参数扫描 ──
+async function runScan(mode) {
+  document.getElementById('scanStatus').innerHTML = '<span class="spinner"></span>扫描中...';
+  document.getElementById('scanResults').innerHTML = '';
+  try {
+    let r = await fetch(API+'/scan', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({mode:mode})
+    });
+    let d = await r.json();
+    if (d.error) { document.getElementById('scanStatus').textContent = '❌ '+d.error; return; }
+    document.getElementById('scanStatus').textContent = `✅ 扫描 ${d.totalCombos.toLocaleString()} 组合, 最优IC=${d.bestIC!=null?(d.bestIC>=0?'+':'')+d.bestIC.toFixed(4):'N/A'}`;
+
+    // Top 10 结果
+    let html = '<div style="margin-top:6px;font-size:0.65rem;color:var(--dim)">🏆 Top 10 组合</div>';
+    d.topResults.slice(0,10).forEach((r,i) => {
+      let color = r.ic>=0?'var(--red)':'var(--green)';
+      html += `<div class="preset-item" onclick="applyScanWeights('${JSON.stringify(r.weights).replace(/"/g,'&quot;')}')" style="cursor:pointer">
+        <span>#${i+1} ${Object.entries(r.weights).map(([k,v])=>v.toFixed(1)).join('/')}</span>
+        <span class="ic" style="color:${color}">IC ${r.ic>=0?'+':''}${r.ic.toFixed(4)}</span>
+      </div>`;
+    });
+
+    // 维度重要性
+    html += '<div style="margin-top:8px;font-size:0.65rem;color:var(--dim)">📊 维度重要性(非零权重率)</div>';
+    let sorted = Object.entries(d.dimImportance||{}).sort((a,b)=>b[1].nonZeroRate-a[1].nonZeroRate);
+    sorted.forEach(([did, info]) => {
+      let barW = info.nonZeroRate;
+      html += `<div style="display:flex;align-items:center;gap:4px;padding:1px 0;font-size:0.62rem">
+        <span style="width:55px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dimConfig.find(dc=>dc.id===did)?.name||did}</span>
+        <span style="display:inline-block;width:${barW}px;height:6px;border-radius:2px;background:var(--accent);opacity:0.6"></span>
+        <span style="color:var(--accent)">${info.nonZeroRate}%</span>
+      </div>`;
+    });
+    document.getElementById('scanResults').innerHTML = html;
+  } catch(e) { document.getElementById('scanStatus').textContent = '❌ '+e.message; }
+}
+
+function applyScanWeights(weightsJson) {
+  let w = JSON.parse(weightsJson);
+  for (let id in w) {
+    weights[id] = w[id];
+    let sl = document.getElementById('slider_'+id);
+    if (sl) { sl.value = w[id]; document.getElementById('val_'+id).textContent = w[id].toFixed(2); }
+  }
+  document.getElementById('updateBadge').style.display = 'inline';
+}
+
+// ── 配置管理 ──
+const STORAGE_KEY = 'quant_param_configs';
+
+function getSavedConfigs() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+  catch(e) { return {}; }
+}
+function saveConfigsToStorage(configs) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(configs));
+}
+
+function refreshConfigSelect() {
+  let configs = getSavedConfigs();
+  let sel = document.getElementById('configSelect');
+  sel.innerHTML = '<option value="">— 选择已保存配置 —</option>';
+  for (let name in configs) {
+    sel.innerHTML += `<option value="${name}">${name}</option>`;
+  }
+}
+
+function saveConfig() {
+  let name = document.getElementById('configName').value.trim();
+  if (!name) { flashMsg('请输入配置名称'); return; }
+  let configs = getSavedConfigs();
+  if (configs[name] && !confirm(`配置"${name}"已存在, 覆盖?`)) return;
+
+  configs[name] = Object.assign({}, weights);
+  saveConfigsToStorage(configs);
+  refreshConfigSelect();
+  document.getElementById('configSelect').value = name;
+  document.getElementById('configName').value = '';
+  flashMsg(`✅ 已保存 "${name}"`, 'var(--green)');
+}
+
+function loadConfig() {
+  let name = document.getElementById('configSelect').value;
+  if (!name) return;
+  let configs = getSavedConfigs();
+  let w = configs[name];
+  if (!w) return;
+
+  for (let id in w) {
+    weights[id] = w[id];
+    let sl = document.getElementById('slider_'+id);
+    if (sl) { sl.value = w[id]; document.getElementById('val_'+id).textContent = w[id].toFixed(2); }
+  }
+  document.getElementById('updateBadge').style.display = 'inline';
+  flashMsg(`📂 已加载 "${name}"`, 'var(--accent)');
+}
+
+function deleteConfig() {
+  let name = document.getElementById('configSelect').value;
+  if (!name) return;
+  if (!confirm(`删除配置"${name}"?`)) return;
+  let configs = getSavedConfigs();
+  delete configs[name];
+  saveConfigsToStorage(configs);
+  refreshConfigSelect();
+  flashMsg(`🗑 已删除 "${name}"`);
+}
+
+function flashMsg(msg, color) {
+  let el = document.getElementById('configMsg');
+  el.textContent = msg;
+  el.style.color = color || 'var(--dim)';
+  setTimeout(() => { el.textContent = ''; }, 2500);
+}
+
+// 初始化下拉框
+function initConfigs() { refreshConfigSelect(); }
+
+// ── 单股查询 ──
+const DIM_COLORS = ['#4fc3f7','#66bb6a','#ffa726','#ef5350','#ab47bc','#26c6da','#78909c'];
+let stockChartData = null;
+let stockKlineData = null;
+let visibleDims = {};
+let klinePeriod = 'day';
+
+function switchPeriod(p) {
+  klinePeriod = p;
+  document.querySelectorAll('.btn-period').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.btn-period[data-p="${p}"]`).classList.add('active');
+  if (stockKlineData) loadStock();
+}
+
+async function loadStock() {
+  let code = document.getElementById('stockCode').value.trim();
+  if (!code) return;
+  try {
+    let [r1, r2] = await Promise.all([
+      fetch(API+'/stock/'+code),
+      fetch(API+'/stock/'+code+'/kline/'+klinePeriod)
+    ]);
+    if (!r1.ok) { alert('未找到该股票 ('+code+')'); return; }
+    let data = await r1.json();
+    stockChartData = data;
+    document.getElementById('stockTitle').textContent = data.code;
+    document.getElementById('stockPanel').style.display = 'block';
+    buildDimToggles(data);
+    drawChart();
+    computeStockStats(data);
+    // K线
+    if (r2.ok) {
+      let kl = await r2.json();
+      stockKlineData = kl;
+      drawKline(kl);
+      // 显示数据来源
+      let srcEl = document.getElementById('klineSource');
+      if (srcEl) srcEl.textContent = kl._source === '网络实时' ? '🌐 网络实时' : '💾 本地DB';
+    }
+  } catch(e) { alert('查询失败: '+e.message); }
+}
+
+function buildDimToggles(data) {
+  let dims = Object.keys(data.scores);
+  let html = '';
+  dims.forEach((d,i) => {
+    if (visibleDims[d] === undefined) visibleDims[d] = true;
+    let chk = visibleDims[d] ? 'checked' : '';
+    html += `<label style="font-size:0.72rem;cursor:pointer;display:flex;align-items:center;gap:4px">
+      <input type="checkbox" ${chk} onchange="visibleDims['${d}']=this.checked;drawChart()" style="accent-color:${DIM_COLORS[i]}">
+      <span style="color:${DIM_COLORS[i]}">${d}</span></label>`;
+  });
+  document.getElementById('dimToggles').innerHTML = html;
+}
+
+function drawChart() {
+  let canvas = document.getElementById('stockChart');
+  let ctx = canvas.getContext('2d');
+  let dpr = window.devicePixelRatio || 1;
+  let rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = 300 * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = '300px';
+  ctx.scale(dpr, dpr);
+  let W = rect.width, H = 300;
+  ctx.clearRect(0, 0, W, H);
+  if (!stockChartData) return;
+
+  let data = stockChartData;
+  let dates = data.dates;
+  let n = dates.length;
+  if (n < 2) return;
+
+  let pad = {l:50, r:20, t:20, b:40};
+  let cw = W - pad.l - pad.r, ch = H - pad.t - pad.b;
+
+  let allVals = [];
+  let dimNames = Object.keys(data.scores);
+  dimNames.forEach(d => { if (visibleDims[d]) allVals = allVals.concat(data.scores[d].filter(v=>v!=null)); });
+  if (allVals.length === 0) return;
+
+  let minV = Math.min(...allVals), maxV = Math.max(...allVals);
+  let range = maxV - minV || 1;
+  minV -= range * 0.05; maxV += range * 0.05;
+
+  ctx.strokeStyle = '#1a1d27'; ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    let y = pad.t + (ch/4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W-pad.r, y); ctx.stroke();
+    ctx.fillStyle = '#555'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText((maxV - (range/4) * i).toFixed(1), pad.l-6, y+4);
+  }
+  ctx.fillStyle = '#555'; ctx.textAlign = 'center';
+  let step = Math.max(1, Math.floor(n/8));
+  for (let i = 0; i < n; i += step) {
+    let x = pad.l + (cw/(n-1)) * i;
+    ctx.fillText(dates[i].slice(2), x, H-pad.b+16);
+  }
+
+  dimNames.forEach((d, di) => {
+    if (!visibleDims[d]) return;
+    let vals = data.scores[d];
+    ctx.strokeStyle = DIM_COLORS[di]; ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < n; i++) {
+      let v = vals[i];
+      if (v == null) { started = false; continue; }
+      let x = pad.l + (cw/(n-1)) * i;
+      let y = pad.t + ch - ((v - minV) / (maxV-minV)) * ch;
+      if (!started) { ctx.moveTo(x,y); started = true; }
+      else { ctx.lineTo(x,y); }
+    }
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = '#888'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('评分 (0-20)', pad.l, pad.t-6);
+}
+
+function computeStockStats(data) {
+  let html = '';
+  let dims = Object.keys(data.scores);
+  dims.forEach((d, di) => {
+    let vals = data.scores[d].filter(v => v != null);
+    if (vals.length < 2) return;
+    let latest = vals[vals.length-1];
+    let avg = (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1);
+    let trend = vals[vals.length-1] - vals[Math.max(0,vals.length-4)];
+    let sign = trend > 0.5 ? '↑' : trend < -0.5 ? '↓' : '→';
+    html += `<span style="color:${DIM_COLORS[di]}">${d}: 最新${latest.toFixed(1)}/均值${avg} ${sign}</span>`;
+  });
+  document.getElementById('stockStats').innerHTML = html;
+}
+
+function drawKline(data) {
+  let canvas = document.getElementById('klineChart');
+  let ctx = canvas.getContext('2d');
+  let dpr = window.devicePixelRatio || 1;
+  let rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = 280 * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = '280px';
+  ctx.scale(dpr, dpr);
+  let W = rect.width, H = 280;
+  ctx.clearRect(0, 0, W, H);
+  if (!data || !data.dates || data.dates.length < 2) return;
+
+  let n = data.dates.length;
+  let pad = {l:55, r:20, t:25, b:40};
+  let cw = W - pad.l - pad.r, ch = H - pad.t - pad.b;
+  let barW = Math.max(1, Math.floor(cw / n * 0.7));
+  let gap = Math.floor(cw / n);
+
+  // 价格范围
+  let allPrices = data.high.concat(data.low);
+  let minP = Math.min(...allPrices), maxP = Math.max(...allPrices);
+  let pr = maxP - minP || 1;
+  minP -= pr * 0.03; maxP += pr * 0.03;
+
+  // 网格
+  ctx.strokeStyle = '#1a1d27'; ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    let y = pad.t + (ch/4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W-pad.r, y); ctx.stroke();
+    ctx.fillStyle = '#555'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText((maxP - (pr/4)*i).toFixed(2), pad.l-6, y+4);
+  }
+
+  // X轴日期
+  ctx.fillStyle = '#555'; ctx.textAlign = 'center';
+  let step = Math.max(1, Math.floor(n/8));
+  for (let i = 0; i < n; i += step) {
+    let x = pad.l + gap * i + gap/2;
+    ctx.fillText(data.dates[i].slice(5), x, H-pad.b+16);
+  }
+
+  // 蜡烛图
+  for (let i = 0; i < n; i++) {
+    let o = data.open[i], h = data.high[i], l = data.low[i], c = data.close[i];
+    let isGreen = c >= o;
+    let color = isGreen ? '#ef5350' : '#26a69a'; // A股红涨绿跌
+    let x = pad.l + gap * i + gap/2 - barW/2;
+
+    // 影线
+    let hiY = pad.t + ch - ((h - minP) / (maxP-minP)) * ch;
+    let loY = pad.t + ch - ((l - minP) / (maxP-minP)) * ch;
+    ctx.strokeStyle = color; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x + barW/2, hiY); ctx.lineTo(x + barW/2, loY); ctx.stroke();
+
+    // 实体
+    let bodyTop = pad.t + ch - ((Math.max(o,c) - minP) / (maxP-minP)) * ch;
+    let bodyBot = pad.t + ch - ((Math.min(o,c) - minP) / (maxP-minP)) * ch;
+    let bodyH = Math.max(1, bodyBot - bodyTop);
+    ctx.fillStyle = color;
+    ctx.fillRect(x, bodyTop, barW, bodyH);
+  }
+
+  // 均线 MA5/MA20
+  let ma = (period) => {
+    let result = [];
+    for (let i = period-1; i < n; i++) {
+      let sum = 0;
+      for (let j = i-period+1; j <= i; j++) sum += data.close[j];
+      result.push({x: pad.l + gap*i + gap/2, y: sum/period});
+    }
+    return result;
+  };
+  [["MA5","#ffa726",5],["MA20","#4fc3f7",20]].forEach(([label,color,p]) => {
+    let pts = ma(p);
+    ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+    ctx.beginPath();
+    pts.forEach((pt,i) => {
+      let cy = pad.t + ch - ((pt.y - minP) / (maxP-minP)) * ch;
+      if (i===0) ctx.moveTo(pt.x, cy);
+      else ctx.lineTo(pt.x, cy);
+    });
+    ctx.stroke(); ctx.setLineDash([]);
+    // 标签
+    if (pts.length > 0) {
+      let last = pts[pts.length-1];
+      ctx.fillStyle = color; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(label, last.x+3, pad.t + ch - ((last.y - minP) / (maxP-minP)) * ch);
+    }
+  });
+
+  // 成交量柱 (底部30px)
+  let volMax = Math.max(...data.volume);
+  let volH = 35, volBase = H - pad.b - 8;
+  for (let i = 0; i < n; i++) {
+    let isGreen = data.close[i] >= data.open[i];
+    let vh = (data.volume[i] / volMax) * volH;
+    let x = pad.l + gap * i + gap/2 - barW/2;
+    ctx.fillStyle = isGreen ? 'rgba(76,175,80,0.3' : 'rgba(38,166,154,0.3)';
+    ctx.fillRect(x, volBase - vh, barW, vh);
+  }
+  ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('VOL', pad.l-6, volBase - volH/2);
+}
+
+// ── Tab 页签 ──
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.tab-btn[onclick*="${name}"]`).classList.add('active');
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  let panel = document.getElementById('tab-'+name);
+  if (panel) panel.classList.add('active');
+  if (name==='backtest') setTimeout(() => { if (btData) drawBtEquity(); }, 100);
+  if (name==='stock') setTimeout(() => { if (stockChartData) { drawChart(); drawKline(stockKlineData); } }, 100);
+}
+
+// ── 单股策略回测 ──
+let btData = null;
+let btStrategies = null;
+
+async function loadStrategies() {
+  try {
+    let r = await fetch(API+'/strategies');
+    btStrategies = await r.json();
+    let sel = document.getElementById('btStrategy');
+    sel.innerHTML = '';
+    for (let id in btStrategies) {
+      sel.innerHTML += `<option value="${id}">${btStrategies[id].name}</option>`;
+    }
+    onStrategyChange();
+  } catch(e) {}
+}
+
+function onStrategyChange() {
+  let sid = document.getElementById('btStrategy').value;
+  let strat = btStrategies ? btStrategies[sid] : null;
+  let descEl = document.getElementById('btStrategyDesc');
+  let paramsEl = document.getElementById('btParams');
+
+  if (strat) {
+    descEl.textContent = 'ℹ️ ' + strat.desc;
+    let html = '';
+    if (strat.params) {
+      for (let key in strat.params) {
+        let p = strat.params[key];
+        let val = p.default;
+        html += `<label style="font-size:0.72rem;display:flex;align-items:center;gap:4px">
+          <span style="color:var(--dim)">${p.label}:</span>
+          <input type="range" class="dim-slider" id="btParam_${key}" min="${p.min}" max="${p.max}" step="${p.step||1}" value="${val}"
+            oninput="document.getElementById('btParamVal_${key}').textContent=this.value" style="width:100px">
+          <span id="btParamVal_${key}" style="font-size:0.72rem;font-weight:600;min-width:28px">${val}</span>
+        </label>`;
+      }
+    }
+    paramsEl.innerHTML = html;
+  }
+}
+
+async function runStockBacktest() {
+  let code = document.getElementById('btStockCode').value.trim();
+  if (!code) { alert('请输入股票代码'); return; }
+  let sid = document.getElementById('btStrategy').value;
+  document.getElementById('btStatus').innerHTML = '<span class="spinner"></span>回测计算中...';
+
+  // 构建参数
+  let params = ['strategy='+sid];
+  let strat = btStrategies ? btStrategies[sid] : null;
+  if (strat && strat.params) {
+    for (let key in strat.params) {
+      let el = document.getElementById('btParam_'+key);
+      if (el) params.push('param_'+key+'='+el.value);
+    }
+  }
+
+  try {
+    let r = await fetch(API+'/stock/'+code+'/backtest?'+params.join('&'));
+    if (!r.ok) { let e=await r.json(); alert('回测失败: '+(e.error||r.status)); document.getElementById('btStatus').textContent=''; return; }
+    btData = await r.json();
+    document.getElementById('btTitle').textContent = ` · ${btData.strategyName} · ${btData.code}`;
+    document.getElementById('btStatus').textContent = '✅ 回测完成';
+    renderBtResults(btData);
+    drawBtEquity();
+  } catch(e) { alert('回测失败: '+e.message); document.getElementById('btStatus').textContent='❌ '+e.message; }
+}
+
+function renderBtResults(data) {
+  let s = data.summary;
+  if (!s) return;
+
+  // 汇总指标
+  let cls = s.excessReturn > 0 ? 'best' : '';
+  let retCls = s.totalReturn>=0?'var(--red)':'var(--green)';
+  let ddCls = s.maxDrawdown>-15?'var(--dim)':(s.maxDrawdown>-30?'var(--yellow)':'var(--red)');
+  document.getElementById('btMetrics').innerHTML = `
+    <div class="metric ${cls}"><div class="val" style="color:${retCls}">${s.totalReturn>0?'+':''}${s.totalReturn}%</div><div class="lbl" data-tip="策略最终总收益(初始资金${s.initialCapital?.toLocaleString()||'100,000'}元)">策略总收益</div></div>
+    <div class="metric"><div class="val">${s.bhReturn>0?'+':''}${s.bhReturn}%</div><div class="lbl" data-tip="同期买入并持有的总收益">买入持有</div></div>
+    <div class="metric"><div class="val" style="color:${s.excessReturn>0?'var(--red)':'var(--green)'}">${s.excessReturn>0?'+':''}${s.excessReturn}%</div><div class="lbl" data-tip="策略收益-买入持有收益, 正值=跑赢大盘">超额收益</div></div>
+    <div class="metric"><div class="val" style="color:${ddCls}">${s.maxDrawdown}%</div><div class="lbl" data-tip="回测期间最大净值回撤">最大回撤</div></div>
+    <div class="metric"><div class="val">${s.sharpe}</div><div class="lbl" data-tip="年化夏普比率, >1合格 >2优秀">夏普比率</div></div>
+    <div class="metric"><div class="val">${s.totalTrades}</div><div class="lbl">交易次数</div></div>
+    <div class="metric"><div class="val">${s.winTrades||0}胜 / ${s.totalTrades-(s.winTrades||0)}亏</div><div class="lbl">胜负分布</div></div>
+    <div class="metric"><div class="val">${s.winRate}%</div><div class="lbl" data-tip="盈利交易占比">胜率</div></div>
+    <div class="metric"><div class="val">${s.avgReturn>0?'+':''}${s.avgReturn}%</div><div class="lbl" data-tip="每笔交易平均收益率">平均/笔</div></div>
+    <div class="metric"><div class="val">${s.avgHoldDays||0}天</div><div class="lbl" data-tip="平均持仓天数">均持天数</div></div>
+    <div class="metric"><div class="val">${s.profitFactor}</div><div class="lbl" data-tip="总盈利/总亏损, >1.5合格 >2.0优秀">盈亏比</div></div>
+    <div class="metric"><div class="val">¥${(s.finalValue||0).toLocaleString()}</div><div class="lbl" data-tip="回测结束时的账户总值">最终净值</div></div>`;
+
+  // 交易明细表
+  let thtml = '';
+  if (data.trades && data.trades.length) {
+    data.trades.forEach(t => {
+      let sign = t.returnPct >= 0 ? '+' : '';
+      let color = t.returnPct >= 0 ? 'var(--red)' : 'var(--green)';
+      thtml += `<tr>
+        <td>${t.id}</td>
+        <td style="font-size:0.72rem">${t.entryDate}</td><td>${t.entryPrice}</td>
+        <td style="font-size:0.72rem">${t.exitDate}</td><td>${t.exitPrice}</td>
+        <td style="font-weight:600;color:${color}">${sign}${t.returnPct}%</td>
+        <td>${t.holdDays}</td>
+        <td style="font-size:0.7rem">${t.reason}</td>
+        <td style="font-size:0.7rem;color:var(--red)">${t.maxFavorable>0?'+':''}${t.maxFavorable}%</td>
+        <td style="font-size:0.7rem;color:var(--red)">${t.maxAdverse}%</td>
+        <td style="font-size:0.65rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.entrySignal}">${t.entrySignal}</td>
+      </tr>`;
+    });
+  } else {
+    thtml = '<tr><td colspan="11" style="text-align:center;color:var(--dim);padding:20px">该策略在此股票上未产生交易信号</td></tr>';
+  }
+  document.getElementById('btTradeBody').innerHTML = thtml;
+
+  // 逐笔累计盈亏
+  let cumHtml = '<div class="signal-row" style="background:transparent;font-size:0.7rem;color:var(--dim);justify-content:space-between"><span>初始资金</span><span>¥'+s.initialCapital.toLocaleString()+'</span></div>';
+  if (data.trades) {
+    let cum = 0;
+    data.trades.forEach(t => {
+      cum += t.returnPct;
+      let c = cum>=0?'buy':'sell';
+      cumHtml += `<div class="signal-row ${c}" style="justify-content:space-between">
+        <span>#${t.id} ${t.exitDate} ${t.returnPct>=0?'+':''}${t.returnPct}%</span>
+        <span style="font-weight:600">累计 ${cum>=0?'+':''}${cum.toFixed(1)}%</span>
+      </div>`;
+    });
+  }
+  document.getElementById('btCumulative').innerHTML = cumHtml;
+
+  // 对账数据
+  renderVerifyData(data);
+}
+
+function renderVerifyData(data) {
+  let v = data.verification;
+  if (!v) return;
+
+  // K线价格表
+  let phtml = '<table class="combo-table" style="font-size:0.7rem"><thead><tr><th>日期</th><th>开盘</th><th>最高</th><th>最低</th><th>收盘</th><th>成交量</th></tr></thead><tbody>';
+  if (v.prices) {
+    v.prices.forEach(p => {
+      let isUp = p.close >= p.open;
+      let color = isUp ? 'var(--red)' : 'var(--green)';
+      phtml += `<tr><td>${p.date}</td>
+        <td>${p.open}</td><td>${p.high}</td><td>${p.low}</td>
+        <td style="color:${color};font-weight:600">${p.close}</td>
+        <td>${(p.volume/10000).toFixed(0)}万</td></tr>`;
+    });
+  }
+  phtml += '</tbody></table>';
+  document.getElementById('verifyPriceTable').innerHTML = phtml;
+
+  // 技术指标表
+  let ihtml = '<table class="combo-table" style="font-size:0.68rem"><thead><tr><th>日期</th><th>MA5</th><th>MA20</th><th>MA60</th><th>RSI14</th><th>MACD</th><th>Signal</th><th>Hist</th><th>BB下</th><th>BB上</th><th>BB位</th></tr></thead><tbody>';
+  if (v.indicators) {
+    v.indicators.forEach(d => {
+      ihtml += `<tr><td>${d.date}</td>
+        <td>${d.ma5!=null?d.ma5.toFixed(2):'-'}</td><td>${d.ma20!=null?d.ma20.toFixed(2):'-'}</td><td>${d.ma60!=null?d.ma60.toFixed(2):'-'}</td>
+        <td>${d.rsi14!=null?d.rsi14.toFixed(1):'-'}</td>
+        <td>${d.macd!=null?d.macd.toFixed(3):'-'}</td><td>${d.macd_signal!=null?d.macd_signal.toFixed(3):'-'}</td><td>${d.macd_hist!=null?d.macd_hist.toFixed(3):'-'}</td>
+        <td>${d.bb_lower!=null?d.bb_lower.toFixed(2):'-'}</td><td>${d.bb_upper!=null?d.bb_upper.toFixed(2):'-'}</td><td>${d.bb_pos!=null?d.bb_pos.toFixed(2):'-'}</td></tr>`;
+    });
+  }
+  ihtml += '</tbody></table>';
+  document.getElementById('verifyIndicatorTable').innerHTML = ihtml;
+  showVerifyTab('price');
+}
+
+function showVerifyTab(tab) {
+  document.getElementById('verifyPriceTable').style.display = tab==='price'?'block':'none';
+  document.getElementById('verifyIndicatorTable').style.display = tab==='indicator'?'block':'none';
+  document.getElementById('vtabPrice').classList.toggle('active', tab==='price');
+  document.getElementById('vtabIndicator').classList.toggle('active', tab==='indicator');
+}
+
+function drawBtEquity() {
+  if (!btData) return;
+  let canvas = document.getElementById('btEquityChart');
+  let ctx = canvas.getContext('2d');
+  let dpr = window.devicePixelRatio||1, rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width*dpr; canvas.height = 280*dpr;
+  canvas.style.width = rect.width+'px'; canvas.style.height = '280px';
+  ctx.scale(dpr, dpr);
+  let W = rect.width, H = 280, pad = {l:55,r:15,t:15,b:35};
+  ctx.clearRect(0,0,W,H);
+  let s=btData.equityCurve, b=btData.bhCurve;
+  if (!s||s.length<2) return;
+  let n = s.length, cw = W-pad.l-pad.r, ch = H-pad.t-pad.b;
+  let allV = s.map(v=>v.value).concat(b.map(v=>v.value));
+  let minV = Math.min(...allV), maxV = Math.max(...allV), rng = maxV-minV||1;
+  minV -= rng*0.05; maxV += rng*0.05;
+
+  // 网格
+  ctx.strokeStyle='#1a1d27'; ctx.lineWidth=.5;
+  for (let i=0;i<=4;i++) {
+    let y = pad.t+(ch/4)*i;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px monospace'; ctx.textAlign='right';
+    ctx.fillText(Math.round(maxV-(rng/4)*i), pad.l-5, y+3);
+  }
+
+  // 交易区间绿色/红色背景
+  if (btData.trades) {
+    let map = {};
+    s.forEach((pt,i) => { if (pt.date) map[pt.date] = i; });
+    btData.trades.forEach(t => {
+      let si = map[t.entryDate], ei = map[t.exitDate];
+      if (si!==undefined && ei!==undefined) {
+        let x1 = pad.l+(cw/(n-1))*si, x2 = pad.l+(cw/(n-1))*ei;
+        ctx.fillStyle = t.returnPct>=0 ? 'rgba(102,187,106,0.08)' : 'rgba(76,175,80,0.08';
+        ctx.fillRect(x1, pad.t, x2-x1, ch);
+      }
+    });
+  }
+
+  // 曲线
+  let dl = (data,color,dash,w) => {
+    ctx.strokeStyle=color; ctx.lineWidth=w||2;
+    if(dash)ctx.setLineDash([4,2]);else ctx.setLineDash([]);
+    ctx.beginPath();
+    for(let i=0;i<data.length;i++){
+      let x=pad.l+(cw/(n-1))*i, y=pad.t+ch-((data[i].value-minV)/(maxV-minV))*ch;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  };
+  dl(b,'#555',true,1.2);
+  dl(s,'#4fc3f7',false,2);
+
+  // 标记买卖点
+  if (btData.trades) {
+    let map = {};
+    s.forEach((pt,i) => { if (pt.date) map[pt.date] = i; });
+    btData.trades.forEach(t => {
+      let si = map[t.entryDate], ei = map[t.exitDate];
+      if (si!==undefined) {
+        let x = pad.l+(cw/(n-1))*si, y = pad.t+ch-((s[si].value-minV)/(maxV-minV))*ch;
+        ctx.fillStyle = '#66bb6a'; ctx.beginPath(); ctx.arc(x,y-3,4,0,Math.PI*2); ctx.fill();
+      }
+      if (ei!==undefined) {
+        let x = pad.l+(cw/(n-1))*ei, y = pad.t+ch-((s[ei].value-minV)/(maxV-minV))*ch;
+        ctx.fillStyle = t.returnPct>=0?'#66bb6a':'#ef5350'; ctx.beginPath(); ctx.arc(x,y-3,4,0,Math.PI*2); ctx.fill();
+      }
+    });
+  }
+
+  // 标签
+  ctx.fillStyle='#4fc3f7'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('策略',pad.l+5,pad.t+12);
+  ctx.fillStyle='#555'; ctx.fillText('持有',pad.l+45,pad.t+12);
+  ctx.fillStyle='#66bb6a'; ctx.fillText('●买',pad.l+5,pad.t+26);
+  ctx.fillStyle='#ef5350'; ctx.fillText('●卖',pad.l+38,pad.t+26);
+}
+
+window.onload = init;
+</script>
