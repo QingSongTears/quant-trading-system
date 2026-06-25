@@ -277,7 +277,10 @@ def main():
                         help="同时启动 param_server.py 调参面板 (Step3 A 新增, 默认端口 8081)")
     parser.add_argument("--tuning-port", type=int, default=8081,
                         help="param_server 端口 (默认: 8081, 需 --with-tuning)")
-    parser.add_argument("--debug", action="store_true", help="调试模式")
+    parser.add_argument("--debug", action="store_true", help="调试模式 (log_level=DEBUG, 默认 reload=True)")
+    parser.add_argument("--no-reload", action="store_true", help="禁用 auto-reload (生产用)")
+    # 2026-06-25: 默认 reload=True (开发体验, 改代码自动重启)
+    # 生产用 --no-reload 关闭
 
     args = parser.parse_args()
 
@@ -380,14 +383,18 @@ def main():
     print()
 
     import uvicorn
+    reload_enabled = args.debug and not args.no_reload  # 2026-06-25: 默认 reload
     uvicorn.run(
         "src.web.app:create_app",
         host=args.host,
         port=args.port,
-        reload=args.debug,
+        reload=reload_enabled,
         factory=True,
         log_level="debug" if args.debug else "info",
     )
+    if reload_enabled:
+        print("\n🔄 Auto-reload 已启用, 修改代码会自动重启")
+        print("   生产部署: python run.py --no-reload")
 
 
 if __name__ == "__main__":
