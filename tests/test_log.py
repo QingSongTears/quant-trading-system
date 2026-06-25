@@ -95,7 +95,11 @@ def test_setup_file_log_format_includes_source(tmp_path, clean_log_state):
     log.info("hello source")
     loguru_logger.complete()  # flush async queue (enqueue=True)
 
-    content = (tmp_path / "quant_20260624.log").read_text(encoding="utf-8")
+    # 修 2026-06-25: 文件名按日期生成 (rotation="00:00"), 硬编码 0624 在其他日期 fail
+    # 用 glob 找今天的日志文件
+    log_files = list(tmp_path.glob("quant_*.log"))
+    assert log_files, f"找不到今日日志文件 in {tmp_path}"
+    content = log_files[0].read_text(encoding="utf-8")
     assert "test.mod" in content
     assert "hello source" in content
 
@@ -220,7 +224,10 @@ def test_file_log_writes_with_utf8_encoding(tmp_path, clean_log_state):
     log.info("测试中文日志")
     loguru_logger.complete()  # flush async queue (enqueue=True)
 
-    content = (tmp_path / "quant_20260624.log").read_text(encoding="utf-8")
+    # 修 2026-06-25: 同上, 用 glob 找今日日志
+    log_files = list(tmp_path.glob("quant_*.log"))
+    assert log_files, f"找不到今日日志文件 in {tmp_path}"
+    content = log_files[0].read_text(encoding="utf-8")
     assert "测试中文日志" in content
 
 

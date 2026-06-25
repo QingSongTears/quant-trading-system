@@ -53,9 +53,11 @@ _NPM_BIN = _resolve_npx()
 
 # ===== 入参白名单(防止命令注入) =====
 # 股票代码: sh/sz/bj + 6 位数字,逗号分隔多个
-_SYMBOLS_RE = re.compile(r"^[a-z]{2}\d{6}(,[a-z]{2}\d{6})*$")
+# 修 2026-06-25: 加强白名单 — 不只匹配 [a-z]{2}\d{6}, 还要求前缀在 (sh|sz|bj) 中
+# (修前: 'xx600000' 通过校验, 实际是非法前缀, npx 返 '数据为空' 难发现)
+_SYMBOLS_RE = re.compile(r"^(?:sh|sz|bj)\d{6}(?:,(?:sh|sz|bj)\d{6})*$")
 # 单一股票代码
-_SINGLE_SYMBOL_RE = re.compile(r"^[a-z]{2}\d{6}$")
+_SINGLE_SYMBOL_RE = re.compile(r"^(?:sh|sz|bj)\d{6}$")
 # 日期: YYYY-MM-DD
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # 周期
@@ -99,10 +101,13 @@ def _run_westock(argv: list) -> dict:
             creationflags=CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
         if result.returncode != 0:
-            logger.error("WeStock 命令失败: %s", result.stderr)
-            return {"error": result.stderr}
+            stderr = (result.stderr or "").strip()
+            logger.error("WeStock 命令失败: %s", stderr)
+            return {"error": stderr or f"WeStock exited with code {result.returncode}"}
 
-        output = result.stdout.strip()
+        output = (result.stdout or "").strip()
+        if not output:
+            return {"error": "WeStock 返回为空"}
         if output.startswith("{"):
             return json.loads(output)
         return {"raw": output}
