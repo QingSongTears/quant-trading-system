@@ -2,10 +2,11 @@
 
 基于学术文献 + 多维评分的 A 股双层策略回测系统，支持信号策略、选股策略、复合模型三层架构，叠加操盘层和模拟交易引擎。
 
-> **状态**: v2.0-beta | **测试**: 持续集成 (Playwright E2E + pytest) | **Python**: 3.10+
-> **当前分支**: `develop`（包含 Issue #73 操盘体系 + XGBoost v4 + PR3 工程重构）
+> **状态**: v2.0-ardot-landing (tag: `v2.0-ardot-landing`) | **测试**: 持续集成 (Playwright E2E + pytest) | **Python**: 3.10+
+> **当前分支**: `develop`（包含 Issue #73 操盘体系 + XGBoost v4 + 19 页 Ardot 设计稿落地）
 > **实盘路径**: 详见 [`LIVE_TRADING_ROADMAP.md`](./LIVE_TRADING_ROADMAP.md)
 > **框架差距调研**: 详见 [`docs/vnpy_vs_ours_deep_diff.md`](./docs/vnpy_vs_ours_deep_diff.md)（2026-06-23，15 项缺口 + 10 个代码修复 + 10 个测试缺口）
+> **设计稿**: Ardot File `697128059547574` (19 页 Dark Mode OLED + Fira 字体 + A股红/绿配色)
 
 ---
 
@@ -22,6 +23,36 @@ python run.py --download   # 仅下载数据
 
 访问 `http://localhost:5050` 进入 Web 界面。
 访问 `http://localhost:5050/simulate` 进入模拟交易。
+
+---
+
+## Web 界面 (19 页 Ardot 设计稿落地)
+
+**设计语言**: Dark Mode OLED (`#0F172A`) + Fira Code/Sans 字体 + A 股配色（红 `#EF4444` = 涨，绿 `#22C55E` = 跌）
+
+| # | 路由 | 页面 | 用途 |
+|---|------|------|------|
+| 1 | `/` | 首页导航 | 19 页索引 + 系统状态 |
+| 2 | `/dashboard` | 数据总览 | KPI / 7 策略对比 / TOP 20 / XGBoost v4 |
+| 3 | `/bull-report` | 牛股选股报告 | 七维共振选股 + 实盘信号 |
+| 4 | `/backtest-lab` | 回测实验室 | 参数表 + 图表 + TOP 10 + 优化结论 |
+| 5 | `/backtest-view` | 回测视图 | 单次回测详情 (301→workbench) |
+| 6 | `/signal-dashboard` | 实时信号 | 龙头模型 v2 综合信号面板 |
+| 7 | `/strategy-compare` | 策略对比 | 7 大策略全景 (柱状图 + 雷达图) |
+| 8 | `/tuning-panel` | 调参面板 | 七维量化评分参数调优 |
+| 9 | `/v5-tuning` | V5 调参 | v5_hybrid 模型参数调优 |
+| 10 | `/v6-compare` | V6 对比 | v6 阈值对比 (4 阈值组) |
+| 11 | `/ic-analysis` | IC 分析 | 122K 样本 / AUC=0.5515 |
+| 12 | `/dim-compare` | 维度对比 | 维度贡献度对比 |
+| 13 | `/screener` | 选股器 | 多条件选股 |
+| 14 | `/sector` | 板块分析 | 行业轮动 + 资金流 |
+| 15 | `/portfolio` | 持仓管理 | 持仓监控 + 调仓建议 |
+| 16 | `/fund-flow-report` | 资金流报告 | +228% 夏普提升 / 13 期调仓 |
+| 17 | `/data-monitor` | 数据监控 | 数据源健康度大屏 |
+| 18 | `/diagnose` | 系统诊断 | 策略健康度 + 修复建议 |
+| 19 | `/walk_forward` | Walk-Forward | OOS 滚动验证 (Phase 9) |
+
+**截图归档**: `output/screenshots/01_home.png ~ 16_dim_compare.png` (16 张 1440×900, Dark Theme 完整渲染)
 
 ---
 
@@ -155,7 +186,7 @@ src/
 └── web/                            ← FastAPI 应用
     ├── app.py                        应用工厂
     ├── routes/main.py + api.py       页面 + API 路由
-    └── templates/                    10 个 Jinja2 页面
+    └── templates/                    20 个 Jinja2 页面 (19 页 Ardot 设计稿落地 + 1 备份目录)
 ```
 
 ---
@@ -296,6 +327,7 @@ python scripts/train_xgb_v4.py      # V龙头 XGBoost v4
 - [x] **Phase 3**: Web 可视化 (FastAPI + ECharts)
 - [x] **Phase 4**: 高级功能 (策略注册/批量回测/参数搜索)
 - [x] **Phase 5**: 测试上线 (Playwright E2E + CI/CD)
+- [x] **Phase D**: Ardot 设计稿完整落地 (19 页 + tag `v2.0-ardot-landing`)
 - [x] **Phase 6**: 操盘体系 (#73) — 已完成, 待 OOS 验证
 - [x] **Phase 7**: 多维评分框架 (8 维 Scorer + 综合评分收口)
 - [x] **Phase 8**: V龙头 XGBoost v4 (AUC 0.7912)
