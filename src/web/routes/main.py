@@ -318,20 +318,46 @@ async def compare_page(
 
 
 @router.get("/workbench", response_class=HTMLResponse)
-async def workbench_page(request: Request):
-    """交互式回测工作台"""
+async def workbench_page(request: Request, mode: str = "default"):
+    """交互式回测工作台 — 2026-06-25 合并 backtest-lab / backtest-view
+
+    Args:
+        mode: default | lab | view
+          - default: 标准回测 (原 workbench)
+          - lab: 参数调节 (原 backtest-lab)
+          - view: 可视化 (原 backtest-view)
+    """
     repo = _get_repo()
     # 策略来源: yaml（与 /api/strategies 一致）
     from ...config import load_strategies
     yaml_strategies = load_strategies().get("strategies", [])
+    if mode not in ("default", "lab", "view"):
+        mode = "default"
     ctx = _get_global_context()
     ctx.update({
         "all_backtests": repo.get_recent_backtests(limit=30),
         "strategies": yaml_strategies,
         "default_start": (date.today() - timedelta(days=365)).strftime("%Y-%m-%d"),
         "default_end": date.today().strftime("%Y-%m-%d"),
+        "page_mode": mode,  # 模板用此切 UI
     })
     return templates.TemplateResponse(request, "workbench.html", ctx)
+
+
+# 2026-06-25 (Phase C3a): backtest-lab / backtest-view 合并到 /workbench?mode=
+# 保留旧路径做重定向, 避免硬链接坏
+@router.get("/backtest-lab", response_class=HTMLResponse)
+async def backtest_lab_redirect(request: Request):
+    """重定向到 /workbench?mode=lab (兼容旧链接)"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/workbench?mode=lab", status_code=301)
+
+
+@router.get("/backtest-view", response_class=HTMLResponse)
+async def backtest_view_redirect(request: Request):
+    """重定向到 /workbench?mode=view (兼容旧链接, 旧 API 死链已修)"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/workbench?mode=view", status_code=301)
 
 
 @router.get("/simulate", response_class=HTMLResponse)
@@ -363,8 +389,9 @@ _STANDALONE_PAGES = {
     "/sector": "sector.html",
     "/screener": "screener.html",
     "/portfolio": "portfolio.html",
-    "/backtest-lab": "backtest-lab.html",
-    "/backtest-view": "backtest-view.html",
+    # 2026-06-25 (Phase C3a): 合并到 /workbench?mode=lab / mode=view
+    # "/backtest-lab": "backtest-lab.html",
+    # "/backtest-view": "backtest-view.html",
     "/strategy-compare": "strategy-compare.html",
     "/bull-report": "bull-report.html",
     "/signal": "signal.html",
