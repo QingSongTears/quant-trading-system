@@ -551,71 +551,71 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
 
     @staticmethod
     def _calc_rsi(close: np.ndarray, period: int) -> float:
-        """计算RSI"""
-        if len(close) < period + 1:
-            return 50.0
-        deltas = np.diff(close[-period-1:])
-        gains = np.maximum(deltas, 0)
-        losses = np.abs(np.minimum(deltas, 0))
-        avg_gain = np.mean(gains)
-        avg_loss = np.mean(losses)
-        if avg_loss == 0:
-            return 100.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
+        """计算 RSI (2026-06-25 改: 调 IndicatorRegistry, 算法与 atomic.RsiIndicator 一致)
+
+        原手写算法 (v1) 与 atomic.RsiIndicator 算法等价 (简单平均涨幅/跌幅).
+        调统一接口后, 训练/推理分布一致, 无漂移.
+        """
+        from src.indicator import IndicatorRegistry
+        r = IndicatorRegistry.get("rsi").compute(close, n=period)
+        if r.value is None:
+            return 50.0  # 数据不足 fallback (与原实现一致)
+        return float(r.value)
 
     @staticmethod
     def _calc_bollinger(close: np.ndarray, period: int = 20, nbdev: int = 2) -> dict:
-        """计算Bollinger Bands位置"""
-        if len(close) < period:
+        """计算 Bollinger Bands 位置 (2026-06-25 改: 调 IndicatorRegistry)"""
+        from src.indicator import IndicatorRegistry
+        r = IndicatorRegistry.get("boll").compute(close, n=period, dev=float(nbdev))
+        if r.value is None:
             return {"bb_pos": None, "bb_lower": None, "bb_upper": None}
-
-        window = close[-period:]
-        sma = np.mean(window)
-        std = np.std(window, ddof=1)
-
-        lower = sma - nbdev * std
-        upper = sma + nbdev * std
-
+        mid, upper, lower = r.value
         if upper - lower < 0.0001:
             return {"bb_pos": None, "bb_lower": lower, "bb_upper": upper}
-
         bb_pos = (close[-1] - lower) / (upper - lower)
         return {"bb_pos": max(0, min(1, bb_pos)), "bb_lower": lower, "bb_upper": upper}
 
     @staticmethod
     def _calc_max_dd(high: np.ndarray, period: int) -> float:
-        """计算N日内最高价回撤百分比"""
-        if len(high) < period:
-            period = len(high)
-        window = high[-period:]
-        peak = np.max(window)
-        current = high[-1]
+        """计算 N 日内最高价回撤百分比 (2026-06-25 改: 调 IndicatorRegistry)
+
+        原算法与 atomic 不直接对应 (是 high 上滚动 max + 当前对比), 用 pd.Series 调 rolling 算子.
+        """
+        import pandas as pd
+        from src.indicator import IndicatorRegistry
+        actual_period = min(period, len(high))
+        if actual_period == 0:
+            return 0.0
+        high_s = pd.Series(high)
+        r = IndicatorRegistry.get("rolling_max").compute(high_s, window=actual_period, column=high_s.name or 0)
+        if r.value is None:
+            return 0.0
+        peak = float(r.value.iloc[-1])
+        current = float(high[-1])
         if peak <= 0:
             return 0.0
-        dd = (current - peak) / peak * 100
-        return dd
+        return (current - peak) / peak * 100
 
     @staticmethod
     def _calc_atr_pct(high: np.ndarray, low: np.ndarray, close: np.ndarray,
                       period: int = 14) -> float:
-        """计算ATR(14)占收盘价百分比"""
+        """计算 ATR(14) 占收盘价百分比 (2026-06-25 改: 调 IndicatorRegistry)"""
+        import pandas as pd
+        from src.indicator import IndicatorRegistry
         if len(close) < period + 1:
             return 2.0
-
-        tr_list = []
-        for i in range(1, min(period + 1, len(close))):
-            tr = max(
-                high[-i] - low[-i],
-                abs(high[-i] - close[-i-1]),
-                abs(low[-i] - close[-i-1])
-            )
-            tr_list.append(tr)
-
-        atr = np.mean(tr_list) if tr_list else 0.01
-        if close[-1] > 0:
-            return atr / close[-1] * 100
-        return 2.0
+        # 构造 OHLC DataFrame 调 natr 算子
+        n = len(close)
+        df = pd.DataFrame({
+            "open": close,  # 用 close 充 open, atr 不依赖 open
+            "high": high,
+            "low": low,
+            "close": close,
+        })
+        r = IndicatorRegistry.get("natr").compute(df, n=period)
+        if r.value is None:
+            return 2.0
+        return float(r.value)
 
 
 # ============================================================

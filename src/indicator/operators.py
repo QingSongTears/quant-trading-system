@@ -100,6 +100,42 @@ class RollingSum:
                                 self.version, self.n_required)
 
 
+@IndicatorRegistry.register("rolling_max")
+class RollingMax:
+    """滚动最大值 (返回 Series) — 用于 max_dd 等"""
+    name = "rolling_max"
+    version = "v1"
+    n_required = 1
+
+    def compute(self, bars, window: int = 60, column: str = "high",
+                **_unused) -> IndicatorResult:
+        # 接受 Series / DataFrame (1 列) / ndarray 1D
+        if isinstance(bars, pd.Series):
+            s = bars
+            actual_col = s.name if hasattr(s, "name") else column
+        elif isinstance(bars, pd.DataFrame):
+            if column not in bars.columns:
+                return IndicatorResult(self.name, None, {"window": window, "column": column},
+                                        self.version, self.n_required,
+                                        error=f"column {column!r} not in DataFrame")
+            s = bars[column]
+            actual_col = column
+        elif hasattr(bars, "__iter__"):
+            s = pd.Series(list(bars))
+            actual_col = column
+        else:
+            return IndicatorResult(self.name, None, {"window": window, "column": column},
+                                    self.version, self.n_required,
+                                    error=f"unsupported input type: {type(bars).__name__}")
+        if len(s) < window:
+            return IndicatorResult(self.name, None, {"window": window, "column": actual_col},
+                                    self.version, self.n_required,
+                                    error=f"insufficient: have {len(s)}, need {window}")
+        return IndicatorResult(self.name, s.rolling(window).max(),
+                                {"window": window, "column": actual_col},
+                                self.version, self.n_required)
+
+
 # ============================================================
 #  排名/标准化
 # ============================================================
@@ -267,7 +303,7 @@ class AdxIndicator:
 
 
 __all__ = [
-    "RollingMean", "RollingStd", "RollingSum",
+    "RollingMean", "RollingStd", "RollingSum", "RollingMax",
     "PctRank", "Zscore",
     "MaxDrawdown", "AdxIndicator",
 ]

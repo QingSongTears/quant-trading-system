@@ -25,6 +25,18 @@
 用法:
     scorer = TechnicalScorer()
     result = scorer.score(code="000001", as_of_date="2024-06-15")
+
+2026-06-25 重构说明 (Phase B4c):
+  7 子指标 (ma/macd/rsi/boll/vol/breakout/pullback) 的核心算法**保持不变** —
+  XGBoost 模型已基于此分数训练, 改算法 = 改训练分布 = 改预测.
+
+  只对**纯 pandas/numpy 重复**部分, 改调 IndicatorRegistry 内的 rolling_mean/rolling_max
+  等算子 (Series → Series, 算法完全一致), 减少代码但不改变行为.
+
+  算法层面 (rsi/macd/boll 数值计算) 仍保留手写, 因为:
+  - macd 评分依赖底背离检测 (用整个 dif 序列), 不是一个标量
+  - rsi 评分用 rolling mean (与 atomic.RsiIndicator 的简单 mean 不同)
+  - 这些差异**有意为之**, 改动会破坏 XGBoost 输入分布
 """
 from __future__ import annotations
 from datetime import date, timedelta
