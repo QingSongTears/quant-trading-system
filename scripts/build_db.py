@@ -421,17 +421,37 @@ def import_block_trade(cur: sqlite3.Cursor, data_dir: Path, full: bool) -> int:
     映射: date→trade_date, vol→volume
     """
     import pandas as pd
-    csv_path = data_dir / "raw" / "reference" / "block_trade.csv"
-    if not csv_path.exists():
-        print(f"   ⚠️ {csv_path.name} 不存在, 跳过")
+    # 2026-06-25 修复: 同时读 raw/reference/ (历史全量) + 根目录 (近期增量),
+    # raw 里的数据从 2000 年到 6-18, 根目录是 6-18~6-24 的近期 CSV
+    csv_paths = [
+        data_dir / "raw" / "reference" / "block_trade.csv",
+        data_dir / "block_trade.csv",
+    ]
+    csv_paths = [p for p in csv_paths if p.exists()]
+    if not csv_paths:
+        print("   ⚠️ block_trade CSV 不存在, 跳过")
         return 0
-    df = pd.read_csv(csv_path, dtype={"code": str}, low_memory=False)
+    dfs = []
+    for p in csv_paths:
+        try:
+            d = pd.read_csv(p, dtype={"code": str}, low_memory=False)
+            d["source_file"] = p.name
+            dfs.append(d)
+            print(f"   读取 {p.name}: {len(d):,} 行")
+        except Exception as e:
+            print(f"   ⚠️ 读 {p.name} 失败: {e}")
+    if not dfs:
+        return 0
+    df = pd.concat(dfs, ignore_index=True)
     # 字段重命名
     df = df.rename(columns={"date": "trade_date", "vol": "volume"})
     df = df.dropna(subset=["code", "trade_date"])
     df["code"] = df["code"].astype(str).str.replace(r"^(sz|sh|bj)", "", regex=True).str.zfill(6)
     df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce").dt.strftime("%Y-%m-%d")
     df = df.dropna(subset=["trade_date"])
+    # 同 (code, trade_date, deal_price) 去重, 保留最新 source (根目录优先)
+    df = df.sort_values("source_file", ascending=False).drop_duplicates(
+        subset=["code", "trade_date", "deal_price"], keep="first")
     if full:
         cur.execute("DELETE FROM block_trade")
     rows = [
