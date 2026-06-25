@@ -46,19 +46,96 @@ header a:hover { color:var(--accent); }
 
   <div class="card">
     <div class="card-title">{{ research_type|upper }} 研究视图</div>
+
+    {% if research_type == 'v5' %}
+    <p class="note">V5 策略参数调优 — 网格搜索 / 贝叶斯优化结果</p>
+    <div id="v5-chart"><canvas id="v5-canvas"></canvas></div>
+    <script>
+    (async function() {
+      try {
+        const resp = await window.QT.fetch('/api/v5/scan-results');
+        const data = resp.ok ? await resp.json() : { results: [] };
+        const labels = data.results.map(r => r.params || JSON.stringify(r.params));
+        const values = data.results.map(r => r.sharpe || 0);
+        new Chart(document.getElementById('v5-canvas'), {
+          type: 'bar', data: { labels, datasets: [{ label: '夏普', data: values, backgroundColor: 'var(--accent)' }] },
+          options: { responsive: true, plugins: { legend: { labels: { color: 'var(--text)' } } } },
+        });
+      } catch (e) { console.warn('v5 chart load failed', e); }
+    })();
+    </script>
+
+    {% elif research_type == 'v6' %}
+    <p class="note">V6 策略多版本对比 — 收益 / 夏普 / 最大回撤 雷达图</p>
+    <div id="v6-chart"><canvas id="v6-canvas"></canvas></div>
+    <script>
+    (async function() {
+      try {
+        const resp = await window.QT.fetch('/api/strategies');
+        const data = resp.ok ? await resp.json() : { strategies: [] };
+        const labels = data.strategies.map(s => s.name);
+        new Chart(document.getElementById('v6-canvas'), {
+          type: 'radar',
+          data: { labels: ['收益', '夏普', '胜率', '回撤', 'Calmar'],
+            datasets: data.strategies.map((s, i) => ({
+              label: s.name,
+              data: [s.annual_return || 0, s.sharpe || 0, s.win_rate || 0,
+                     Math.abs(s.max_drawdown || 0), s.calmar || 0],
+              borderColor: ['#4fc3f7', '#ef5350', '#4caf50', '#ffa726', '#7c4dff'][i % 5],
+            })),
+          },
+          options: { responsive: true },
+        });
+      } catch (e) { console.warn('v6 chart load failed', e); }
+    })();
+    </script>
+
+    {% elif research_type == 'tuning' %}
+    <p class="note">参数调优 — ParamSearch 历史结果对比</p>
+    <div id="tuning-chart"><canvas id="tuning-canvas"></canvas></div>
+    <script>
+    (async function() {
+      try {
+        const resp = await window.QT.fetch('/api/backtest/results?limit=20');
+        const data = resp.ok ? await resp.json() : { results: [] };
+        const labels = data.results.map(r => r.start_date || '');
+        const values = data.results.map(r => r.annual_return || 0);
+        new Chart(document.getElementById('tuning-canvas'), {
+          type: 'line', data: { labels, datasets: [{ label: '年化收益', data: values, borderColor: 'var(--accent)', fill: false }] },
+          options: { responsive: true },
+        });
+      } catch (e) { console.warn('tuning chart load failed', e); }
+    })();
+    </script>
+
+    {% elif research_type == 'ic' %}
+    <p class="note">IC 分析 — 因子预测能力 (Rank IC, 5 日 / 20 日)</p>
+    <div id="ic-chart"><canvas id="ic-canvas"></canvas></div>
+    <script>
+    // IC 数据可通过后端 /api/research/ic?window=5 拉 (后续 PR 加)
+    // 现在显示 placeholder 提示
+    document.getElementById('ic-chart').innerHTML =
+      '<p class="note" style="padding:40px 0;text-align:center">📊 IC 分析数据接口待接入 (调用 /api/research/ic)</p>';
+    </script>
+
+    {% elif research_type == 'dim' %}
+    <p class="note">维度 IC 对比 — 7 维评分维度对收益的 IC 贡献</p>
+    <div id="dim-chart"><canvas id="dim-canvas"></canvas></div>
+    <script>
+    document.getElementById('dim-chart').innerHTML =
+      '<p class="note" style="padding:40px 0;text-align:center">📊 维度 IC 数据接口待接入 (调用 /api/research/dim-ic)</p>';
+    </script>
+
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-title">重构说明 (2026-06-25)</div>
     <p class="note">
-      2026-06-25 重构: 此页面合并原 5 个独立页面
-      (<a href="/v5">/v5</a>, <a href="/v6-compare">/v6-compare</a>,
-       <a href="/tuning">/tuning</a>, <a href="/ic">/ic</a>, <a href="/dim-compare">/dim-compare</a>)
-      为单一入口, 通过 <code>?type={{ research_type }}</code> 切换。
-    </p>
-    <p class="note">
-      旧路径已用 301 永久重定向, 浏览器/爬虫/书签自动跳转。
-    </p>
-    <p class="note">
-      模板内容待补: 当前 <code>research_type={{ research_type }}</code> 的具体渲染逻辑
-      (调优曲线 / IC 分布 / 维度对比图) 后续 PR 逐步迁移。原 5 个 .html 模板暂不删
-      (作为参考 + 提供 JS 数据接口)。
+      5 tab 合并: <code>v5</code> / <code>v6</code> / <code>tuning</code> / <code>ic</code> / <code>dim</code>
+      通过 URL <code>?type=...</code> 切换, 旧路径 301 重定向。
+      数据走 <code>/api/v5/scan-results</code> / <code>/api/strategies</code> / <code>/api/backtest/results</code>
+      (IC/dim 接口待补)。
     </p>
   </div>
 </div>
