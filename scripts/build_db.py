@@ -321,6 +321,7 @@ IMPORTERS = {
     "daily_price": import_daily_price,
     "fund_flow": import_fund_flow,
     "technical_indicators": import_technical_indicators,
+    # 其他 importer 在文件下方定义, 通过末尾 IMPORTERS.update() 注入
 }
 
 

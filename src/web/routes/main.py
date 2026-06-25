@@ -6,16 +6,22 @@ import json
 from datetime import date, timedelta
 
 
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from ...config import get_config
 from ...models.repository import DataRepository
+from ...data import get_data_manager
 from ..app import TEMPLATES_DIR, get_templates
 
 router = APIRouter()
 templates = get_templates()
+
+
+def _get_repo():
+    """统一从 data 层获取数据库访问入口。"""
+    return get_data_manager().repository
 
 # 注入全局配置到模板
 def _get_global_context() -> dict:
@@ -32,7 +38,7 @@ def _get_global_context() -> dict:
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """首页仪表盘"""
-    repo = DataRepository()
+    repo = _get_repo()
     try:
         coverage = repo.get_data_coverage()
         recent = repo.get_recent_backtests(limit=5)
@@ -124,8 +130,7 @@ async def index(request: Request):
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
     """数据总览 — header 动态化 (硬编码 model/cover 部分保留, 见模板注释)"""
-    from src.models.repository import DataRepository
-    repo = DataRepository()
+    repo = _get_repo()
     try:
         coverage = repo.get_data_coverage()
         total_records = coverage.get("total_records", 0)
@@ -149,7 +154,7 @@ async def dashboard_page(request: Request):
 @router.get("/data", response_class=HTMLResponse)
 async def data_page(request: Request):
     """数据管理页"""
-    repo = DataRepository()
+    repo = _get_repo()
     try:
         coverage = repo.get_data_coverage()
         download_history = repo.get_download_history()
@@ -179,7 +184,7 @@ async def data_page(request: Request):
 @router.get("/backtest", response_class=HTMLResponse)
 async def backtest_page_list(request: Request):
     """回测记录列表页 (首页 /backtest 卡片跳转目标)"""
-    repo = DataRepository()
+    repo = _get_repo()
     try:
         all_backtests = repo.get_recent_backtests(limit=50)
     except Exception:
@@ -193,12 +198,10 @@ async def backtest_page_list(request: Request):
 @router.get("/backtest/{result_id}", response_class=HTMLResponse)
 async def backtest_detail(request: Request, result_id: int):
     """回测详情页"""
-    repo = DataRepository()
+    repo = _get_repo()
     result = repo.get_backtest_result(result_id)
     if not result:
-        # 记录不存在 → 友好降级：跳转列表页（用户能看到最新记录）
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url="/backtest", status_code=302)
+        raise HTTPException(status_code=404, detail=f"backtest result {result_id} not found")
 
     # 解析 JSON 字段
     equity_curve = json.loads(result.equity_curve) if result.equity_curve else []
@@ -295,7 +298,7 @@ async def compare_page(
     ids: str | None = Query(None, description="逗号分隔的回测ID")
 ):
     """多模型对比页"""
-    repo = DataRepository()
+    repo = _get_repo()
     results = []
     if ids:
         for id_str in ids.split(","):
@@ -317,7 +320,7 @@ async def compare_page(
 @router.get("/workbench", response_class=HTMLResponse)
 async def workbench_page(request: Request):
     """交互式回测工作台"""
-    repo = DataRepository()
+    repo = _get_repo()
     # 策略来源: yaml（与 /api/strategies 一致）
     from ...config import load_strategies
     yaml_strategies = load_strategies().get("strategies", [])

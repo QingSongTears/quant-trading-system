@@ -24,6 +24,20 @@ PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 
+def _configure_stdio() -> None:
+    """Windows 控制台/重定向默认 GBK 时，避免启动横幅里的中文和图标崩溃。"""
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+
+_configure_stdio()
+
+
 def setup_logging(level: str = "INFO", file_log: bool = True):
     """初始化日志系统（loguru + stdlib bridge）"""
     try:

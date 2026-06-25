@@ -196,6 +196,17 @@ class DataManager:
 
         return get_datafeed()
 
+    @property
+    def repository(self):
+        """统一数据库访问入口。
+
+        返回新的 DataRepository 实例而不是缓存对象，避免测试 monkeypatch
+        或运行时数据库配置切换后继续持有旧 engine/repository。
+        """
+        from ..models.repository import DataRepository
+
+        return DataRepository()
+
     # ─────────────────────────────────────────
     #  6. simulation — 模拟交易数据访问
     # ─────────────────────────────────────────
