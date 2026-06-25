@@ -325,11 +325,12 @@ async def compare_page(
 
 
 # 2026-06-25 (Phase C3b): strategy-compare 合并到 /compare?type=strategy
-@router.get("/strategy-compare", response_class=HTMLResponse)
-async def strategy_compare_redirect(request: Request):
-    """重定向到 /compare?type=strategy"""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/compare?type=strategy", status_code=301)
+# 2026-06-25 (Phase D — Ardot 新设计稿): strategy-compare 恢复独立路由, 走新设计稿
+# @router.get("/strategy-compare", response_class=HTMLResponse)
+# async def strategy_compare_redirect(request: Request):
+#     """重定向到 /compare?type=strategy (Phase D 前兼容)"""
+#     from fastapi.responses import RedirectResponse
+#     return RedirectResponse(url="/compare?type=strategy", status_code=301)
 
 
 @router.get("/workbench", response_class=HTMLResponse)
@@ -359,15 +360,8 @@ async def workbench_page(request: Request, mode: str = "default"):
     return templates.TemplateResponse(request, "workbench.html", ctx)
 
 
-# 2026-06-25 (Phase C3a): backtest-lab / backtest-view 合并到 /workbench?mode=
-# 保留旧路径做重定向, 避免硬链接坏
-@router.get("/backtest-lab", response_class=HTMLResponse)
-async def backtest_lab_redirect(request: Request):
-    """重定向到 /workbench?mode=lab (兼容旧链接)"""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/workbench?mode=lab", status_code=301)
-
-
+# 2026-06-25 (Phase C3a): backtest-view 合并到 /workbench?mode=view
+# 2026-06-25 (Phase D — Ardot 新设计稿): backtest-lab 不再合并, 独立用新设计稿
 @router.get("/backtest-view", response_class=HTMLResponse)
 async def backtest_view_redirect(request: Request):
     """重定向到 /workbench?mode=view (兼容旧链接, 旧 API 死链已修)"""
@@ -375,13 +369,12 @@ async def backtest_view_redirect(request: Request):
     return RedirectResponse(url="/workbench?mode=view", status_code=301)
 
 
-# 2026-06-25 (Phase C3c): v5/v6/tuning/ic/dim 合并到 /research?type=
+# 2026-06-25 (Phase C3c): research 合并页保留 (Phase D 后未启用, 但不删除以免旧链接坏)
+# 注意: Phase D 中 /v5-tuning / /v6-compare / /ic-analysis / /dim-compare / /tuning-panel
+#       已被新设计稿覆盖, _STANDALONE_PAGES 优先匹配这些路径.
+#       RESEARCH_REDIRECTS 仅在 /v5 重定向到 /research?type=v5 (仍走老 research.html)
 RESEARCH_REDIRECTS = {
     "/v5": "/research?type=v5",
-    "/v6-compare": "/research?type=v6",
-    "/tuning": "/research?type=tuning",
-    "/ic": "/research?type=ic",
-    "/dim-compare": "/research?type=dim",
 }
 for _path, _target in RESEARCH_REDIRECTS.items():
     @router.get(_path, response_class=HTMLResponse)
@@ -428,6 +421,11 @@ async def stock_detail_page(request: Request, code: str):
 # ============================================================
 # 独立页面 (output/ 移植, 暗色主题, 不继承 base.html)
 # ============================================================
+# 2026-06-25 (Phase D — Ardot 设计稿落地):
+#  旧: 注册了 8 个独立页面 (diagnose/sector/screener/portfolio/data-monitor/fund-flow-report + 4 占位)
+#  新: 加上 9 个 Ardot 设计稿独有的页面 (backtest_lab, signal_dashboard, strategy_compare,
+#      tuning_panel, v5_tuning, v6_compare, ic_analysis, dim_compare, ...)
+#  设计: 全部指向 src/web/templates/<name>.html (Jinja2 模板, 继承 _standalone_head.html)
 _STANDALONE_PAGES = {
     "/diagnose": "diagnose.html",
     "/sector": "sector.html",
@@ -449,6 +447,15 @@ _STANDALONE_PAGES = {
     # "/dim-compare": "dim-compare.html",        # 2026-06-25 合并到 /research?type=dim
     # "/ic": "ic.html",                          # 2026-06-25 合并到 /research?type=ic
     "/walk_forward": "walk_forward.html",
+    # 2026-06-25 (Phase D — Ardot 新设计稿)
+    "/backtest-lab": "backtest_lab.html",       # 原 workbench?mode=lab 优先
+    "/signal-dashboard": "signal_dashboard.html",  # 龙头模型 v2 综合信号
+    "/strategy-compare": "strategy_compare.html",  # 7大策略全景
+    "/tuning-panel": "tuning_panel.html",       # 七维量化评分参数调优
+    "/v5-tuning": "v5_tuning.html",             # v5_hybrid 参数调优
+    "/v6-compare": "v6_compare.html",           # v6阈值对比
+    "/ic-analysis": "ic_analysis.html",         # IC分析
+    "/dim-compare": "dim_compare.html",         # 维度贡献
 }
 
 
