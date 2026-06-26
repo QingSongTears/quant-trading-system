@@ -43,10 +43,10 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 </style>
 </head>
 <body>
+{% include "partials/_ardot_nav.html" %}
 <header>
   <h1>📊 量化系统数据总览</h1>
   <span style="font-size:0.75rem;color:var(--dim)" id="headerSub">加载中...</span>
-  <div class="nav-links"><a href="/">← 返回首页</a></div>
 </header>
 <div class="container">
   <div class="loading" id="loadingState"><span class="spinner"></span> 加载数据...</div>
