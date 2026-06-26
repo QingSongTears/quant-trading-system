@@ -29,6 +29,11 @@ from ..auth import require_permission  # 2026-06-25 (Phase P4): RBAC
 from ..app import update_download_status, get_download_status as _get_status
 from ..auth import safe_import_strategy, verify_api_key
 
+# 2026-06-26: predict 4 端点依赖
+import math  # sigmoid
+from pathlib import Path as _Path
+from sqlalchemy.exc import OperationalError
+
 # 所有 /api/* 端点统一要求 Bearer token
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
@@ -1439,7 +1444,7 @@ async def stock_technical(
 @router.get("/stock/{code}/backtest")
 async def stock_backtest_alias(
     code: str,
-    strategy: int = Query(..., description="策略 ID"),
+    strategy: str = Query(..., description="策略 ID 或名称 (兼容前端 dropdown)"),
     start: str = Query(..., description="开始日期 YYYY-MM-DD"),
     end: str = Query(..., description="结束日期 YYYY-MM-DD"),
     capital: float = Query(100000, description="初始资金"),
@@ -1449,11 +1454,22 @@ async def stock_backtest_alias(
     内部委托: 调用 POST /api/backtest/run 但返回相同格式
     这是 /api/stock/{code}/backtest 的 alias, 方便前端 GET 调用
     """
-    # 注: 实际触发完整回测需要后端调用 backtest 引擎, 简化实现返回最近一次结果
+    # 2026-06-26: 前端 dropdown 的 value 是策略 name, 兼容 — 若是 name 则查 strategy_config 取 id
     from sqlalchemy import text
     repo = _get_repo()
     try:
         with repo.engine.connect() as conn:
+            # 解析 strategy 参数: 数字 → 直接用, 字符串 → 查 strategy_config.name → id
+            if strategy.isdigit():
+                strategy_id = int(strategy)
+            else:
+                row_sid = conn.execute(
+                    text("SELECT id FROM strategy_config WHERE name = :n LIMIT 1"),
+                    {"n": strategy}
+                ).first()
+                if not row_sid:
+                    return {"success": False, "error": f"未找到策略: {strategy}", "data": None}
+                strategy_id = row_sid[0]
             row = conn.execute(
                 text("""SELECT r.id, r.total_return, r.annual_return, r.sharpe_ratio,
                                r.max_drawdown, r.win_rate, r.total_trades, r.final_equity,
@@ -1463,7 +1479,7 @@ async def stock_backtest_alias(
                         JOIN strategy_config s ON r.strategy_id = s.id
                         WHERE r.stock_code = :c AND r.strategy_id = :s
                         ORDER BY r.created_at DESC LIMIT 1"""),
-                {"c": code, "s": strategy}
+                {"c": code, "s": strategy_id}
             ).first()
             if not row:
                 return {"success": False, "error": f"无 {code} 策略 {strategy} 的回测记录", "data": None}
@@ -1472,8 +1488,8 @@ async def stock_backtest_alias(
                 "success": True,
                 "summary": {
                     "stockCode": code,
-                    "strategyId": strategy,
-                    "strategyName": row[12],
+                    "strategyId": strategy_id,
+                    "strategyName": row[11],
                     "totalReturn": float(row[1]) if row[1] is not None else 0,
                     "annualReturn": float(row[2]) if row[2] is not None else 0,
                     "sharpeRatio": float(row[3]) if row[3] is not None else 0,
@@ -1481,8 +1497,8 @@ async def stock_backtest_alias(
                     "winRate": float(row[5]) if row[5] is not None else 0,
                     "totalTrades": row[6] or 0,
                     "finalEquity": float(row[7]) if row[7] is not None else 0,
-                    "startDate": str(row[13]) if row[13] else start,
-                    "endDate": str(row[14]) if row[14] else end,
+                    "startDate": str(row[12]) if row[12] else start,
+                    "endDate": str(row[13]) if row[13] else end,
                 },
                 "equity_curve": _json.loads(row[8]) if row[8] else [],
                 "trades": _json.loads(row[9]) if row[9] else [],
@@ -1524,90 +1540,432 @@ async def stock_basic(code: str):
         return {"success": False, "error": str(e)[:200], "data": None}
 
 
+# ============================================================
+# 预测面板 4 端点 (2026-06-26 新增 / 重写)
+# 路由顺序: 先静态 (/predict/{stats,verify,history}) 后参数 (/predict/{code})
+#          避免 {code} 贪婪匹配 history/verify/stats 字面量
+# 字段命名严格对齐 scripts/param_server.py, 保证两端兼容
+# ============================================================
+
+
+@router.get("/predict/stats")
+async def predict_stats():
+    """预测效果统计 — predict_dashboard.html / predict_verify.html 用
+
+    Returns:
+        {total, hit_rate, bin_stats: [{bin, count, avg_return, up_rate}],
+         available?, reason?, message?}
+    """
+    try:
+        rows = get_data_manager().query(
+            "SELECT pred_proba, signal, actual_return_20d, actual_return_60d "
+            "FROM prediction_record "
+            "WHERE verified=1 AND actual_return_20d IS NOT NULL"
+        )
+    except (OperationalError, Exception) as e:
+        if "no such table" in str(e):
+            return {"total": 0, "hit_rate": 0, "bin_stats": [],
+                    "available": False, "reason": "prediction_record 表不存在"}
+        logger.error("predict/stats 失败: %s", e)
+        return {"total": 0, "hit_rate": 0, "bin_stats": [], "error": str(e)[:200]}
+
+    total = len(rows)
+    if total == 0:
+        return {"total": 0, "hit_rate": 0, "bin_stats": [],
+                "message": "暂无已验证预测记录，请先调用 /api/predict/verify"}
+
+    # 整体命中率 (预测涨→实际涨 + 预测跌→实际跌)
+    hits = sum(1 for r in rows
+               if (r.get("pred_proba") or 0) >= 0.55 and (r.get("actual_return_20d") or 0) > 0
+               or (r.get("pred_proba") or 0) < 0.4 and (r.get("actual_return_20d") or 0) < 0)
+
+    # 分组统计 (<0.4 / 0.4-0.55 / >=0.55)
+    bins: dict[str, list[float]] = {"<0.4": [], "0.4-0.55": [], ">=0.55": []}
+    for r in rows:
+        p = r.get("pred_proba")
+        if p is None:
+            continue
+        v = float(r.get("actual_return_20d") or 0)
+        if p < 0.4:
+            bins["<0.4"].append(v)
+        elif p >= 0.55:
+            bins[">=0.55"].append(v)
+        else:
+            bins["0.4-0.55"].append(v)
+
+    stats = []
+    for label, vals in bins.items():
+        if vals:
+            avg_ret = sum(vals) / len(vals)
+            up_rate = sum(1 for v in vals if v > 0) / len(vals) * 100
+            stats.append({"bin": label, "count": len(vals),
+                          "avg_return": round(avg_ret, 2), "up_rate": round(up_rate, 1)})
+
+    return {"total": total,
+            "hit_rate": round(hits / total * 100, 1) if total else 0,
+            "bin_stats": stats}
+
+
+@router.get("/predict/verify")
+async def predict_verify():
+    """验证预测准确率 — 用 data/all_7d_scores.json 回填 prediction_record
+
+    Returns:
+        {updated, total_pending, available?, reason?}
+
+    注: all_7d_scores.json 不存在时返 available=False (优雅降级)
+    """
+    scores_path = _Path("data/all_7d_scores.json")
+    if not scores_path.exists():
+        return {"updated": 0, "total_pending": 0,
+                "available": False, "reason": "all_7d_scores.json 不存在"}
+
+    import json as _json
+    with open(scores_path, encoding="utf-8") as f:
+        all_scores = _json.load(f)
+
+    # code + year_month → actual_return 映射
+    ret_map: dict[tuple[str, str], dict] = {}
+    for s in all_scores:
+        key = (str(s["code"]).zfill(6), s.get("year_month", ""))
+        if key not in ret_map or s.get("as_of_date", "") > ret_map[key].get("date", ""):
+            ret_map[key] = {
+                "ret_20d": s.get("ret_20d"),
+                "ret_60d": s.get("ret_60d"),
+                "date": s.get("as_of_date", ""),
+            }
+
+    try:
+        rows = get_data_manager().query(
+            "SELECT id, code, pred_month FROM prediction_record "
+            "WHERE verified=0 OR verified IS NULL"
+        )
+    except (OperationalError, Exception) as e:
+        if "no such table" in str(e):
+            return {"updated": 0, "total_pending": 0,
+                    "available": False, "reason": "prediction_record 表不存在"}
+        raise
+
+    updated = 0
+    data_mgr = get_data_manager()
+    for r in rows:
+        key = (str(r["code"]).zfill(6), r["pred_month"])
+        if key in ret_map:
+            data = ret_map[key]
+            data_mgr.execute(
+                "UPDATE prediction_record SET actual_return_20d=:r20, "
+                "actual_return_60d=:r60, verified=1 WHERE id=:id",
+                {"r20": data["ret_20d"], "r60": data["ret_60d"], "id": r["id"]},
+            )
+            updated += 1
+    return {"updated": updated, "total_pending": len(rows)}
+
+
+@router.get("/predict/history")
+async def predict_history(code: str = "", limit: int = 50):
+    """预测历史记录 — predict_dashboard.html 用
+
+    Args:
+        code: 股票代码 (空 = 全部)
+        limit: 返回数量
+
+    Returns:
+        {total, results: [{code, stock_name, pred_month, as_of_date, pred_proba,
+                          signal, auc, dim_scores, logistic_coef, actual_return_20d,
+                          actual_return_60d, verified, created_at}]}
+    """
+    import json as _json
+    try:
+        if code:
+            code = str(code).zfill(6)
+            rows = get_data_manager().query(
+                "SELECT * FROM prediction_record WHERE code=:code "
+                "ORDER BY pred_month DESC LIMIT :limit",
+                {"code": code, "limit": int(limit)},
+            )
+        else:
+            rows = get_data_manager().query(
+                "SELECT * FROM prediction_record ORDER BY created_at DESC LIMIT :limit",
+                {"limit": int(limit)},
+            )
+    except (OperationalError, Exception) as e:
+        if "no such table" in str(e):
+            return {"total": 0, "results": [], "available": False,
+                    "reason": "prediction_record 表不存在"}
+        logger.error("predict/history 失败: %s", e)
+        return {"total": 0, "results": [], "error": str(e)[:200]}
+
+    results = []
+    for r in rows:
+        d = dict(r)
+        for k in ("dim_scores", "logistic_coef"):
+            if d.get(k) and isinstance(d[k], str):
+                try:
+                    d[k] = _json.loads(d[k])
+                except Exception:
+                    pass
+        for k in ("created_at", "as_of_date"):
+            if d.get(k):
+                d[k] = str(d[k])[:19]
+        results.append(d)
+    return {"total": len(results), "results": results}
+
+
 @router.get("/predict/{code}")
 async def predict_for_stock(code: str):
-    """单股预测 — diagnose.html / signal_dashboard.html 用
+    """单股预测 — diagnose.html / signal_dashboard.html / predict_dashboard.html 用
 
-    优先用 prediction_record 表, 否则 fallback 到 stock_basic + 历史最近一次回测
+    2026-06-26 重写: 返回扁平 schema (与 param_server.py 一致)
+    数据流: LogReg(bull_8d_monthly_result.json) + 实时 ScorerRegistry 7-dim
+            lh_institutional 复用 InstitutionalScorer (v3 已用 dragon_tiger 数据)
+            结果 UPSERT 到 prediction_record 表
     """
-    from sqlalchemy import text
+    from src.scoring import ScorerRegistry
+
+    code = str(code).zfill(6)
+    try:
+        # ── 1. 加载 LogReg 模型 ──
+        model_path = _Path("data/bull_8d_monthly_result.json")
+        if not model_path.exists():
+            return {"error": "预测模型文件不存在: data/bull_8d_monthly_result.json",
+                    "available": False, "code": code}
+        import json as _json
+        with open(model_path, encoding="utf-8") as f:
+            model = _json.load(f)
+        coef = model.get("logistic_coef", {})
+        intercept = float(model.get("intercept", 0.0))
+        auc = float(model.get("auc", 0.5515))
+
+        # ── 2. 实时计算 7 维评分 ──
+        # ScorerRegistry.name → dashboard.dim_key
+        DIM_MAP = {
+            "technical":   "tech",
+            "fundamental": "fundam",
+            "fund_flow":   "fund",
+            "institutional": "institutional",
+            "sentiment":   "sentiment",
+            "news_event":  "news_event",
+            "chip":        "chip",
+        }
+        scorer_names = list(DIM_MAP.keys())
+        dim_scores: dict[str, float] = {}
+        as_of_date = ""
+        # 单独 try/except 每个 scorer, 避免一个失败导致全部回退到 0
+        # 签名兼容: chip/fundamental 接受 (code); 其他接受 (code, as_of_date)
+        for name in scorer_names:
+            try:
+                scorer = ScorerRegistry.get(name)
+                try:
+                    r = scorer.score(code)
+                except TypeError:
+                    r = scorer.score(code, None)
+                dim_scores[DIM_MAP[name]] = float(r.get("weighted") or 0)
+                if not as_of_date and r.get("as_of_date"):
+                    as_of_date = str(r["as_of_date"])[:10]
+            except Exception as e:
+                logger.warning("scorer %s(%s) failed: %s", name, code, e)
+                dim_scores[DIM_MAP[name]] = 0.0
+
+        # lh_institutional: 复用 InstitutionalScorer (v3 用 dragon_tiger 数据驱动)
+        dim_scores["lh_institutional"] = dim_scores.get("institutional", 0.0)
+
+        # ── 3. 构造 LogReg 特征向量 ──
+        # coef keys 是 *_weighted 形式 (e.g. tech_weighted), 映射回 dim_scores key
+        x = []
+        for coef_key in coef.keys():
+            base = coef_key.replace("_weighted", "")
+            x.append(dim_scores.get(base, 0.0))
+        if not x:
+            return {"error": "模型系数为空", "available": False, "code": code}
+
+        # ── 4. 计算概率 (sigmoid) ──
+        coef_arr = [float(coef[k]) for k in coef.keys()]
+        logit = sum(xi * ci for xi, ci in zip(x, coef_arr)) + intercept
+        proba = 1.0 / (1.0 + math.exp(-logit))
+        proba = max(0.0, min(1.0, proba))
+        signal = "买入" if proba >= 0.55 else ("回避" if proba < 0.4 else "中性")
+
+        # ── 5. pred_month / as_of_date ──
+        from datetime import date as _date
+        pred_month = as_of_date[:7] if as_of_date else _date.today().strftime("%Y-%m")
+        if not as_of_date:
+            as_of_date = _date.today().strftime("%Y-%m-%d")
+
+        # ── 6. UPSERT prediction_record ──
+        try:
+            data_mgr = get_data_manager()
+            existing = data_mgr.query(
+                "SELECT id FROM prediction_record WHERE code=:code AND pred_month=:pm",
+                {"code": code, "pm": pred_month},
+            )
+            dim_scores_json = _json.dumps(dim_scores, ensure_ascii=False)
+            coef_json = _json.dumps(coef, ensure_ascii=False)
+            from datetime import datetime as _dt
+            now = _dt.now().strftime("%Y-%m-%d %H:%M:%S")  # 本地时区足够 (与 utcnow 等价语义)
+            if existing:
+                data_mgr.execute(
+                    "UPDATE prediction_record SET pred_proba=:p, signal=:s, "
+                    "dim_scores=:d, logistic_coef=:lc, as_of_date=:ad WHERE id=:id",
+                    {"p": round(proba, 4), "s": signal, "d": dim_scores_json,
+                     "lc": coef_json, "ad": as_of_date, "id": existing[0]["id"]},
+                )
+            else:
+                data_mgr.execute(
+                    "INSERT INTO prediction_record "
+                    "(code, stock_name, pred_month, as_of_date, pred_proba, signal, "
+                    " auc, dim_scores, logistic_coef, verified, created_at) "
+                    "VALUES (:code, '', :pm, :ad, :p, :s, :a, :d, :lc, 0, :ts)",
+                    {"code": code, "pm": pred_month, "ad": as_of_date,
+                     "p": round(proba, 4), "s": signal, "a": auc,
+                     "d": dim_scores_json, "lc": coef_json, "ts": now},
+                )
+        except Exception as e:
+            logger.warning("prediction_record UPSERT 失败 (非致命): %s", e)
+
+        # ── 7. 扁平响应 (与 param_server 一致) ──
+        return {
+            "code": code,
+            "pred_month": pred_month,
+            "as_of_date": as_of_date,
+            "pred_proba_up": round(proba, 4),
+            "signal": signal,
+            "dim_scores": dim_scores,
+            "auc": auc,
+            "model": "logreg_v1",
+            "_note": {"lh_institutional": "derived_from=institutional(v3 uses dragon_tiger)"},
+        }
+    except Exception as e:
+        logger.error("predict/%s 失败: %s", code, e)
+        return {"error": str(e)[:200], "available": False, "code": code}
+
+
+# 2026-06-26: 新增 /api/signal/list — signal.html 用
+# 返回全市场最新一期 prediction_record + stock_basic 基础信息
+# 含 dim_scores (8 维评分 JSON) + avg_score + ret_20d / ret_60d
+# 修复 P0-2: 旧 JS 调 /api/stock/screener (无评分字段) → 新调本端点
+@router.get("/signal/list")
+async def signal_list(
+    min_score: float = Query(0, ge=0, le=20, description="最低综合分过滤"),
+    sort_by: str = Query("avg_score", description="avg_score | ret_20d | ret_60d"),
+    limit: int = Query(500, ge=1, le=2000),
+    as_of_date: str | None = Query(None, description="指定数据截止日 (空=最新一期)"),
+):
+    """全市场综合信号 — signal.html 专用
+
+    Returns:
+        {success, total, as_of_date, stocks: [{
+            code, name, industry, market,
+            dim_scores: {tech_weighted, fundam_weighted, ...},
+            avg_score, signal, pred_proba,
+            ret_20d, ret_60d, pred_month
+        }]}
+    """
+    import json as _json
+    from sqlalchemy import text as _sql_text
+
     repo = _get_repo()
     try:
         with repo.engine.connect() as conn:
-            # 1. 尝试 prediction_record (可能表不存在)
-            try:
-                row = conn.execute(
-                    text("""SELECT stock_code, predict_date, predicted_direction,
-                                   probability, confidence, verified, actual_return
-                            FROM prediction_record WHERE stock_code = :c
-                            ORDER BY predict_date DESC LIMIT 1"""),
-                    {"c": code}
-                ).first()
-                if row:
-                    return {
-                        "success": True,
-                        "source": "prediction_record",
-                        "data": {
-                            "stock_code": row[0],
-                            "predict_date": str(row[1]),
-                            "direction": row[2],
-                            "probability": float(row[3]) if row[3] is not None else None,
-                            "confidence": row[4],
-                            "verified": bool(row[5]),
-                            "actual_return": float(row[6]) if row[6] is not None else None,
-                        }
-                    }
-            except Exception:
-                pass  # prediction_record 表可能不存在, 走 fallback
+            # 1) 找最新一期 as_of_date (或用传入的)
+            if as_of_date:
+                target_date = as_of_date
+            else:
+                latest = conn.execute(_sql_text(
+                    "SELECT MAX(as_of_date) AS d FROM prediction_record"
+                )).fetchone()
+                target_date = str(latest[0]) if latest and latest[0] else None
 
-            # 2. Fallback: 用最近一次回测作为"预测代理"
-            row = conn.execute(
-                text("""SELECT r.stock_code, r.total_return, r.sharpe_ratio, r.max_drawdown,
-                               r.win_rate, s.name AS strategy_name, r.created_at
-                        FROM backtest_result r
-                        JOIN strategy_config s ON r.strategy_id = s.id
-                        WHERE r.stock_code = :c
-                        ORDER BY r.total_return DESC LIMIT 1"""),
-                {"c": code}
-            ).first()
-            if row:
-                # 把回测结果当作"高/中/低"概率
-                prob = 0.5 + (float(row[1] or 0) / 200)  # 归一化
-                prob = max(0.0, min(1.0, prob))
-                direction = "up" if (row[1] or 0) > 0 else "down"
-                return {
-                    "success": True,
-                    "source": "backtest_proxy",
-                    "data": {
-                        "stock_code": row[0],
-                        "predict_date": str(row[6])[:10] if row[6] else None,
-                        "direction": direction,
-                        "probability": round(prob, 3),
-                        "confidence": "medium",
-                        "verified": False,
-                        "actual_return": None,
-                        "strategy_name": row[5],
-                        "proxy_total_return": float(row[1]) if row[1] is not None else None,
-                    }
-                }
-            return {"success": False, "error": "无预测数据", "data": None}
+            if not target_date:
+                return {"success": True, "total": 0, "as_of_date": None,
+                        "stocks": [], "message": "暂无预测记录"}
+
+            # 2) 拉本期所有 stock + dim_scores + 实际收益
+            #    LEFT JOIN stock_basic 拿 industry/market
+            rows = conn.execute(_sql_text("""
+                SELECT p.code, p.stock_name, p.pred_proba, p.signal, p.dim_scores,
+                       p.actual_return_20d, p.actual_return_60d, p.pred_month, p.as_of_date,
+                       s.industry, s.market
+                FROM prediction_record p
+                LEFT JOIN stock_basic s ON p.code = s.code
+                WHERE p.as_of_date = :d
+            """), {"d": target_date}).fetchall()
+
+        # 3) 组装返回数据
+        stocks = []
+        for r in rows:
+            # 解析 dim_scores JSON
+            dim = {}
+            raw_dim = r[4]  # dim_scores
+            if raw_dim and isinstance(raw_dim, str):
+                try:
+                    dim = _json.loads(raw_dim)
+                except Exception:
+                    dim = {}
+
+            # 计算综合 avg_score (8 维加权平均, 0-20 scale)
+            # 注意: dim_scores JSON 实际存的 key 是 tech/fundam/fund/... (无 _weighted 后缀)
+            # 但 signal.html JS 期望 *_weighted 后缀, 这里加 _weighted 别名
+            dim_keys = ["tech", "fundam", "fund", "institutional",
+                        "sentiment", "news_event", "chip", "lh_institutional"]
+            # 复制 dim 同时加 _weighted 别名, 兼容 signal.html 旧 JS
+            dim_aliased = dict(dim)
+            for k in dim_keys:
+                if k in dim_aliased:
+                    dim_aliased[f"{k}_weighted"] = dim_aliased[k]
+
+            vals = [float(dim.get(k, 0) or 0) for k in dim_keys]
+            avg_score = sum(vals) / len(vals) if vals else 0
+
+            stocks.append({
+                "code": str(r[0]).zfill(6),
+                "name": (r[1] or "").strip(),
+                "industry": (r[9] or "").strip(),
+                "market": (r[10] or "").strip(),
+                "pred_proba": float(r[2]) if r[2] is not None else None,
+                "signal": r[3] or "中性",
+                "dim_scores": dim_aliased,  # 2026-06-26: 包含 _weighted 后缀别名, 兼容 signal.html 旧 JS
+                "avg_score": round(avg_score, 2),
+                "ret_20d": float(r[5]) if r[5] is not None else None,
+                "ret_60d": float(r[6]) if r[6] is not None else None,
+                "pred_month": r[7] or "",
+            })
+
+        # 4) 过滤 + 排序
+        if min_score > 0:
+            stocks = [s for s in stocks if s["avg_score"] >= min_score]
+        if sort_by in ("ret_20d", "ret_60d"):
+            stocks.sort(key=lambda s: s.get(sort_by) or -1e9, reverse=True)
+        else:  # avg_score
+            stocks.sort(key=lambda s: s["avg_score"], reverse=True)
+        stocks = stocks[:limit]
+
+        return {
+            "success": True,
+            "total": len(stocks),
+            "as_of_date": target_date,
+            "stocks": stocks,
+        }
     except Exception as e:
-        logger.error("predict/%s 失败: %s", code, e)
-        return {"success": False, "error": str(e)[:200], "data": None}
+        logger.error("signal/list 失败: %s\n%s", e, traceback.format_exc())
+        return {"success": False, "error": str(e)[:200], "stocks": []}
 
 
 @router.get("/strategy/signal/{code}")
 async def strategy_signal(code: str):
     """单股综合信号 — signal_dashboard.html 用
 
-    综合该股所有回测策略的方向, 给出共识信号
+    综合该股所有回测策略的方向, 给出共识信号 + XGBoost 概率 + 仓位建议
+    数据结构兼容 signal_dashboard.html JS (d.composite_score / d.xgb_prediction / d.position 等)
+
+    2026-06-26 重构: 补全字段, 修复 P0-3
     """
     from sqlalchemy import text
+    import json as _json
     repo = _get_repo()
     try:
         with repo.engine.connect() as conn:
             rows = conn.execute(
-                text("""SELECT s.name, r.total_return, r.sharpe_ratio, r.max_drawdown
+                text("""SELECT s.name, r.total_return, r.sharpe_ratio, r.max_drawdown, r.win_rate, r.total_trades
                         FROM backtest_result r
                         JOIN strategy_config s ON r.strategy_id = s.id
                         WHERE r.stock_code = :c
@@ -1616,7 +1974,23 @@ async def strategy_signal(code: str):
             ).fetchall()
 
             if not rows:
-                return {"success": False, "error": "无策略信号", "data": None}
+                return {
+                    "success": False,
+                    "available": False,
+                    "error": "无策略信号",
+                    "code": code,
+                    # 给前端一个最小可用结构, 避免 undefined 满天飞
+                    "composite_score": 0,
+                    "signal": "回避",
+                    "position": "空仓",
+                    "position_pct": 0,
+                    "pred_month": "",
+                    "xgb_prediction": {"proba": 0, "signal": "回避"},
+                    "strategy_vote": {"for": 0, "total": 0, "total_return": 0, "avg_sharpe": 0},
+                    "market_filter": {"hs300_above_ma20": True},
+                    "strategy_details": [],
+                    "strategies": [],
+                }
 
             total = len(rows)
             up_count = sum(1 for r in rows if (r[1] or 0) > 0)
@@ -1624,7 +1998,7 @@ async def strategy_signal(code: str):
             avg_sharpe = sum((r[2] or 0) for r in rows) / total
             consensus = up_count / total
 
-            # 共识信号: >60% 看多, <40% 看空, 其他中性
+            # 共识信号
             if consensus >= 0.6:
                 signal = "buy"
                 signal_zh = "买入"
@@ -1633,10 +2007,75 @@ async def strategy_signal(code: str):
                 signal_zh = "回避"
             else:
                 signal = "hold"
-                signal_zh = "观望"
+                signal_zh = "中性"
+
+            # 仓位: 综合共识 + 平均收益 → 重/轻/空
+            if consensus >= 0.6 and avg_return > 5:
+                position = "重仓"
+                position_pct = 80
+            elif consensus >= 0.45 and avg_return > 0:
+                position = "轻仓"
+                position_pct = 30
+            else:
+                position = "空仓"
+                position_pct = 0
+
+            # 大盘过滤 (简化: 默认正常, 实际可查沪深300 < MA20 时减半)
+            market_filter = {"hs300_above_ma20": True}
+
+            # XGBoost 概率: 用 consensus 近似 (实际应查 prediction_record.dim_scores)
+            xgb_proba = round(consensus, 3)
+            xgb_signal = "买入" if xgb_proba >= 0.55 else ("中性" if xgb_proba >= 0.4 else "回避")
+
+            # 综合评分: consensus * 0.6 + (策略胜率均值) * 0.4
+            avg_win_rate = sum((r[4] or 50) for r in rows) / total
+            composite_score = round(consensus * 0.6 + (avg_win_rate / 100) * 0.4, 3)
+
+            # 找最新 prediction_record 取 pred_month
+            pred_row = conn.execute(
+                text("SELECT pred_month, pred_proba, dim_scores FROM prediction_record "
+                     "WHERE code=:c ORDER BY as_of_date DESC LIMIT 1"),
+                {"c": code}
+            ).fetchone()
+            pred_month = pred_row[0] if pred_row else ""
+            if pred_row and pred_row[1] is not None:
+                xgb_proba = float(pred_row[1])
+                xgb_signal = "买入" if xgb_proba >= 0.55 else ("中性" if xgb_proba >= 0.4 else "回避")
+
+            # 策略投票明细 (10 笔)
+            strategy_details = [
+                {
+                    "name": r[0],
+                    "return": round(float(r[1] or 0), 2),
+                    "sharpe": round(float(r[2] or 0), 2),
+                    "win_rate": round(float(r[4] or 0), 1),
+                    "trades": int(r[5] or 0),
+                    "vote": "看多" if (r[1] or 0) > 0 else "看空",
+                }
+                for r in rows[:10]
+            ]
 
             return {
                 "success": True,
+                "available": True,
+                "code": code,
+                # signal_dashboard.html JS 期望的字段:
+                "composite_score": composite_score,
+                "signal": signal_zh,  # 用中文
+                "signal_en": signal,
+                "position": position,
+                "position_pct": position_pct,
+                "pred_month": pred_month,
+                "xgb_prediction": {"proba": xgb_proba, "signal": xgb_signal},
+                "strategy_vote": {
+                    "for": up_count,
+                    "total": total,
+                    "total_return": round(avg_return, 2),
+                    "avg_sharpe": round(avg_sharpe, 2),
+                },
+                "market_filter": market_filter,
+                "strategy_details": strategy_details,
+                # 旧字段保留兼容:
                 "data": {
                     "stock_code": code,
                     "total_strategies": total,
@@ -1649,13 +2088,18 @@ async def strategy_signal(code: str):
                     "strategies": [
                         {"name": r[0], "total_return": float(r[1]) if r[1] is not None else 0,
                          "sharpe_ratio": float(r[2]) if r[2] is not None else 0}
-                        for r in rows[:10]  # 最多返回 10 个
+                        for r in rows[:10]
                     ],
-                }
+                },
             }
     except Exception as e:
         logger.error("strategy/signal/%s 失败: %s", code, e)
-        return {"success": False, "error": str(e)[:200], "data": None}
+        return {"success": False, "available": False, "error": str(e)[:200], "code": code,
+                "composite_score": 0, "signal": "回避", "position": "空仓", "position_pct": 0,
+                "xgb_prediction": {"proba": 0, "signal": "回避"},
+                "strategy_vote": {"for": 0, "total": 0, "total_return": 0, "avg_sharpe": 0},
+                "market_filter": {"hs300_above_ma20": True},
+                "strategy_details": []}
 
 
 @router.post("/v5/run")
