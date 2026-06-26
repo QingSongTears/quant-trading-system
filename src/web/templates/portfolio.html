@@ -45,6 +45,8 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .badge-bad{background:rgba(76,175,80,0.2;color:var(--red)}
 </style>
 </head>
+<body>
+{% include "partials/_ardot_nav.html" %}
 <header>
   <h1>📦 持仓分析</h1>
   <div class="nav">
@@ -298,3 +300,5 @@ function colorScore(v) {
 }
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 </script>
+</body>
+</html>

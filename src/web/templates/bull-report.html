@@ -89,6 +89,7 @@ header > span, header > .sub {
     {{ _api_auth_snippet | safe }}
   </head>
 <body>
+{% include "partials/_ardot_nav.html" %}
 <header>
   <h1>🐂 牛市选股报告</h1>
   <span class="sub" id="subInfo">从 backtest_result 取夏普 Top 10 · 实时数据</span>

@@ -47,6 +47,8 @@ tr.clickable{cursor:pointer}
 .loading{opacity:0.5;pointer-events:none}
 </style>
 </head>
+<body>
+{% include "partials/_ardot_nav.html" %}
 <header>
   <h1>🏭 行业板块分析</h1>
   <div class="nav">
@@ -249,3 +251,5 @@ async function showDetail(industry) {
 function closeDetail() { document.getElementById('detailModal').classList.remove('show'); }
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 </script>
+</body>
+</html>
