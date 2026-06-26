@@ -15,7 +15,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+from src.db.engine import get_engine
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -73,7 +74,7 @@ def main():
 
     config = get_config()
     db_url = get_db_url(config)
-    engine = create_engine(db_url, echo=False)
+    engine = get_engine()
 
     dates = get_weekly_dates(engine)
     print(f"\n共 {len(dates)} 个周度截面: {dates[0]} ~ {dates[-1]}", flush=True)

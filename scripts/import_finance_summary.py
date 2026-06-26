@@ -12,8 +12,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
 import numpy as np
-from sqlalchemy import create_engine, text
-from src.config import get_config, get_db_url
+from sqlalchemy import text
+from src.db.engine import get_engine
+from src.config import get_config
 
 
 def main():
@@ -56,7 +57,7 @@ def main():
     print(f"导出列: {len(available)}")
 
     # 写入 SQLite
-    engine = create_engine(get_db_url(get_config()), echo=False)
+    engine = get_engine()
     df_export.to_sql("finance_summary", engine, if_exists="replace", index=False)
 
     # 建索引

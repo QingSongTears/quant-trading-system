@@ -1,3 +1,4 @@
+from src.db.engine import get_engine
 #!/usr/bin/env python3
 """
 逐周采样脚本 — 长期训练数据生成
@@ -29,7 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine
+
 
 from src.scoring.technical_scorer import TechnicalScorer
 
@@ -135,7 +136,7 @@ def main():
     parser.add_argument("--checkpoint", type=int, default=10, help="每N周保存中间结果")
     args = parser.parse_args()
 
-    engine = create_engine("sqlite:///database/quant.db")
+    engine = get_engine()
     scorer = TechnicalScorer(engine=engine)
 
     # 采样日期

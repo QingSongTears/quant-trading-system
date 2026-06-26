@@ -14,8 +14,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
-from sqlalchemy import create_engine, text
-from src.config import get_config, get_db_url
+from sqlalchemy import text
+from src.db.engine import get_engine
+from src.config import get_config
 
 
 def _fetch_with_retry(max_retries=3, delay=5):
@@ -37,7 +38,7 @@ def _fetch_with_retry(max_retries=3, delay=5):
 
 
 def main():
-    engine = create_engine(get_db_url(get_config()), echo=False)
+    engine = get_engine()
 
     # Step 1: 确保表存在
     with engine.connect() as conn:

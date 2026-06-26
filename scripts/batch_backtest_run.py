@@ -12,6 +12,7 @@ import time
 import logging
 from datetime import date
 from sqlalchemy import text
+from src.db.engine import get_engine
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ from src.config import get_config, get_db_url
 from src.backtest.engine import BacktestEngine
 from src.models.repository import DataRepository
 from src.db.sql_utils import read_sql
-from sqlalchemy import create_engine
+
 
 # ── 配置 ─────────────────────────────────────────
 STRATEGIES = [
@@ -81,7 +82,7 @@ def pick_stocks(engine, n=50):
 def run_batch():
     config = get_config()
     db_url = get_db_url(config)
-    engine = create_engine(db_url, echo=False)
+    engine = get_engine()
     
     codes = pick_stocks(engine, n=20)
     logger.info(f"入选股票: {len(codes)} 只")

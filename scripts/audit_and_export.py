@@ -1,3 +1,4 @@
+from src.db.engine import get_engine
 """数据库验证 + 分类导出 CSV"""
 import sys
 sys.path.insert(0, 'D:/gitHub/qunat/quant-trading-system')
@@ -6,15 +7,15 @@ import os, json
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
-from sqlalchemy import create_engine
-from src.config import get_config, get_db_url
+
+from src.config import get_config
 from src.db.sql_utils import read_sql
 
 OUT = Path('D:/gitHub/qunat/quant-trading-system/output/audit_20260621')
 OUT.mkdir(parents=True, exist_ok=True)
 
 config = get_config()
-engine = create_engine(get_db_url(config))
+engine = get_engine()
 
 def check(name, df, rule, msg):
     ok = rule(df)

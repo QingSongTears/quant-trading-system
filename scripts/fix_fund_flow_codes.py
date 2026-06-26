@@ -19,15 +19,16 @@ from datetime import datetime
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from sqlalchemy import create_engine, text
-from src.config import get_config, get_db_url
+from sqlalchemy import text
+from src.db.engine import get_engine
+from src.config import get_config
 
 DB_PATH = PROJECT_ROOT / "database" / "quant.db"
 BACKUP_PATH = PROJECT_ROOT / "database" / f"quant.db.bak.{datetime.now():%Y%m%d_%H%M%S}"
 
 
 def main():
-    engine = create_engine(get_db_url(get_config()), echo=False)
+    engine = get_engine()
 
     # 1. 备份数据库
     print(f"备份数据库 → {BACKUP_PATH.name}")

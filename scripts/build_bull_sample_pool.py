@@ -1,3 +1,4 @@
+from src.db.engine import get_engine
 #!/usr/bin/env python3
 """
 牛股样本池构建 — Stage 0 数据驱动漏斗
@@ -27,7 +28,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config import get_config, get_db_url
-from sqlalchemy import create_engine
+
 
 
 # ============================================================
@@ -53,7 +54,7 @@ def get_engine():
     """创建数据库引擎"""
     config = get_config()
     db_url = get_db_url(config)
-    return create_engine(db_url, echo=False)
+    return get_engine()
 
 
 def check_database(engine) -> bool:
