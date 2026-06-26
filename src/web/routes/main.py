@@ -40,94 +40,10 @@ def _get_global_context() -> dict:
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    """首页仪表盘"""
-    repo = _get_repo()
-    try:
-        coverage = repo.get_data_coverage()
-        recent = repo.get_recent_backtests(limit=5)
-        all_backtests = repo.get_recent_backtests(limit=100)
-        
-        # 计算仪表盘聚合统计
-        # 数据源: config/strategies.yaml (与 /api/strategies 一致)
-        from ...config import load_strategies
-        total_strategies = len(load_strategies().get("strategies", []))
-
-        # 聚合回测统计
-        best_return = None
-        avg_sharpe = None
-        if all_backtests:
-            returns = [r.total_return for r in all_backtests if r.total_return is not None]
-            sharpes = [r.sharpe_ratio for r in all_backtests if r.sharpe_ratio is not None]
-            if returns:
-                best_return = max(returns)
-            if sharpes:
-                avg_sharpe = round(sum(sharpes) / len(sharpes), 2)
-
-        # 计算回测成功率 (正收益比例)
-        win_count = sum(1 for r in all_backtests if r.total_return and r.total_return > 0)
-        win_rate = round(win_count / len(all_backtests) * 100, 1) if all_backtests else None
-
-        # 总回测数 (从数据库精确读, 用于卡片描述)
-        try:
-            backtest_total = repo.count_backtests()
-        except Exception:
-            backtest_total = len(all_backtests)
-        
-    except Exception:
-        coverage = {"total_stocks": 0, "total_records": 0, "date_range": {"start": None, "end": None}}
-        recent = []
-        total_strategies = 0
-        best_return = None
-        avg_sharpe = None
-        win_rate = None
-        backtest_total = 0
-
-    # 为首页散点图准备 JS 可直接消费的数据（避免前端从 DOM 爬取）
-    recent_js = []
-    for r in recent:
-        recent_js.append({
-            "strategy_name": r.strategy.name if r.strategy else "未知",
-            "stock_code": r.stock_code,
-            "stock_name": r.stock_name or "",
-            "total_return": r.total_return,
-            "sharpe_ratio": r.sharpe_ratio,
-        })
-
-    # 准备"一键对比"用的 top 回测 (用于首页 checkbox 选择)
-    # 取每个不同 strategy 最新的一个回测, 最多 6 个
-    top_strategy_cards = []
-    seen_strategies = set()
-    for r in all_backtests:
-        strat_name = r.strategy.name if r.strategy else "未知"
-        if strat_name in seen_strategies:
-            continue
-        seen_strategies.add(strat_name)
-        top_strategy_cards.append({
-            "id": r.id,
-            "name": strat_name,
-        })
-        if len(top_strategy_cards) >= 6:
-            break
-
-    ctx = _get_global_context()
-    ctx.update({
-        "coverage": coverage,
-        "recent_backtests": recent,
-        "recent_backtests_js": recent_js,
-        "total_strategies": total_strategies,
-        "backtest_total": backtest_total,
-        "best_return": best_return,
-        "avg_sharpe": avg_sharpe,
-        "win_rate": win_rate,
-        "top_strategy_cards": top_strategy_cards,
-        "has_data": coverage.get("total_records", 0) > 0,
-        "data_sources": [
-            {"name": "AKShare", "url": "https://akshare.readthedocs.io", "desc": "东方财富/新浪财经公开接口"},
-            {"name": "WeStock Data", "url": "https://gu.qq.com", "desc": "腾讯自选股行情数据接口"},
-            {"name": "Baostock", "url": "http://baostock.com", "desc": "免费证券数据（备选）"},
-        ]
-    })
-    return templates.TemplateResponse(request, "index.html", ctx)
+    """首页 = 数据总览 (Ardot 设计, 2026-06-26 决策)
+    与 /dashboard 等价, 让用户打开根路径直接看到 dashboard 风格的总览页
+    """
+    return await dashboard_page(request)
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
