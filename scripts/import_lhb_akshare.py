@@ -12,12 +12,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
-from sqlalchemy import create_engine, text
-from src.config import get_config, get_db_url
+from sqlalchemy import text
+from src.db.engine import get_engine
+from src.config import get_config
 
 
 def main():
-    engine = create_engine(get_db_url(get_config()), echo=False)
+    engine = get_engine()
 
     # 建表
     with engine.connect() as conn:

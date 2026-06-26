@@ -15,8 +15,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
-from sqlalchemy import create_engine, text
-from src.config import get_config, get_db_url
+from sqlalchemy import text
+from src.db.engine import get_engine
+from src.config import get_config
 from src.models.database import Base, TechnicalIndicator
 
 
@@ -28,7 +29,7 @@ def main():
         data_dir / "tech_indicators_2026.csv",
     ]
 
-    engine = create_engine(get_db_url(get_config()), echo=False)
+    engine = get_engine()
 
     # 建表
     Base.metadata.create_all(engine, tables=[TechnicalIndicator.__table__])

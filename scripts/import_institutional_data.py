@@ -24,7 +24,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 import numpy as np
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+from src.db.engine import get_engine
 
 from src.config import get_config, get_db_url
 
@@ -262,7 +263,7 @@ def main():
 
     config = get_config()
     db_url = get_db_url(config)
-    engine = create_engine(db_url, echo=False)
+    engine = get_engine()
 
     # 建表
     create_tables(engine)

@@ -15,8 +15,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, text
-from src.config import get_config, get_db_url
+from sqlalchemy import text
+from src.db.engine import get_engine
+from src.config import get_config
 from src.scoring import ScorerRegistry
 # PR2.2: 委托给 metrics.performance 单一实现 (消除 risk_free=0.025 硬编码)
 from src.metrics import sharpe_ratio as _sharpe_ratio, max_drawdown as _max_drawdown, annual_return as _annual_return, volatility as _volatility
@@ -200,7 +201,7 @@ def main():
     print("多维融合组合回测 — 快速验证")
     print("=" * 70)
 
-    engine = create_engine(get_db_url(get_config()), echo=False)
+    engine = get_engine()
 
     # 1) 取 8 个最近调仓日
     dates = get_recent_weekly_dates(engine, n_dates=8)

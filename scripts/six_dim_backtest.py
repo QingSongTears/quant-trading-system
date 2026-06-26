@@ -1,3 +1,4 @@
+from src.db.engine import get_engine
 """
 六维全开回测 — 全部6个评分器集成验证
 =====================================
@@ -12,12 +13,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine
+
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.config import get_config, get_db_url
+from src.config import get_config
 from src.scoring import ScorerRegistry
 
 
@@ -27,7 +28,7 @@ def main():
     print("=" * 60)
 
     config = get_config()
-    engine = create_engine(get_db_url(config), echo=False)
+    engine = get_engine()
 
     # ── 加载基础三维评分 ──
     print("\n加载 combined_3d_scores.csv ...")

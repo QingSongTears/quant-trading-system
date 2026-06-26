@@ -1,3 +1,4 @@
+from src.db.engine import get_engine
 """
 生成 fund-flow-report 数据(从今天 mini 回测结果固化到 JSON)
 ============================================================
@@ -24,15 +25,15 @@ from scripts.mini_backtest_compare import (
 )
 from src.selection import SelectionPipeline
 from src.db.sql_utils import read_sql
-from src.config import get_config, get_db_url
-from sqlalchemy import create_engine
+from src.config import get_config
+
 
 OUT_PATH = PROJECT_ROOT / "database" / "fund_flow_report_data.json"
 
 
 def main():
     config = get_config()
-    engine = create_engine(get_db_url(config), echo=False)
+    engine = get_engine()
 
     start = "2025-06-01"
     end = "2026-06-18"

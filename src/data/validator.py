@@ -28,7 +28,8 @@ from datetime import date
 import pandas as pd
 from sqlalchemy import text
 
-from ..config import get_config, get_db_url
+from ..config import get_config
+from ..db.engine import get_engine
 from ..models.repository import DataRepository
 
 logger = logging.getLogger(__name__)
@@ -53,9 +54,9 @@ class DataValidator:
 
     def __init__(self):
         self.repo = DataRepository()
+        # PR3.2: 走 src.db.engine 单例, 复用 DataRepository 同连接池 (消除重复连接池)
         config = get_config()
-        from sqlalchemy import create_engine
-        self.engine = create_engine(get_db_url(config), echo=False)
+        self.engine = get_engine(config)
 
     def check_coverage(self) -> dict:
         """

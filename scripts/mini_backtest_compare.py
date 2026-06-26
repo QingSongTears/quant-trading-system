@@ -1,3 +1,4 @@
+from src.db.engine import get_engine
 """
 Mini 回测对比: tech-only vs tech+fund_flow
 =========================================
@@ -18,8 +19,8 @@ import pandas as pd
 
 from src.selection import SelectionPipeline
 from src.db.sql_utils import read_sql
-from src.config import get_config, get_db_url
-from sqlalchemy import create_engine
+from src.config import get_config
+
 
 
 # ============================================================
@@ -194,7 +195,7 @@ def compute_metrics(nav: pd.Series, rf: float = 0.02) -> dict:
 # ============================================================
 def main():
     config = get_config()
-    engine = create_engine(get_db_url(config), echo=False)
+    engine = get_engine()
 
     # 回测区间: 留 fund_flow 至少 6 个月预热期
     start = "2025-06-01"

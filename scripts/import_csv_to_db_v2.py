@@ -23,7 +23,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 import numpy as np
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+from src.db.engine import get_engine
 
 from src.models.database import Base, StockBasic, DailyPrice, BenchmarkData
 from src.config import get_config, get_db_url
@@ -547,7 +548,7 @@ def main():
     print(f"\n数据库: {db_url}")
     print(f"CSV目录: {CSV_DIR}")
 
-    engine = create_engine(db_url, echo=False)
+    engine = get_engine()
 
     # Step 0: 建表
     print(f"\n[0/6] 建表...")
