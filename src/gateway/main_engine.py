@@ -15,7 +15,7 @@ MainEngine — 主引擎 (借鉴 vnpy.trader.MainEngine)
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
 
 from ..engine import BaseEngine
 from ..event import EventEngine
@@ -66,6 +66,10 @@ class MainEngine:
         self.engines: Dict[str, BaseEngine] = {}
         # 注册的策略 (name -> instance)
         self.strategies: Dict[str, Any] = {}
+
+        # P0-3 (2026-06-26): 账户数据缓存 (券商推送后写入)
+        # 协议方法 get_cash_available / get_holding_value 从此读取
+        self._account_cache: Dict[str, float] = {}
 
         logger.info("MainEngine 初始化完成")
 
@@ -221,6 +225,87 @@ class MainEngine:
         if not eng:
             raise KeyError(f"引擎 {engine_name} 不存在")
         return eng
+
+    # ─────────────────────────────────────────
+    #  StrategyEngine Protocol (P0-3 2026-06-26)
+    # ─────────────────────────────────────────
+    #
+    # MainEngine 作为 StrategyEngine 协议的 live trading 实现,
+    # 让 AlphaStrategy/EquityStrategy 子类可直接通过 MainEngine 报单.
+    #
+    # 当前实现简化: 报单委托给第一个注册网关, 资金/持仓从 AccountData 缓存读
+    # (无 AccountData 时返回 0 / 占位 — 真实账户数据由券商推送)
+    #
+    # 协议方法签名见 src/strategy/alpha_strategy.py::StrategyEngine
+
+    def send_order(
+        self,
+        strategy: "AlphaStrategy",
+        vt_symbol: str,
+        direction: Any,
+        offset: Any,
+        price: float,
+        volume: int,
+    ) -> List[str]:
+        """报单 — 委托给第一个网关, 返回 vt_orderid 列表
+
+        P0-3 当前为占位实现: 调网关 send_order, 未做持仓/资金校验
+        完整实盘需配合 OmsEngine 做订单管理
+        """
+        strategy_name = getattr(strategy, "strategy_name", "<unknown>") if strategy else "<unknown>"
+        if not self.gateways:
+            logger.warning(
+                f"[{strategy_name}] send_order({vt_symbol}) "
+                f"无网关, 报单丢弃 (P0-3 占位)"
+            )
+            return []
+        gw = next(iter(self.gateways.values()))
+        # 委托给网关, 网关内构造 OrderRequest 并发出
+        try:
+            vt_orderids = gw.send_order_impl(
+                strategy=strategy,
+                vt_symbol=vt_symbol,
+                direction=direction,
+                offset=offset,
+                price=price,
+                volume=volume,
+            )
+            return vt_orderids
+        except AttributeError:
+            # BaseGateway 暂无 send_order_impl 接口, 返回空 + warning
+            logger.warning(
+                f"[{strategy_name}] 网关 {gw.gateway_name} "
+                f"未实现 send_order_impl, 报单丢弃 (P0-3 占位)"
+            )
+            return []
+
+    def cancel_order(
+        self, strategy: "AlphaStrategy", vt_orderid: str,
+    ) -> None:
+        """撤单 — 委托给第一个网关"""
+        if not self.gateways:
+            return
+        gw = next(iter(self.gateways.values()))
+        try:
+            gw.cancel_order_impl(vt_orderid)
+        except AttributeError:
+            pass
+
+    def write_log(self, msg: str, strategy: "AlphaStrategy") -> None:
+        """写日志 — 委托给 logger"""
+        logger.info(f"[{strategy.strategy_name}] {msg}")
+
+    def get_cash_available(self) -> float:
+        """获取可用资金 — 当前从 AccountData 缓存读取"""
+        return self._account_cache.get("cash", 0.0) if hasattr(self, "_account_cache") else 0.0
+
+    def get_holding_value(self) -> float:
+        """获取持仓市值 — 当前从 AccountData 缓存读取"""
+        return self._account_cache.get("holding_value", 0.0) if hasattr(self, "_account_cache") else 0.0
+
+    def get_signal(self) -> Any:
+        """获取信号 — P0-3 占位 (信号由 strategy 自身维护, 引擎不需要读)"""
+        return None
 
     # ─────────────────────────────────────────
     #  调试

@@ -245,6 +245,73 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
         signals.sort(key=lambda x: x["score"], reverse=True)
         return [s["code"] for s in signals[:self.n_stocks]]
 
+    def generate_signals(self) -> pd.DataFrame:
+        """
+        P0-3 (2026-06-26): EquityStrategy 要求的 API 形状
+
+        Returns:
+            DataFrame: columns=[vt_symbol, signal, ...]
+            signal 越大越优先持仓 (Top-K 排序, 与 EquityStrategy.on_bars() 约定一致)
+
+        实现: 复用现有 select() 逻辑, 但 universe_df 需要从 DB 获取
+        (EquityStrategy.on_bars() 不传 universe_df, 所以本方法从 self._build_universe() 拉数据)
+
+        注意: 本方法供未来 bar-driven 回测引擎使用 (不是 PortfolioBacktestEngine).
+        当前 PortfolioBacktestEngine 仍走 select(rebalance_date, universe_df) 老路,
+        本方法保证 V6 可以被 EquityStrategy 子类化而不破坏现有行为.
+        """
+        # 用最新一天作为调仓日 (供演示 / 单元测试)
+        # 真实使用应通过 EquityStrategy.on_bars(bars) 传入日期上下文
+        sql = "SELECT MAX(trade_date) AS max_dt FROM daily_price"
+        df_max = read_sql(sql, self.engine)
+        if df_max.empty:
+            return pd.DataFrame()
+        max_dt = pd.Timestamp(df_max["max_dt"].iloc[0]).date()
+
+        # 复用 PortfolioBacktestEngine._build_universe() 思路, 简单构造 universe
+        # 注: 这是占位实现, 真实场景应通过 vt_symbols + bars 派生
+        sql_univ = """
+            SELECT dp.code AS code, sb.name AS name, dp.close AS close,
+                   NULL AS avg_amount_wan,
+                   NULL AS avg_turnover, NULL AS market_cap_yi,
+                   NULL AS return_Nd, NULL AS volatility_Nd
+            FROM daily_price dp
+            JOIN stock_basic sb ON dp.code = sb.code
+            WHERE dp.trade_date = :max_dt
+              AND dp.close > 0
+        """
+        universe_df = read_sql(sql_univ, self.engine, {"max_dt": max_dt})
+        if universe_df.empty:
+            return pd.DataFrame()
+
+        codes = self.select(max_dt, universe_df)
+        if not codes:
+            return pd.DataFrame()
+
+        # 取每只股票的分数 (复用 _detect_signals 的 score)
+        date_str = str(max_dt)[:10]
+        indicators_df = self._indicator_cache.get(date_str)
+        if indicators_df is None:
+            indicators_df = self._compute_indicators(codes, date_str)
+        if indicators_df is None or indicators_df.empty:
+            return pd.DataFrame()
+        signals_list = self._detect_signals(indicators_df, universe_df)
+        score_map = {s["code"]: float(s["score"]) for s in signals_list}
+
+        # 构造 EquityStrategy 期望的 DataFrame 格式
+        rows = []
+        for code in codes:
+            exchange = "SH" if str(code).startswith("6") else (
+                "BJ" if str(code).startswith(("8", "4")) else "SZ"
+            )
+            vt_symbol = f"{code}.{exchange}"
+            rows.append({
+                "vt_symbol": vt_symbol,
+                "code": code,
+                "signal": score_map.get(code, 0.0),
+            })
+        return pd.DataFrame(rows)
+
     # ================================================================
     #  技术指标计算
     # ================================================================
