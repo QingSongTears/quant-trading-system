@@ -154,8 +154,7 @@ src/
 │   │   ├── config.py                 TradingConfig
 │   │   ├── position_sizer.py         仓位算法 (fixed/kelly/atr/turtle)
 │   │   └── stop_loss.py              止损/止盈 (5 种)
-│   ├── stock_screener/               归档策略 (v2-v7)
-│   └── [legacy 信号策略]
+│   └── [legacy 信号策略]             ← v2-v7 旧策略归档 (stock_screener/ 子系统 2026-06-25 已删)
 │
 ├── scoring/                        ← 评分层
 │   ├── base.py                       Scorer 基类 (Engine 单例)

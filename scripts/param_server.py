@@ -391,17 +391,17 @@ def _v5_load_cache():
     if _V5_KLINE_CACHE is not None:
         return
     print("[v5] 加载数据缓存...")
+    # P1-4 (2026-06-26): stock_screener 模块已删除 (commit 8d871b9), v5_hybrid 私有缓存路径失效
     CACHE_PATH = PROJECT_ROOT / "src" / "strategies" / "stock_screener" / "data" / "processed" / "kline_2025plus.parquet"
     if CACHE_PATH.exists():
         _V5_KLINE_CACHE = pd.read_parquet(CACHE_PATH)
         print(f"[v5] K线: {len(_V5_KLINE_CACHE):,}行")
-    # 加载行情和财务
+    # 加载行情和财务 — stock_screener.core.data_loader 已删, 改为使用主 DataRepository
     try:
-        sys.path.insert(0, str(PROJECT_ROOT))
-        from src.strategies.stock_screener.core.data_loader import load_quotes, load_finance
-        _V5_QUOTES_CACHE = load_quotes()
-        _V5_FINANCE_CACHE = load_finance()
-        print(f"[v5] 行情: {len(_V5_QUOTES_CACHE)}只, 财务: {len(_V5_FINANCE_CACHE)}只")
+        from src.models.repository import DataRepository
+        repo = DataRepository()
+        # v5_hybrid 不再活跃, 留空 cache 让 endpoint 返回 503
+        print("[v5] v5_hybrid 私有引擎已废弃 (P1-4 2026-06-26), 返回 503")
     except Exception as e:
         print(f"[v5] 数据加载失败: {e}")
 
@@ -431,22 +431,32 @@ def api_v5_run():
     end_date = str(data.get("end_date", "2026-06-12"))
 
     try:
+        # P1-4 (2026-06-26): stock_screener 模块已删除, v5_hybrid 私有引擎废弃
+        # 保留代码骨架但返回明确错误, 让 /api/v5/run endpoint 不再 import 失效模块
+        return jsonify({
+            "error": "v5_hybrid 私有引擎已废弃 (P1-4 2026-06-26)。请使用主 V6 策略: /api/backtest/portfolio/run"
+        }), 410  # 410 Gone
+    except Exception as e:
+        return jsonify({"error": f"v5_hybrid 已废弃: {e}"}), 410
+
+    # P1-4: 以下代码已无效, 保留仅供 git history 参考
+    if False:
         import os
-        
+
         # 切换工作目录 + sys.path，确保导入正确的 config
         screener_dir = str(PROJECT_ROOT / "src" / "strategies" / "stock_screener")
         sys.path.insert(0, screener_dir)
         old_cwd = os.getcwd()
         os.chdir(screener_dir)
-        
+
         # 清除可能冲突的模块缓存
         for k in list(sys.modules.keys()):
             if any(k.startswith(p) for p in ('backtest.', 'strategies.v5_hybrid', 'config', 'core.')):
                 del sys.modules[k]
-        
+
         from backtest.engine import BacktestEngine as V5Engine
         from strategies.v5_hybrid import V5HybridStrategy
-        
+
         os.chdir(old_cwd)
 
         strategy = V5HybridStrategy(**params)
@@ -514,15 +524,19 @@ def api_v5_run():
                 "exit_reason": t.exit_reason,
             } for t in trades],
         })
-
-    except Exception as e:
-        print(f"[v5] 回测失败: {e}")
-        return jsonify({"error": "回测服务异常，请稍后重试"}), 500
+    # P1-4: 上方 if False 块永远不执行, 已废弃代码保留仅供 git history 参考
+    # 原 except 已删除 (line 528, 现在死代码不再需要)
 
 
 @app.route("/api/v5/scan-results")
 def api_v5_scan_results():
     """返回 #54 参数扫描结果"""
+    # P1-4 (2026-06-26): stock_screener 路径已删, v5 扫描结果 CSV 不再存在
+    # 保留路由骨架, 返回空结果 (前端兼容)
+    return jsonify({
+        "results": [],
+        "note": "v5_hybrid 已废弃 (P1-4 2026-06-26), 扫描结果归档, 请用 V6"
+    })
     csv_path = (PROJECT_ROOT / "src" / "strategies" / "stock_screener" /
                 "output" / "combined" / "param_scan_v5_partial.csv")
     if not csv_path.exists():
@@ -1667,7 +1681,14 @@ def api_sector_detail(industry):
 
 @app.route("/api/stock/screener")
 def api_stock_screener():
-    """选股筛选: 多条件过滤"""
+    """选股筛选: 多条件过滤
+    P1-4 (2026-06-26): 标记为废弃, stock_screener 子系统已删.
+    保留路由以兼容老前端, 返回 410 Gone + 引导到 FastAPI /api/stock/screener
+    """
+    return jsonify({
+        "error": "param_server 选股筛选已废弃, 请使用 FastAPI 端点 /api/stock/screener (src/web/routes/api.py)",
+        "migration": "P1-4 (2026-06-26): stock_screener 子系统已删",
+    }), 410
     import numpy as np
 
     # 获取每只股票最新记录
