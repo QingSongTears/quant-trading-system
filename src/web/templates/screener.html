@@ -45,6 +45,8 @@ tr.clickable{cursor:pointer}
 .slider-val{font-size:0.78rem;color:var(--accent);font-weight:600;min-width:28px;text-align:right}
 </style>
 </head>
+<body>
+{% include "partials/_ardot_nav.html" %}
 <header>
   <h1>🔍 选股工作台</h1>
   <div class="nav">
@@ -209,3 +211,5 @@ function colorScore(v) {
 }
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 </script>
+</body>
+</html>

@@ -84,6 +84,7 @@ header > span, header > .sub {
 </style>
 </head>
 <body>
+{% include "partials/_ardot_nav.html" %}
 <header>
   <h1>🧪 资金面融合回测</h1>
   <span class="sub">{{ data.period.start }} ~ {{ data.period.end }} · {{ data.period.rebalance_count }} 期调仓 · 持仓 {{ data.period.top_n }} 只</span>
