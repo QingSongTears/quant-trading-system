@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 import logging
+import threading
 from datetime import date, timedelta
 
 
@@ -61,8 +62,10 @@ class PortfolioBacktestEngine:
         # Step B 优化 (2026-06-25): _load_all_data LRU 缓存
         # walk_forward 跑 N windows × M samples = 多次相同 (start, end) 调用,
         # 缓存避免每次重读 DB + 重算 pct_change fallback (1M+ 行)
+        # P1-5 (2026-06-26): 加 RLock + 双检锁, 防止 walk_forward 多 worker 并发 race
         self._data_cache: dict = {}
         self._data_cache_max = 4
+        self._data_cache_lock = threading.RLock()
 
     def run(self,
             strategy: BaseSelectionStrategy,
@@ -130,8 +133,13 @@ class PortfolioBacktestEngine:
         Step B 优化 (2026-06-25): 加 LRU 缓存
         walk_forward 跑 N windows × M samples = 多次相同 (start, end) 调用,
         缓存避免每次重读 DB + 重算 pct_change fallback (1M+ 行)
+
+        P1-5 (2026-06-26): 加双检锁, 防止 walk_forward 多 worker 并发时:
+          - 同时读 cache key 都不存在 → 多个 worker 重复做重 IO
+          - 同时写 cache → 可能丢数据或破坏 dict 内部结构
         """
         cache_key = (start, end)
+        # 第一检 (无锁, 快速路径): 缓存命中直接返回
         if cache_key in self._data_cache:
             return self._data_cache[cache_key].copy()
 
@@ -175,12 +183,14 @@ class PortfolioBacktestEngine:
         else:
             df["turnover"] = df["turnover"].fillna(0)
 
-        # Step B 优化: 写入 LRU 缓存 (max 4 entries)
-        if len(self._data_cache) >= self._data_cache_max:
-            # 简单 FIFO: 删除最早插入的
-            oldest_key = next(iter(self._data_cache))
-            del self._data_cache[oldest_key]
-        self._data_cache[cache_key] = df
+        # P1-5: 双检锁写入 (锁内再检一次, 防止 race 后另一个 worker 已写入)
+        with self._data_cache_lock:
+            if cache_key not in self._data_cache:
+                # 简单 FIFO: 删除最早插入的
+                if len(self._data_cache) >= self._data_cache_max:
+                    oldest_key = next(iter(self._data_cache))
+                    del self._data_cache[oldest_key]
+                self._data_cache[cache_key] = df
 
         return df
 
