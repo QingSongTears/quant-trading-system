@@ -543,6 +543,20 @@ class TechnicalScorer(BaseScorer):
     # ============================================================
     #  主评分入口
     # ============================================================
+
+    # PR3.3: 7 个子评分器 → 类属性 property (供 score/batch_score/sample_daily 三处共用)
+    @property
+    def SUBS(self) -> dict[str, Callable[[pd.DataFrame], int]]:
+        return {
+            "ma_trend":     self._score_ma_trend,
+            "macd":         self._score_macd,
+            "rsi":          self._score_rsi,
+            "bollinger":    self._score_bollinger,
+            "volume_price": self._score_volume_price,
+            "breakout":     self._score_breakout,
+            "pullback":     self._score_pullback,
+        }
+
     def score(self, code: str, as_of_date: str) -> dict[str, Any]:
         df = self._load_price_data(code, as_of_date)
 
@@ -556,18 +570,8 @@ class TechnicalScorer(BaseScorer):
                 "error": "数据不足" if df.empty else f"仅{len(df)}交易日, 需≥60",
             }
 
-        sub_scores = {
-            "ma_trend": self._score_ma_trend(df),
-            "macd": self._score_macd(df),
-            "rsi": self._score_rsi(df),
-            "bollinger": self._score_bollinger(df),
-            "volume_price": self._score_volume_price(df),
-            "breakout": self._score_breakout(df),
-            "pullback": self._score_pullback(df),
-        }
-
-        total = sum(sub_scores.values())
-        weighted = round(total / 21 * 20, 1)
+        # PR3.3: 用 _aggregate_subs 替代 7 行样板 (max_raw=21 来自类属性)
+        sub_scores, total, weighted = self._aggregate_subs(df, self.SUBS)
 
         return {
             "code": code,
@@ -600,21 +604,13 @@ class TechnicalScorer(BaseScorer):
                 df = bulk_data.get(code)
                 if df is None or len(df) < 60:
                     continue
-                sub = {
-                    "ma_trend": self._score_ma_trend(df),
-                    "macd": self._score_macd(df),
-                    "rsi": self._score_rsi(df),
-                    "bollinger": self._score_bollinger(df),
-                    "volume_price": self._score_volume_price(df),
-                    "breakout": self._score_breakout(df),
-                    "pullback": self._score_pullback(df),
-                }
-                total = sum(sub.values())
+                # PR3.3: 7 行样板 → 1 行 helper
+                sub, total, weighted = self._aggregate_subs(df, self.SUBS)
                 results.append({
                     "code": code,
                     "as_of_date": dt,
                     "total": total,
-                    "weighted": round(total / 21 * 20, 1),
+                    "weighted": weighted,
                     **{f"tech_{k}": v for k, v in sub.items()},
                 })
             if verbose:
@@ -678,21 +674,13 @@ class TechnicalScorer(BaseScorer):
 
             bulk_data = self._load_bulk_price_data(available, sample_date)
             for code, df in bulk_data.items():
-                sub = {
-                    "ma_trend": self._score_ma_trend(df),
-                    "macd": self._score_macd(df),
-                    "rsi": self._score_rsi(df),
-                    "bollinger": self._score_bollinger(df),
-                    "volume_price": self._score_volume_price(df),
-                    "breakout": self._score_breakout(df),
-                    "pullback": self._score_pullback(df),
-                }
-                total = sum(sub.values())
+                # PR3.3: 7 行样板 → 1 行 helper
+                sub, total, weighted = self._aggregate_subs(df, self.SUBS)
                 all_results.append({
                     "code": code,
                     "as_of_date": sample_date,
                     "total": total,
-                    "weighted": round(total / 21 * 20, 1),
+                    "weighted": weighted,
                     **{f"tech_{k}": v for k, v in sub.items()},
                 })
                 total_scored += 1

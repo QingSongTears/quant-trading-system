@@ -29,9 +29,12 @@ BaseScorer — 所有评分器的统一基类
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
+
+import pandas as pd
 
 from ..db.engine import get_engine as _get_engine
+from ..db.sql_utils import read_sql
 
 
 class BaseScorer:
@@ -75,6 +78,81 @@ class BaseScorer:
             code, as_of_date, total, weighted, sub_scores, error
         """
         raise NotImplementedError(f"{type(self).__name__}.score() 必须被子类实现")
+
+    # ─────────────────────────────────────────
+    #  公用 helper (PR3.3: 7 个 scorer 共用的样板抽取)
+    # ─────────────────────────────────────────
+
+    DEFAULT_LOOKBACK = 150
+
+    def _load_series(
+        self,
+        table: str,
+        columns: list[str],
+        code: str,
+        as_of: str,
+        lookback: int | None = None,
+        where: str = "",
+        order_col: str = "trade_date",
+    ) -> pd.DataFrame:
+        """
+        通用时序数据加载 — 替代 7 个 scorer 的 _load_*_data 副本
+
+        Args:
+            table: 表名
+            columns: 需要的列 (不含 order_col)
+            code: 股票代码
+            as_of: 截止日期
+            lookback: 回看天数 (默认 150)
+            where: 额外的 WHERE 条件 (不含 AND 前缀, e.g. "AND foo > 0")
+            order_col: 排序/筛选列 (默认 "trade_date")
+
+        Returns:
+            按 order_col 升序排好的 DataFrame (无索引重置); 空时返空 DataFrame
+        """
+        lookback = lookback or self.DEFAULT_LOOKBACK
+        cols = ", ".join(columns + [order_col])
+        sql = f"""
+            SELECT {cols} FROM {table}
+            WHERE code = :code AND {order_col} <= :as_of {where}
+            ORDER BY {order_col} DESC LIMIT :lookback
+        """
+        df = read_sql(sql, self.engine, {
+            "code": code, "as_of": as_of, "lookback": int(lookback),
+        })
+        if df.empty:
+            return df
+        df[order_col] = pd.to_datetime(df[order_col])
+        return df.sort_values(order_col).reset_index(drop=True)
+
+    def _aggregate_subs(
+        self,
+        df: pd.DataFrame,
+        scorers: dict[str, Callable[[pd.DataFrame], int]],
+        max_raw: int | None = None,
+        max_score: int = 20,
+    ) -> tuple[dict[str, int], int, float]:
+        """
+        聚合 sub_scores → total + weighted — 替代 7 处复制的样板
+
+        Args:
+            df: 数据 DataFrame (传给每个 sub-scorer)
+            scorers: {name: fn} 映射, fn(df) → int 0-3
+            max_raw: 子分汇总上限 (默认 self.max_raw)
+            max_score: weighted 归一化上限 (默认 20)
+
+        Returns:
+            (subs_dict, total, weighted)
+            - subs_dict: {"ma_trend": 2, "macd": 1, ...}
+            - total: sum(subs_dict.values())
+            - weighted: round(total / max_raw * max_score, 1)
+        """
+        if max_raw is None:
+            max_raw = self.max_raw
+        subs = {name: fn(df) for name, fn in scorers.items()}
+        total = sum(subs.values())
+        weighted = round(total / max_raw * max_score, 1)
+        return subs, total, weighted
 
 
 __all__ = ["BaseScorer"]
