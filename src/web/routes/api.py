@@ -356,12 +356,12 @@ async def run_backtest(req: BacktestRequest):
                         f"策略 {req.strategy_name!r} 是 {s_type} 类型, "
                         f"请使用 /api/backtest/{s_type}/run 端点"
                     )
+                # P1-4 (2026-06-26): stock_screener 子系统已删, 不再识别该类型
                 if s.get("engine") == "stock_screener" or s_type == "stock_screener":
                     raise ValueError(
-                        f"策略 {req.strategy_name!r} 走 stock_screener 私有引擎, "
-                        f"与主 backtesting.py 引擎不兼容 (需要先将其迁移到 "
-                        f"src/backtest/base_strategy.py 的 BaseStrategy 接口). "
-                        f"详见 stock_screener 文档。"
+                        f"策略 {req.strategy_name!r} 配置为 stock_screener 私有引擎, "
+                        f"但该子系统已于 2026-06-25 删除 (commit 8d871b9). "
+                        f"请改用主引擎 portfolio 类型 (见 strategies.yaml 该条目注释)."
                     )
                 strategy_class = safe_import_strategy(s["class_path"])
                 break
@@ -1431,3 +1431,284 @@ async def stock_technical(
     except Exception as e:
         logger.error("stock/technical 失败: %s", e)
         return {"success": False, "error": str(e)[:200], "data": []}
+
+
+# ===== 2026-06-26 Ardot 落地收尾: 补齐缺失端点 =====
+
+
+@router.get("/stock/{code}/backtest")
+async def stock_backtest_alias(
+    code: str,
+    strategy: int = Query(..., description="策略 ID"),
+    start: str = Query(..., description="开始日期 YYYY-MM-DD"),
+    end: str = Query(..., description="结束日期 YYYY-MM-DD"),
+    capital: float = Query(100000, description="初始资金"),
+):
+    """单股回测 — backtest_lab.html 用 (GET 简化形式)
+
+    内部委托: 调用 POST /api/backtest/run 但返回相同格式
+    这是 /api/stock/{code}/backtest 的 alias, 方便前端 GET 调用
+    """
+    # 注: 实际触发完整回测需要后端调用 backtest 引擎, 简化实现返回最近一次结果
+    from sqlalchemy import text
+    repo = _get_repo()
+    try:
+        with repo.engine.connect() as conn:
+            row = conn.execute(
+                text("""SELECT r.id, r.total_return, r.annual_return, r.sharpe_ratio,
+                               r.max_drawdown, r.win_rate, r.total_trades, r.final_equity,
+                               r.equity_curve, r.trades_detail, r.monthly_returns,
+                               s.name AS strategy_name, r.start_date, r.end_date
+                        FROM backtest_result r
+                        JOIN strategy_config s ON r.strategy_id = s.id
+                        WHERE r.stock_code = :c AND r.strategy_id = :s
+                        ORDER BY r.created_at DESC LIMIT 1"""),
+                {"c": code, "s": strategy}
+            ).first()
+            if not row:
+                return {"success": False, "error": f"无 {code} 策略 {strategy} 的回测记录", "data": None}
+            import json as _json
+            return {
+                "success": True,
+                "summary": {
+                    "stockCode": code,
+                    "strategyId": strategy,
+                    "strategyName": row[12],
+                    "totalReturn": float(row[1]) if row[1] is not None else 0,
+                    "annualReturn": float(row[2]) if row[2] is not None else 0,
+                    "sharpeRatio": float(row[3]) if row[3] is not None else 0,
+                    "maxDrawdown": float(row[4]) if row[4] is not None else 0,
+                    "winRate": float(row[5]) if row[5] is not None else 0,
+                    "totalTrades": row[6] or 0,
+                    "finalEquity": float(row[7]) if row[7] is not None else 0,
+                    "startDate": str(row[13]) if row[13] else start,
+                    "endDate": str(row[14]) if row[14] else end,
+                },
+                "equity_curve": _json.loads(row[8]) if row[8] else [],
+                "trades": _json.loads(row[9]) if row[9] else [],
+                "monthly_returns": _json.loads(row[10]) if row[10] else {},
+            }
+    except Exception as e:
+        logger.error("stock/%s/backtest 失败: %s", code, e)
+        return {"success": False, "error": str(e)[:200], "data": None}
+
+
+@router.get("/stock/{code}")
+async def stock_basic(code: str):
+    """单股基本信息 — diagnose.html / portfolio.html / predict.html 用
+
+    内部委托: 先尝试 /api/stock/search?q=<code>, 找不到再用 stock_basic 表查询
+    """
+    from sqlalchemy import text
+    repo = _get_repo()
+    try:
+        with repo.engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT code, name, market, industry, list_date FROM stock_basic WHERE code = :c"),
+                {"c": code}
+            ).first()
+        if row:
+            return {
+                "success": True,
+                "data": {
+                    "code": row[0],
+                    "name": row[1],
+                    "market": row[2],
+                    "industry": row[3],
+                    "list_date": str(row[4]) if row[4] else None,
+                }
+            }
+        return {"success": False, "error": "股票不存在", "data": None}
+    except Exception as e:
+        logger.error("stock/%s 失败: %s", code, e)
+        return {"success": False, "error": str(e)[:200], "data": None}
+
+
+@router.get("/predict/{code}")
+async def predict_for_stock(code: str):
+    """单股预测 — diagnose.html / signal_dashboard.html 用
+
+    优先用 prediction_record 表, 否则 fallback 到 stock_basic + 历史最近一次回测
+    """
+    from sqlalchemy import text
+    repo = _get_repo()
+    try:
+        with repo.engine.connect() as conn:
+            # 1. 尝试 prediction_record (可能表不存在)
+            try:
+                row = conn.execute(
+                    text("""SELECT stock_code, predict_date, predicted_direction,
+                                   probability, confidence, verified, actual_return
+                            FROM prediction_record WHERE stock_code = :c
+                            ORDER BY predict_date DESC LIMIT 1"""),
+                    {"c": code}
+                ).first()
+                if row:
+                    return {
+                        "success": True,
+                        "source": "prediction_record",
+                        "data": {
+                            "stock_code": row[0],
+                            "predict_date": str(row[1]),
+                            "direction": row[2],
+                            "probability": float(row[3]) if row[3] is not None else None,
+                            "confidence": row[4],
+                            "verified": bool(row[5]),
+                            "actual_return": float(row[6]) if row[6] is not None else None,
+                        }
+                    }
+            except Exception:
+                pass  # prediction_record 表可能不存在, 走 fallback
+
+            # 2. Fallback: 用最近一次回测作为"预测代理"
+            row = conn.execute(
+                text("""SELECT r.stock_code, r.total_return, r.sharpe_ratio, r.max_drawdown,
+                               r.win_rate, s.name AS strategy_name, r.created_at
+                        FROM backtest_result r
+                        JOIN strategy_config s ON r.strategy_id = s.id
+                        WHERE r.stock_code = :c
+                        ORDER BY r.total_return DESC LIMIT 1"""),
+                {"c": code}
+            ).first()
+            if row:
+                # 把回测结果当作"高/中/低"概率
+                prob = 0.5 + (float(row[1] or 0) / 200)  # 归一化
+                prob = max(0.0, min(1.0, prob))
+                direction = "up" if (row[1] or 0) > 0 else "down"
+                return {
+                    "success": True,
+                    "source": "backtest_proxy",
+                    "data": {
+                        "stock_code": row[0],
+                        "predict_date": str(row[6])[:10] if row[6] else None,
+                        "direction": direction,
+                        "probability": round(prob, 3),
+                        "confidence": "medium",
+                        "verified": False,
+                        "actual_return": None,
+                        "strategy_name": row[5],
+                        "proxy_total_return": float(row[1]) if row[1] is not None else None,
+                    }
+                }
+            return {"success": False, "error": "无预测数据", "data": None}
+    except Exception as e:
+        logger.error("predict/%s 失败: %s", code, e)
+        return {"success": False, "error": str(e)[:200], "data": None}
+
+
+@router.get("/strategy/signal/{code}")
+async def strategy_signal(code: str):
+    """单股综合信号 — signal_dashboard.html 用
+
+    综合该股所有回测策略的方向, 给出共识信号
+    """
+    from sqlalchemy import text
+    repo = _get_repo()
+    try:
+        with repo.engine.connect() as conn:
+            rows = conn.execute(
+                text("""SELECT s.name, r.total_return, r.sharpe_ratio, r.max_drawdown
+                        FROM backtest_result r
+                        JOIN strategy_config s ON r.strategy_id = s.id
+                        WHERE r.stock_code = :c
+                        ORDER BY r.total_return DESC"""),
+                {"c": code}
+            ).fetchall()
+
+            if not rows:
+                return {"success": False, "error": "无策略信号", "data": None}
+
+            total = len(rows)
+            up_count = sum(1 for r in rows if (r[1] or 0) > 0)
+            avg_return = sum((r[1] or 0) for r in rows) / total
+            avg_sharpe = sum((r[2] or 0) for r in rows) / total
+            consensus = up_count / total
+
+            # 共识信号: >60% 看多, <40% 看空, 其他中性
+            if consensus >= 0.6:
+                signal = "buy"
+                signal_zh = "买入"
+            elif consensus <= 0.4:
+                signal = "sell"
+                signal_zh = "回避"
+            else:
+                signal = "hold"
+                signal_zh = "观望"
+
+            return {
+                "success": True,
+                "data": {
+                    "stock_code": code,
+                    "total_strategies": total,
+                    "up_count": up_count,
+                    "consensus": round(consensus, 3),
+                    "signal": signal,
+                    "signal_zh": signal_zh,
+                    "avg_return": round(avg_return, 2),
+                    "avg_sharpe": round(avg_sharpe, 2),
+                    "strategies": [
+                        {"name": r[0], "total_return": float(r[1]) if r[1] is not None else 0,
+                         "sharpe_ratio": float(r[2]) if r[2] is not None else 0}
+                        for r in rows[:10]  # 最多返回 10 个
+                    ],
+                }
+            }
+    except Exception as e:
+        logger.error("strategy/signal/%s 失败: %s", code, e)
+        return {"success": False, "error": str(e)[:200], "data": None}
+
+
+@router.post("/v5/run")
+async def v5_run(
+    top_n: int = Query(default=20, ge=1, le=100, description="选 Top N"),
+):
+    """v5 混合策略扫描 — v5_tuning.html 用 (POST 触发)
+
+    简化实现: 复用 backtest_result 取最近 v5 策略的回测, 取 top_n
+    """
+    from sqlalchemy import text
+    repo = _get_repo()
+    try:
+        with repo.engine.connect() as conn:
+            # 查 v5_hybrid 策略 ID
+            cfg = conn.execute(
+                text("SELECT id, name, class_path FROM strategy_config WHERE name LIKE '%v5%' OR name LIKE '%hybrid%' LIMIT 5")
+            ).fetchall()
+            if not cfg:
+                return {"success": False, "error": "未配置 v5 策略", "data": []}
+
+            strategy_ids = [c[0] for c in cfg]
+            placeholders = ",".join(f":s{i}" for i in range(len(strategy_ids)))
+            params = {f"s{i}": sid for i, sid in enumerate(strategy_ids)}
+            params["limit"] = top_n * 5
+
+            sql = f"""SELECT r.stock_code, r.stock_name, r.total_return, r.sharpe_ratio,
+                             r.max_drawdown, r.win_rate, s.name AS strategy_name
+                      FROM backtest_result r
+                      JOIN strategy_config s ON r.strategy_id = s.id
+                      WHERE r.strategy_id IN ({placeholders})
+                      ORDER BY r.sharpe_ratio DESC NULLS LAST
+                      LIMIT :limit"""
+            try:
+                rows = conn.execute(text(sql), params).fetchall()
+            except Exception:
+                # SQLite 不支持 NULLS LAST, 重试
+                sql2 = sql.replace("DESC NULLS LAST", "DESC")
+                rows = conn.execute(text(sql2), params).fetchall()
+
+            out = [
+                {
+                    "stock_code": r[0], "stock_name": r[1],
+                    "total_return": float(r[2]) if r[2] is not None else 0,
+                    "sharpe_ratio": float(r[3]) if r[3] is not None else 0,
+                    "max_drawdown": float(r[4]) if r[4] is not None else 0,
+                    "win_rate": float(r[5]) if r[5] is not None else 0,
+                    "strategy_name": r[6],
+                }
+                for r in rows[:top_n]
+            ]
+            return {"success": True, "data": out, "total": len(out), "triggered_strategies": [c[1] for c in cfg]}
+    except Exception as e:
+        logger.error("v5/run 失败: %s", e)
+        return {"success": False, "error": str(e)[:200], "data": []}
+

@@ -1,0 +1,46 @@
+{# ============================================================================
+   _ardot_nav.html — Ardot 风格统一 TopBar (2026-06-26)
+
+   替换 17 个独立 HTML 模板中散落的 mini-nav 和 "返回首页" 链接
+   提供:
+     - Logo + tagline (左侧)
+     - 主菜单 6 项 (中间, 当前页高亮)
+     - 实时状态指示灯 + 时间戳 (右侧)
+
+   用法:
+     <body>
+       {% include "partials/_ardot_nav.html" %}
+       <!-- 原页面 <header>... 保留 h1 + sub info -->
+       ...
+   ============================================================================ #}
+<header class="ardot-topbar">
+  <div class="ardot-topbar-left">
+    <a href="/" class="ardot-logo">📊 QuantTradingSystem</a>
+    <span class="ardot-tagline">{{ app_name|default('A股量化系统') }}</span>
+  </div>
+  <nav class="ardot-main-nav">
+    <a href="/" {% if request.url.path == '/' %}class="active"{% endif %}>📊 数据总览</a>
+    <a href="/strategy-compare" {% if request.url.path == '/strategy-compare' %}class="active"{% endif %}>⚔️ 策略对比</a>
+    <a href="/backtest-lab" {% if request.url.path == '/backtest-lab' %}class="active"{% endif %}>🧪 回测实验室</a>
+    <a href="/screener" {% if request.url.path == '/screener' %}class="active"{% endif %}>🔍 选股器</a>
+    <a href="/signal-dashboard" {% if request.url.path == '/signal-dashboard' %}class="active"{% endif %}>⚡ 综合信号</a>
+    <a href="/data-monitor" {% if request.url.path == '/data-monitor' %}class="active"{% endif %}>📊 数据监控</a>
+  </nav>
+  <div class="ardot-topbar-right">
+    <span class="ardot-status-dot" title="系统正常"></span>
+    <span class="ardot-sync-time" id="ardotSyncTime">--:--:--</span>
+  </div>
+</header>
+<script>
+// Ardot TopBar 时间戳自动更新
+(function(){
+  function pad(n){ return n<10?'0'+n:n; }
+  function tick(){
+    const el = document.getElementById('ardotSyncTime');
+    if (!el) return;
+    const d = new Date();
+    el.textContent = pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+  }
+  tick(); setInterval(tick, 1000);
+})();
+</script>
