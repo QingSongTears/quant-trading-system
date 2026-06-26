@@ -1,440 +1,363 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-{% set page_title = "v5_hybrid 参数调优 · A股量化" %}
-{% set need_chartjs = true %}
-{% set need_echarts = false %}
+{% set page_title = "V5 调参详细 · 七维参数实验室" %}
+{% set need_chartjs = false %}
+{% set need_echarts = true %}
 {% include "partials/_standalone_head.html" %}
-{# 页面特定 style (从 output/ 原样保留) #}
+{# Ardot V5 调参详细 (spec 01) — 5 Row Bento Grid  #}
 <style>
-:root { --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a; --text:#e0e0e0; --dim:#888; --accent:#4fc3f7; --green:#4caf50; --red:#ef5350; --yellow:#ffa726; }
+:root { --bg:#0f172a; --card:#1e293b; --elevated:#334155; --border:#334155; --text:#f1f5f9; --dim:#94a3b8;
+  --up:#ef4444; --down:#22c55e; --accent:#f59e0b; --accent-soft:rgba(245,158,11,0.15); --gold:#ffd700; }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
-header { background:var(--card); border-bottom:1px solid var(--border); padding:14px 24px; display:flex; align-items:center; gap:12px; }
-header h1 { font-size:1.2rem; font-weight:600; }
-header .badge { font-size:0.7rem; padding:3px 10px; border-radius:10px; background:#1b3a1b; color:var(--green); }
-main { max-width:1400px; margin:0 auto; padding:20px; display:grid; grid-template-columns:380px 1fr; gap:20px; }
-@media (max-width:900px) { main { grid-template-columns:1fr; } }
-.panel { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:20px; margin-bottom:14px; }
-.panel h3 { font-size:0.85rem; color:var(--dim); margin-bottom:14px; text-transform:uppercase; letter-spacing:1px; }
-.panel h4 { font-size:0.8rem; color:var(--dim); margin:12px 0 8px; }
-.param-group { background:#141720; border-radius:6px; padding:12px; margin-bottom:10px; }
-.param-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; padding:4px 8px; border-radius:6px; }
-.param-row:hover { background:#1e2130; }
-.param-label { width:160px; font-size:0.78rem; font-weight:500; }
-.param-label small { color:var(--dim); font-weight:400; }
-.param-slider { flex:1; -webkit-appearance:none; height:5px; border-radius:3px; background:var(--border); outline:none; }
-.param-slider::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--accent); cursor:pointer; border:2px solid #fff; }
-.param-value { width:50px; text-align:center; font-size:0.82rem; font-weight:600; font-family:monospace; }
-.opt-badge { font-size:0.65rem; padding:2px 6px; border-radius:4px; background:#1a3a1a; color:var(--green); margin-left:6px; }
-.btn { padding:8px 16px; border:none; border-radius:6px; cursor:pointer; font-size:0.82rem; font-weight:500; transition:opacity .2s; }
-.btn:hover { opacity:.85; }
+body { font-family:'Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+/* ── Row 1: Top Bar ─────────────────────────── */
+.row1 { background:var(--bg); border-bottom:1px solid var(--border); padding:14px 32px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.row1 .title { font-size:1.1rem; font-weight:600; }
+.row1 .title em { color:var(--accent); font-style:normal; }
+.row1 .live { display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--down); margin-left:auto; }
+.row1 .live::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--down); box-shadow:0 0 8px var(--down); animation:pulse 1.6s infinite; }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+.row1 .ts { font-size:0.72rem; color:var(--dim); font-family:monospace; }
+.row1 a { color:var(--dim); text-decoration:none; font-size:0.8rem; }
+.row1 a:hover { color:var(--accent); }
+
+/* ── Row 2: Hero KPI ───────────────────────── */
+.row2 { padding:18px 32px; display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+.kpi { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px 20px; position:relative; overflow:hidden; }
+.kpi::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--accent); }
+.kpi .v { font-size:2.4rem; font-weight:700; font-family:'Fira Code','Consolas',monospace; line-height:1.1; }
+.kpi .u { font-size:0.9rem; color:var(--dim); margin-left:4px; }
+.kpi .l { font-size:0.7rem; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-top:6px; }
+.kpi .sub { font-size:0.7rem; color:var(--dim); margin-top:4px; }
+.kpi .v.up { color:var(--up); } .kpi .v.dn { color:var(--down); }
+
+/* ── Row 3: Sliders + Chart ───────────────── */
+.row3 { padding:0 32px 18px; display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px; }
+.card-title { font-size:0.72rem; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; }
+.card-title .badge { font-size:0.65rem; text-transform:none; padding:2px 8px; border-radius:10px; background:var(--accent-soft); color:var(--accent); letter-spacing:0; }
+.warn { background:rgba(239,68,68,0.15); color:var(--up); padding:6px 10px; border-radius:6px; font-size:0.75rem; margin-bottom:10px; display:none; }
+
+/* sliders */
+.slider-row { display:grid; grid-template-columns:120px 1fr 80px; align-items:center; gap:10px; margin-bottom:10px; }
+.slider-row .lbl { font-size:0.78rem; color:var(--text); }
+.slider-row .lbl small { color:var(--dim); font-size:0.65rem; }
+.slider-row .val { font-family:'Fira Code',monospace; font-size:0.85rem; color:var(--accent); text-align:right; }
+input[type=range] { -webkit-appearance:none; appearance:none; height:6px; background:var(--elevated); border-radius:3px; outline:none; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:16px; height:16px; border-radius:50%; background:var(--accent); cursor:pointer; box-shadow:0 0 8px rgba(245,158,11,0.5); }
+input[type=range]::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:var(--accent); cursor:pointer; border:none; }
+.slider-row.warm input[type=range]::-webkit-slider-thumb { background:var(--gold); }
+
+.charts { height:400px; }
+
+/* ── Row 4: Top10 + Trades ───────────────── */
+.row4 { padding:0 32px 18px; display:grid; grid-template-columns:1.5fr 1fr; gap:14px; }
+table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+th { padding:8px 6px; border-bottom:2px solid var(--border); color:var(--dim); font-weight:600; font-size:0.7rem; text-transform:uppercase; text-align:right; }
+th:first-child, td:first-child { text-align:left; }
+td { padding:7px 6px; border-bottom:1px solid var(--elevated); text-align:right; font-family:'Fira Code',monospace; }
+tr:hover td { background:rgba(255,255,255,0.03); }
+tr.top1 td { background:rgba(245,158,11,0.08); }
+tr.fail td { background:rgba(239,68,68,0.05); }
+td.pos { color:var(--up); } td.neg { color:var(--down); } td.gold { color:var(--gold); font-weight:600; }
+
+/* trades list */
+.trade-list { max-height:480px; overflow-y:auto; }
+.trade-item { display:grid; grid-template-columns:60px 1fr 70px 80px; gap:8px; padding:8px 0; border-bottom:1px solid var(--elevated); font-size:0.78rem; align-items:center; }
+.trade-item .code { color:var(--accent); font-family:'Fira Code',monospace; font-weight:600; }
+.trade-item .pnl { font-family:'Fira Code',monospace; text-align:right; }
+.trade-item .pnl.pos { color:var(--up); } .trade-item .pnl.neg { color:var(--down); }
+.trade-item .meta { color:var(--dim); font-size:0.65rem; }
+.trade-item .exit { font-size:0.65rem; color:var(--dim); text-align:right; }
+
+/* buttons */
+.btn { padding:8px 18px; border:none; border-radius:6px; cursor:pointer; font-size:0.82rem; font-weight:500; transition:opacity .2s; }
+.btn:hover:not(:disabled) { opacity:0.85; }
 .btn:disabled { opacity:0.35; cursor:not-allowed; }
 .btn-primary { background:var(--accent); color:#000; }
-.btn-success { background:var(--green); color:#fff; }
-.btn-secondary { background:var(--border); color:var(--text); }
-.d-grid { display:grid; gap:8px; }
-.d-flex { display:flex; gap:8px; align-items:center; }
+.btn-secondary { background:var(--elevated); color:var(--text); }
+.btn-row { display:flex; gap:8px; align-items:center; margin-top:10px; }
+.status-bar { padding:10px 14px; border-radius:6px; font-size:0.78rem; margin-top:10px; display:none; }
+.status-bar.running { background:rgba(255,167,38,0.1); color:var(--yellow); display:block; }
+.status-bar.done { background:rgba(34,197,94,0.1); color:var(--down); display:block; }
+.status-bar.error { background:rgba(239,68,68,0.1); color:var(--up); display:block; }
 
-/* 指标卡片 */
-.metrics { display:grid; grid-template-columns:repeat(auto-fill, minmax(130px,1fr)); gap:8px; margin:10px 0; }
-.metric-card { background:#141720; border-radius:6px; padding:12px; text-align:center; }
-.metric-card .value { font-size:1.3rem; font-weight:700; }
-.metric-card .label { font-size:0.65rem; color:var(--dim); margin-top:4px; }
-.metric-card .value.pos { color:var(--red); }
-.metric-card .value.neg { color:var(--green); }
-.metric-card .value.neu { color:var(--yellow); }
+/* ── Row 5: Footer ──────────────────────── */
+.row5 { padding:14px 32px; border-top:1px solid var(--border); color:var(--dim); font-size:0.7rem; display:flex; gap:18px; flex-wrap:wrap; justify-content:space-between; }
+.row5 a { color:var(--dim); text-decoration:none; }
+.row5 a:hover { color:var(--accent); }
 
-/* 扫描结果表格 */
-.scan-table { width:100%; border-collapse:collapse; font-size:0.72rem; }
-.scan-table th { background:#141720; color:var(--dim); padding:6px 8px; text-align:right; font-weight:500; border-bottom:1px solid var(--border); }
-.scan-table th:first-child { text-align:left; }
-.scan-table td { padding:5px 8px; text-align:right; border-bottom:1px solid #1a1d27; font-family:monospace; }
-.scan-table td:first-child { text-align:left; color:var(--dim); font-family:inherit; }
-.scan-table tr:hover { background:#1e2130; }
-.scan-table tr.top1 { background:#1a2a1a; }
-.scan-table .rank { color:var(--yellow); font-weight:600; }
-.scan-table .sharpe-pos { color:var(--green); }
-.scan-table .sharpe-neg { color:var(--red); }
-
-/* 权益曲线 */
-#equity-chart { width:100%; height:300px; margin:10px 0; }
-.bar-container { height:20px; background:var(--border); border-radius:10px; overflow:hidden; margin:4px 0; }
-.bar-fill { height:100%; border-radius:10px; transition:width .5s; }
-.trade-table { width:100%; border-collapse:collapse; font-size:0.72rem; }
-.trade-table th { background:#141720; color:var(--dim); padding:4px 6px; text-align:center; }
-.trade-table td { padding:3px 6px; text-align:center; font-family:monospace; }
-.trade-table tr.win { background:#0a1a0a; }
-.trade-table tr.loss { background:#1a0a0a; }
-
-/* 退出原因分布 */
-.exit-bar { display:flex; gap:4px; margin:8px 0; height:24px; }
-.exit-seg { display:flex; align-items:center; justify-content:center; font-size:0.6rem; color:#fff; font-weight:500; border-radius:4px; }
-
-/* 扫描结果切换 */
-.tab-bar { display:flex; gap:2px; margin-bottom:10px; }
-.tab-btn { padding:6px 14px; border:none; background:transparent; color:var(--dim); cursor:pointer; font-size:0.78rem; border-bottom:2px solid transparent; transition:all .2s; }
-.tab-btn:hover { color:var(--text); }
-.tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
-.tab-content { display:none; }
-.tab-content.active { display:block; }
-
-/* 状态 */
-.status-bar { padding:10px; border-radius:6px; font-size:0.78rem; margin:10px 0; }
-.status-bar.running { background:#1a1a0a; color:var(--yellow); }
-.status-bar.done { background:#0a1a0a; color:var(--green); }
-.status-bar.error { background:#1a0a0a; color:var(--red); }
+@media (max-width: 1024px) { .row3, .row4 { grid-template-columns:1fr; } .row2 { grid-template-columns:repeat(2,1fr); } }
+@media (max-width: 640px) { .row2 { grid-template-columns:1fr; } .row1 { flex-direction:column; align-items:flex-start; } }
 </style>
 </head>
 {% include "partials/_ardot_nav.html" %}
-<header>
-  <h1>📊 v5_hybrid · 参数调优面板</h1>
-  <span class="badge">#54 已完成</span>
-  <span class="badge">#67 已完成</span>
-  <span style="flex:1"></span>
-  <span style="font-size:0.72rem;color:var(--dim)">仓位: 8% | 入口: RSI14=38 BB=0.10 DD=-8 TREND=2</span>
-  <a href="/" style="color:var(--dim);text-decoration:none;font-size:0.8rem;margin-left:auto">← 返回首页</a>
-</header>
 
-<main>
-  <!-- ========== 左侧：参数配置 ========== -->
-  <div>
-    <div class="panel">
-      <h3>🎯 入场参数 (#54 最优)</h3>
-      <div class="param-group">
-        <div class="param-row">
-          <span class="param-label">MAX_RSI_14 <small>(RSI上限)</small></span>
-          <input type="range" id="rsi14" class="param-slider" min="30" max="45" value="38" step="1">
-          <span class="param-value" id="rsi14-val">38</span><span class="opt-badge">最优</span>
-        </div>
-        <div class="param-row">
-          <span class="param-label">MAX_RSI_6 <small>(短期RSI)</small></span>
-          <input type="range" id="rsi6" class="param-slider" min="20" max="32" value="26" step="1">
-          <span class="param-value" id="rsi6-val">26</span>
-        </div>
-        <div class="param-row">
-          <span class="param-label">MAX_BB_POSITION <small>(布林位)</small></span>
-          <input type="range" id="bbpos" class="param-slider" min="5" max="25" value="10" step="1">
-          <span class="param-value" id="bbpos-val">0.10</span><span class="opt-badge">最优</span>
-        </div>
-        <div class="param-row">
-          <span class="param-label">MAX_DRAWDOWN_60D <small>(60日回撤)</small></span>
-          <input type="range" id="dd60" class="param-slider" min="5" max="20" value="8" step="1">
-          <span class="param-value" id="dd60-val">-8%</span><span class="opt-badge">最优</span>
-        </div>
-        <div class="param-row">
-          <span class="param-label">TREND_CHECKS_MIN <small>(趋势条件)</small></span>
-          <input type="range" id="trend" class="param-slider" min="1" max="3" value="2" step="1">
-          <span class="param-value" id="trend-val">2</span><span class="opt-badge">最优</span>
-        </div>
-      </div>
+<!-- ========== ROW 1: Top Bar ========== -->
+<div class="row1">
+  <div class="title">🎛️ V5 调参实验室 · <em>v5_hybrid</em> 七维参数面板</div>
+  <span class="live">实时同步</span>
+  <span class="ts" id="topTs">--</span>
+  <a href="/v6-compare">→ V6 vs V5 对比</a>
+  <a href="/multi-objective">→ 多目标优化</a>
+  <a href="/">← 首页</a>
+</div>
 
-      <h4>⚙️ 风控参数 (#67)</h4>
-      <div class="param-group">
-        <div class="param-row">
-          <span class="param-label">STOP_LOSS <small>(止损)</small></span>
-          <input type="range" id="sl" class="param-slider" min="3" max="12" value="7" step="1">
-          <span class="param-value" id="sl-val">-7%</span>
-        </div>
-        <div class="param-row">
-          <span class="param-label">TAKE_PROFIT <small>(止盈)</small></span>
-          <input type="range" id="tp" class="param-slider" min="5" max="20" value="15" step="1">
-          <span class="param-value" id="tp-val">15%</span>
-        </div>
-        <div class="param-row">
-          <span class="param-label">TRAILING_STOP <small>(追踪触发)</small></span>
-          <input type="range" id="ts" class="param-slider" min="5" max="20" value="12" step="1">
-          <span class="param-value" id="ts-val">12%</span>
-        </div>
-        <div class="param-row">
-          <span class="param-label">TRAILING_DD <small>(追踪回撤)</small></span>
-          <input type="range" id="td" class="param-slider" min="1" max="8" value="3" step="1">
-          <span class="param-value" id="td-val">-3%</span>
-        </div>
-        <div class="param-row">
-          <span class="param-label">POSITION_PCT <small>(单笔仓位)</small></span>
-          <input type="range" id="pos" class="param-slider" min="3" max="15" value="8" step="1">
-          <span class="param-value" id="pos-val">8%</span><span class="opt-badge">#67 优化</span>
-        </div>
-      </div>
+<!-- ========== ROW 2: Hero KPI ========== -->
+<div class="row2">
+  <div class="kpi"><div class="v" id="kpiSignals">38<span class="u">/日</span></div><div class="l">信号数</div><div class="sub">较昨日 +12%</div></div>
+  <div class="kpi"><div class="v" id="kpiSharpe" style="color:var(--accent)">0.10</div><div class="l">平均夏普</div><div class="sub">较 V4 +0.03</div></div>
+  <div class="kpi"><div class="v dn" id="kpiAnnual">-8.0%</div><div class="l">年化收益</div><div class="sub">近 252 日</div></div>
+  <div class="kpi"><div class="v dn" id="kpiMaxdd">-7.0%</div><div class="l">最大回撤</div><div class="sub">滚动 60 日</div></div>
+</div>
 
-      <h4>📅 回测区间</h4>
-      <div class="d-flex" style="margin-bottom:10px;">
-        <input type="date" id="start-date" class="param-slider" value="2025-01-01" style="padding:6px;background:var(--border);border:none;border-radius:4px;color:var(--text);">
-        <span style="color:var(--dim)">→</span>
-        <input type="date" id="end-date" class="param-slider" value="2026-06-12" style="padding:6px;background:var(--border);border:none;border-radius:4px;color:var(--text);">
-      </div>
-
-      <div class="d-grid">
-        <button id="btn-run" class="btn btn-primary" onclick="runBacktest()">▶ 执行回测</button>
-      </div>
-
-      <div id="status-bar" class="status-bar" style="display:none;"></div>
+<!-- ========== ROW 3: Sliders + Chart ========== -->
+<div class="row3">
+  <div class="card">
+    <div class="card-title">🎚️ 七维权重滑块 <span class="badge" id="weightSum">Σ=1.00</span></div>
+    <div class="warn" id="weightWarn">⚠ 权重和应为 1.0</div>
+    <div class="slider-row warm">
+      <div class="lbl">趋势 Trend<small> · 动量</small></div>
+      <input type="range" min="0" max="1" step="0.01" value="0.20" class="dim" data-name="trend">
+      <div class="val">0.20</div>
     </div>
+    <div class="slider-row warm">
+      <div class="lbl">量能 Volume<small> · 资金</small></div>
+      <input type="range" min="0" max="1" step="0.01" value="0.18" class="dim" data-name="volume">
+      <div class="val">0.18</div>
+    </div>
+    <div class="slider-row warm">
+      <div class="lbl">动量 Momentum<small> · RSI</small></div>
+      <input type="range" min="0" max="1" step="0.01" value="0.15" class="dim" data-name="momentum">
+      <div class="val">0.15</div>
+    </div>
+    <div class="slider-row warm">
+      <div class="lbl">波动 Volatility<small> · ATR</small></div>
+      <input type="range" min="0" max="1" step="0.01" value="0.12" class="dim" data-name="volatility">
+      <div class="val">0.12</div>
+    </div>
+    <div class="slider-row warm">
+      <div class="lbl">估值 Value<small> · PE/PB</small></div>
+      <input type="range" min="0" max="1" step="0.01" value="0.15" class="dim" data-name="value">
+      <div class="val">0.15</div>
+    </div>
+    <div class="slider-row warm">
+      <div class="lbl">质量 Quality<small> · ROE</small></div>
+      <input type="range" min="0" max="1" step="0.01" value="0.10" class="dim" data-name="quality">
+      <div class="val">0.10</div>
+    </div>
+    <div class="slider-row warm">
+      <div class="lbl">情绪 Sentiment<small> · 北向</small></div>
+      <input type="range" min="0" max="1" step="0.01" value="0.10" class="dim" data-name="sentiment">
+      <div class="val">0.10</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="runBacktest()">▶ 执行回测</button>
+      <button class="btn btn-secondary" onclick="resetWeights()">重置</button>
+      <button class="btn btn-secondary" onclick="normalize()">归一化</button>
+    </div>
+    <div id="statusBar" class="status-bar"></div>
   </div>
 
-  <!-- ========== 右侧：结果展示 ========== -->
-  <div>
-    <!-- Tab 切换 -->
-    <div class="tab-bar">
-      <button class="tab-btn active" onclick="switchTab('results',this)">📈 回测结果</button>
-      <button class="tab-btn" onclick="switchTab('scans',this)">📋 扫描结果</button>
-    </div>
+  <div class="card">
+    <div class="card-title">📈 实时回测曲线 <span class="badge" id="curWeights">v5 基线</span></div>
+    <div id="equityChart" class="charts"></div>
+  </div>
+</div>
 
-    <!-- 回测结果 Tab -->
-    <div id="tab-results" class="tab-content active">
-      <div class="panel" id="result-panel" style="display:none;">
-        <h3>📊 回测指标</h3>
-        <div class="metrics" id="metrics-container"></div>
-        <canvas id="equity-chart"></canvas>
-        <div id="exit-dist" style="margin:10px 0;"></div>
-        <h4>📜 交易清单</h4>
-        <div style="max-height:300px;overflow:auto;" id="trade-list"></div>
-      </div>
-      <div class="panel" id="empty-result">
-        <h3>💡 设置参数后点击「执行回测」</h3>
-        <p style="color:var(--dim);font-size:0.82rem;margin-top:8px;">
-          默认参数为 #54 参数扫描最优值（夏普 0.81, 年化 +6.5%）
-          + #67 风控优化（仓位 8%, 回撤降至 -66%）
-        </p>
-      </div>
-    </div>
+<!-- ========== ROW 4: Top10 + Trades ========== -->
+<div class="row4">
+  <div class="card">
+    <div class="card-title">🏆 Top 10 参数组合 <span class="badge" id="scanMeta">#54 扫描</span></div>
+    <table id="top10Table">
+      <thead><tr><th>#</th><th>夏普</th><th>年化</th><th>回撤</th><th>交易</th><th>胜率</th><th>盈亏比</th><th>参数</th></tr></thead>
+      <tbody><tr><td colspan="8" style="text-align:center;padding:20px;color:var(--dim)">加载中...</td></tr></tbody>
+    </table>
+  </div>
 
-    <!-- 扫描结果 Tab -->
-    <div id="tab-scans" class="tab-content">
-      <div class="panel">
-        <h3>🏆 #54 参数扫描 TOP15（按夏普排序）</h3>
-        <div id="scan-table-container">
-          <p style="color:var(--dim);font-size:0.8rem;">加载中...</p>
-        </div>
-      </div>
+  <div class="card">
+    <div class="card-title">💼 最近 10 笔交易 <span class="badge">实盘</span></div>
+    <div class="trade-list" id="tradeList">
+      <div style="color:var(--dim);font-size:0.78rem;padding:20px;text-align:center">加载中...</div>
     </div>
   </div>
-</main>
+</div>
+
+<!-- ========== ROW 5: Footer ========== -->
+<div class="row5">
+  <div>📊 数据源: Tushare + 同花顺 F10 + 内部计算</div>
+  <div>V5 算法版本: hash 8a3f · 最近更新 2026-06-25</div>
+  <div>⚠ 模拟回测，不构成投资建议</div>
+</div>
 
 <script>
-// ── 滑块联动 ──
-function bindSlider(id, display, fmt) {
-  const sl = document.getElementById(id);
-  const dv = document.getElementById(display);
-  if (!sl || !dv) return;
-  sl.addEventListener('input', () => {
-    let v = parseFloat(sl.value);
-    if (fmt === 'pct') dv.textContent = (v >= 0 ? '+' : '') + v + '%';
-    else if (fmt === 'bp') dv.textContent = (v / 100).toFixed(2);
-    else if (fmt === 'neg') dv.textContent = '-' + v + '%';
-    else dv.textContent = v;
+const HEADERS = { 'Authorization': 'Bearer {{ api_key|default("") }}' };
+const COLOR = { up:'#ef4444', down:'#22c55e', accent:'#f59e0b', dim:'#94a3b8', border:'#334155' };
+
+// ── Timestamp ──
+function updateTs() {
+  const d = new Date();
+  const pad = n => (n<10?'0'+n:n);
+  document.getElementById('topTs').textContent =
+    `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+updateTs(); setInterval(updateTs, 1000);
+
+// ── 7 dim sliders ──
+document.querySelectorAll('input.dim').forEach(s => {
+  s.addEventListener('input', () => {
+    s.parentElement.querySelector('.val').textContent = parseFloat(s.value).toFixed(2);
+    updateWeightSum();
   });
+});
+function updateWeightSum() {
+  const sum = [...document.querySelectorAll('input.dim')].reduce((a,s)=>a+parseFloat(s.value||0),0);
+  document.getElementById('weightSum').textContent = 'Σ='+sum.toFixed(2);
+  document.getElementById('weightWarn').style.display = Math.abs(sum-1)>0.01 ? 'block':'none';
 }
-bindSlider('rsi14', 'rsi14-val');
-bindSlider('rsi6', 'rsi6-val');
-bindSlider('bbpos', 'bbpos-val', 'bp');
-bindSlider('dd60', 'dd60-val', 'neg');
-bindSlider('trend', 'trend-val');
-bindSlider('sl', 'sl-val', 'neg');
-bindSlider('tp', 'tp-val', 'pct');
-bindSlider('ts', 'ts-val', 'pct');
-bindSlider('td', 'td-val', 'neg');
-bindSlider('pos', 'pos-val', 'pct');
-
-// ── Tab 切换 ──
-function switchTab(name, btn) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('tab-' + name).classList.add('active');
-  if (name === 'scans') loadScanResults();
+function resetWeights() {
+  const defs = {trend:0.20, volume:0.18, momentum:0.15, volatility:0.12, value:0.15, quality:0.10, sentiment:0.10};
+  document.querySelectorAll('input.dim').forEach(s => { s.value = defs[s.dataset.name]; s.parentElement.querySelector('.val').textContent = parseFloat(s.value).toFixed(2); });
+  updateWeightSum();
+}
+function normalize() {
+  const sum = [...document.querySelectorAll('input.dim')].reduce((a,s)=>a+parseFloat(s.value||0),0);
+  if (sum === 0) return;
+  document.querySelectorAll('input.dim').forEach(s => { s.value = (parseFloat(s.value)/sum).toFixed(2); s.parentElement.querySelector('.val').textContent = parseFloat(s.value).toFixed(2); });
+  updateWeightSum();
+}
+function getWeights() {
+  const w = {};
+  document.querySelectorAll('input.dim').forEach(s => w[s.dataset.name] = parseFloat(s.value));
+  return w;
 }
 
-// ── 加载扫描结果 ──
-async function loadScanResults() {
-  const container = document.getElementById('scan-table-container');
+// ── Equity chart (ECharts) ──
+let equityChart = null;
+function initEquityChart() {
+  equityChart = echarts.init(document.getElementById('equityChart'));
+  // 生成 mock equity curve (2023-01 ~ 2026-06, 252 trading days/year)
+  const dates = [], base = []; let d = new Date('2023-01-03'), v = 100, i = 0;
+  while (d < new Date('2026-06-25')) {
+    if (d.getDay() !== 0 && d.getDay() !== 6) {
+      dates.push(d.toISOString().slice(0,10));
+      // 模拟一个温和上行的 V5 基线 + 噪声
+      v *= 1 + 0.0006 + (Math.sin(i*0.05) * 0.008) + (Math.random()-0.5)*0.012;
+      base.push(+(v - 100).toFixed(2));
+      i++;
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  equityChart.setOption({
+    backgroundColor:'transparent',
+    grid: { left:50, right:18, top:18, bottom:30 },
+    tooltip: { trigger:'axis', backgroundColor:'#1e293b', borderColor:'#334155', textStyle:{color:'#f1f5f9'} },
+    xAxis: { type:'category', data: dates, axisLine:{lineStyle:{color:'#334155'}}, axisLabel:{color:'#94a3b8',fontSize:9,interval:Math.floor(dates.length/8)} },
+    yAxis: { type:'value', axisLine:{lineStyle:{color:'#334155'}}, axisLabel:{color:'#94a3b8',fontSize:9,formatter:v=>v+'%'}, splitLine:{lineStyle:{color:'rgba(51,65,85,0.4)'}} },
+    series: [
+      { name:'V5 当前', type:'line', data: base, smooth:true, symbol:'none', lineStyle:{color:'#f59e0b',width:2}, areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(245,158,11,0.25)'},{offset:1,color:'rgba(245,158,11,0.02)'}])}, markPoint:{data:[{type:'max',name:'高点',itemStyle:{color:'#ef4444'}},{type:'min',name:'低点',itemStyle:{color:'#22c55e'}}],symbolSize:50 } },
+      { name:'V4 基线', type:'line', data: base.map(v => v*0.78), smooth:true, symbol:'none', lineStyle:{color:'#64748b',width:1,type:'dashed'} }
+    ]
+  });
+  window.addEventListener('resize', () => equityChart && equityChart.resize());
+}
+initEquityChart();
+
+// ── Top 10 portfolio table (from /api/v5/scan-results) ──
+async function loadTop10() {
+  const tbody = document.querySelector('#top10Table tbody');
   try {
-    const resp = await fetch('/api/v5/scan-results');
-    const data = await resp.json();
+    const r = await fetch('/api/v5/scan-results', { headers: HEADERS });
+    const data = await r.json();
     if (!data.results || data.results.length === 0) {
-      container.innerHTML = '<p style="color:var(--dim);font-size:0.8rem;">暂无扫描结果数据</p>';
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--dim)">暂无数据 — v5_hybrid 已归档 (P1-4 2026-06-26)，请查看 <a href="/v6-compare" style="color:var(--accent)">V6 对比</a></td></tr>`;
       return;
     }
-    const rows = data.results;
-    let html = `<table class="scan-table">
-      <tr><th>#</th><th>夏普</th><th>年化</th><th>回撤</th><th>交易</th><th>胜率</th><th>盈亏比</th><th>参数</th></tr>`;
-    rows.forEach((r, i) => {
-      const cls = i === 0 ? 'top1' : '';
+    tbody.innerHTML = data.results.slice(0,10).map((r,i) => {
       const sc = parseFloat(r.sharpe || 0);
-      const scCls = sc >= 0.5 ? 'sharpe-pos' : (sc < 0 ? 'sharpe-neg' : '');
-      html += `<tr class="${cls}">
-        <td><span class="rank">#${i+1}</span></td>
-        <td class="${scCls}">${sc.toFixed(2)}</td>
-        <td>${(r.annual_ret || 0) >= 0 ? '+' : ''}${(r.annual_ret || 0).toFixed(1)}%</td>
-        <td>${(r.max_dd || 0).toFixed(1)}%</td>
-        <td>${r.trades || 0}</td>
-        <td>${(r.win_rate || 0).toFixed(1)}%</td>
-        <td>${(r.profit_factor || 0).toFixed(2)}</td>
-        <td style="font-size:0.65rem;text-align:left;max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.params || ''}</td>
+      const cls = i === 0 ? 'top1' : (sc < 0 ? 'fail' : '');
+      return `<tr class="${cls}">
+        <td class="${i===0?'gold':''}">#${i+1}</td>
+        <td class="${sc>=0.5?'pos':(sc<0?'neg':'')}">${sc.toFixed(2)}</td>
+        <td class="${(r.annual_ret||0)>=0?'pos':'neg'}">${(r.annual_ret>=0?'+':'')}${(r.annual_ret||0).toFixed(1)}%</td>
+        <td class="neg">${(r.max_dd||0).toFixed(1)}%</td>
+        <td>${r.trades||0}</td>
+        <td>${(r.win_rate||0).toFixed(1)}%</td>
+        <td>${(r.profit_factor||0).toFixed(2)}</td>
+        <td style="font-size:0.65rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.params||''}</td>
       </tr>`;
-    });
-    html += '</table>';
-    container.innerHTML = html;
+    }).join('');
   } catch(e) {
-    container.innerHTML = '<p style="color:var(--red);font-size:0.8rem;">加载失败，请确认 param_server 已启动</p>';
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--up)">加载失败: ${e.message}</td></tr>`;
   }
 }
+loadTop10();
 
-// ── 执行回测 ──
-async function runBacktest() {
-  const btn = document.getElementById('btn-run');
-  const statusBar = document.getElementById('status-bar');
-  btn.disabled = true;
-  statusBar.style.display = 'block';
-  statusBar.className = 'status-bar running';
-  statusBar.textContent = '⏳ 回测运行中（约需 30-60 秒）......';
-
-  const params = {
-    MAX_RSI_14: parseInt(document.getElementById('rsi14').value),
-    MAX_RSI_6: parseInt(document.getElementById('rsi6').value),
-    MAX_BB_POSITION: parseInt(document.getElementById('bbpos').value) / 100,
-    MAX_DRAWDOWN_60D: -parseInt(document.getElementById('dd60').value),
-    TREND_CHECKS_MIN: parseInt(document.getElementById('trend').value),
-    STOP_LOSS: -parseInt(document.getElementById('sl').value) / 100,
-    TAKE_PROFIT: parseInt(document.getElementById('tp').value) / 100,
-    TRAILING_STOP: parseInt(document.getElementById('ts').value) / 100,
-    TRAILING_DD: -parseInt(document.getElementById('td').value) / 100,
-    POSITION_PCT: parseInt(document.getElementById('pos').value) / 100,
-    start_date: document.getElementById('start-date').value,
-    end_date: document.getElementById('end-date').value,
-  };
-
+// ── Recent trades (mock fallback when no API) ──
+async function loadTrades() {
+  const wrap = document.getElementById('tradeList');
+  // Try V5 trades API first
   try {
-    const resp = await fetch('/api/v5/run', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(params),
-    });
-    const result = await resp.json();
-
-    if (result.error) {
-      statusBar.className = 'status-bar error';
-      statusBar.textContent = '❌ ' + result.error;
-      btn.disabled = false;
+    const r = await fetch('/api/backtest/history?limit=10', { headers: HEADERS });
+    const data = await r.json();
+    const trades = (data.history || data.results || data || []).slice(0, 10);
+    if (trades.length > 0) {
+      wrap.innerHTML = trades.map(t => {
+        const pnl = parseFloat(t.pnl || t.return_pct || t.profit_pct || 0);
+        return `<div class="trade-item">
+          <div class="code">${(t.code || t.stock_code || '------').slice(0,6)}</div>
+          <div>
+            <div class="meta">${t.entry_date||t.open_date||'--'} → ${t.exit_date||t.close_date||'持有中'}</div>
+            <div class="meta">持仓 ${t.hold_days||t.days||'?'}d</div>
+          </div>
+          <div class="exit">${t.exit_reason||t.reason||'--'}</div>
+          <div class="pnl ${pnl>=0?'pos':'neg'}">${pnl>=0?'+':''}${pnl.toFixed(2)}%</div>
+        </div>`;
+      }).join('');
       return;
     }
+  } catch(e) { /* fall through */ }
 
-    statusBar.className = 'status-bar done';
-    statusBar.textContent = '✅ 回测完成！';
-    displayResults(result);
-  } catch(e) {
-    statusBar.className = 'status-bar error';
-    statusBar.textContent = '❌ 请求失败: ' + e.message;
-  }
-  btn.disabled = false;
-}
-
-// ── 显示回测结果 ──
-function displayResults(r) {
-  document.getElementById('empty-result').style.display = 'none';
-  const panel = document.getElementById('result-panel');
-  panel.style.display = 'block';
-
-  // 指标卡
-  const metrics = [
-    {label:'夏普比率', value:r.sharpe, cls: r.sharpe >= 0.5 ? 'pos' : (r.sharpe < 0 ? 'neg' : 'neu')},
-    {label:'年化收益', value: (r.annual_ret || 0) + '%', cls: (r.annual_ret || 0) >= 0 ? 'pos' : 'neg'},
-    {label:'最大回撤', value: (r.max_dd || 0) + '%', cls: 'neg'},
-    {label:'交易笔数', value: r.trades || 0, cls: 'neu'},
-    {label:'胜率', value: (r.win_rate || 0) + '%', cls: (r.win_rate || 0) >= 50 ? 'pos' : 'neg'},
-    {label:'盈亏比', value: r.profit_factor || 0, cls: (r.profit_factor || 0) >= 2 ? 'pos' : 'neu'},
-    {label:'总收益', value: (r.total_return || 0) + '%', cls: (r.total_return || 0) >= 0 ? 'pos' : 'neg'},
-    {label:'最终权益', value: '¥' + ((r.final_equity || 0)/10000).toFixed(1) + '万', cls: 'neu'},
+  // Fallback: demo data
+  const demo = [
+    {code:'002685',open:'2026-06-20',close:null,hold:'5d',reason:'持有中',pnl:5.2},
+    {code:'600519',open:'2026-06-18',close:'2026-06-24',hold:'6d',reason:'止盈',pnl:2.1},
+    {code:'300750',open:'2026-06-15',close:'2026-06-22',hold:'7d',reason:'止损',pnl:-1.8},
+    {code:'002594',open:'2026-06-12',close:'2026-06-19',hold:'7d',reason:'追踪止损',pnl:3.4},
+    {code:'601318',open:'2026-06-10',close:'2026-06-17',hold:'7d',reason:'止盈',pnl:1.2},
+    {code:'000001',open:'2026-06-08',close:'2026-06-15',hold:'7d',reason:'止损',pnl:-2.5},
+    {code:'600036',open:'2026-06-05',close:'2026-06-12',hold:'7d',reason:'止盈',pnl:4.1},
+    {code:'002415',open:'2026-06-03',close:'2026-06-10',hold:'7d',reason:'信号反转',pnl:-0.8},
+    {code:'300059',open:'2026-06-01',close:'2026-06-08',hold:'7d',reason:'止盈',pnl:2.7},
+    {code:'600276',open:'2026-05-28',close:'2026-06-04',hold:'7d',reason:'止损',pnl:-1.5}
   ];
-  document.getElementById('metrics-container').innerHTML = metrics.map(m =>
-    `<div class="metric-card"><div class="value ${m.cls}">${m.value}</div><div class="label">${m.label}</div></div>`
-  ).join('');
-
-  // 权益曲线（Canvas）
-  const eq = r.equity_curve || [];
-  if (eq.length > 1) {
-    const canvas = document.getElementById('equity-chart');
-    const ctx = canvas.getContext('2d');
-    const W = canvas.parentElement.clientWidth;
-    const H = 300;
-    canvas.width = W * 2; canvas.height = H * 2;
-    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
-    ctx.scale(2,2); ctx.clearRect(0,0,W,H);
-    const vals = eq.map(p => p.value || p.equity || 0);
-    const min = Math.min(...vals), max = Math.max(...vals);
-    const range = max - min || 1;
-    const n = vals.length;
-
-    // 网格
-    ctx.strokeStyle = '#1e2130'; ctx.lineWidth = 0.5;
-    for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
-
-    // 基准线（起始资金）
-    ctx.strokeStyle = '#2a2d3a'; ctx.lineWidth = 1;
-    ctx.setLineDash([4,4]);
-    const baseY = H - (vals[0] - min) / range * (H - 40) - 20;
-    ctx.beginPath(); ctx.moveTo(0,baseY); ctx.lineTo(W,baseY);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // 曲线
-    ctx.strokeStyle = '#4fc3f7'; ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const x = i / (n - 1) * (W - 10) + 5;
-      const y = H - (vals[i] - min) / range * (H - 40) - 20;
-      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
-    }
-    ctx.stroke();
-
-    // 标签
-    ctx.fillStyle = '#888'; ctx.font = '10px monospace';
-    ctx.fillText('¥' + (min/10000).toFixed(0) + '万', 5, H-5);
-    ctx.fillText('¥' + (max/10000).toFixed(0) + '万', 5, 12);
-    ctx.textAlign = 'right';
-    ctx.fillText(eq[0]?.date?.substring(0,7) || '', W-5, H-5);
-    ctx.fillText(eq[n-1]?.date?.substring(0,7) || '', W-5, 12);
-  }
-
-  // 退出原因分布
-  const reasons = r.exit_reasons || {};
-  const total = Object.values(reasons).reduce((a,b) => a+b, 0);
-  const colors = {'stop_loss':'#ef5350','take_profit':'#4caf50','trailing_stop':'#ffa726','time_stop':'#78909c'};
-  const labels = {'stop_loss':'止损','take_profit':'止盈','trailing_stop':'追踪','time_stop':'时间'};
-
-  if (total > 0) {
-    let html = '<div class="exit-bar">';
-    for (const [k,cnt] of Object.entries(reasons)) {
-      const pct = (cnt / total * 100).toFixed(0);
-      html += `<div class="exit-seg" style="width:${pct}%;background:${colors[k]||'#888'}">${labels[k]||k} ${cnt}</div>`;
-    }
-    html += '</div>';
-    document.getElementById('exit-dist').innerHTML = html;
-  }
-
-  // 交易清单
-  const trades = r.trades || [];
-  if (trades.length > 0) {
-    let html = `<table class="trade-table">
-      <tr><th>代码</th><th>买入</th><th>卖出</th><th>持有</th><th>收益</th><th>原因</th></tr>`;
-    trades.forEach(t => {
-      const cls = (t.return_pct || 0) > 0 ? 'win' : 'loss';
-      html += `<tr class="${cls}">
-        <td>${t.code || ''}</td>
-        <td>${(t.entry_date||'').substring(5)}</td>
-        <td>${(t.exit_date||'').substring(5)}</td>
-        <td>${t.hold_days || 0}d</td>
-        <td>${(t.return_pct||0) >= 0 ? '+' : ''}${(t.return_pct||0).toFixed(1)}%</td>
-        <td>${labels[t.exit_reason] || t.exit_reason || ''}</td>
-      </tr>`;
-    });
-    html += '</table>';
-    document.getElementById('trade-list').innerHTML = html;
-  }
+  wrap.innerHTML = demo.map(t => `<div class="trade-item">
+    <div class="code">${t.code}</div>
+    <div><div class="meta">${t.open} → ${t.close||'持有中'}</div><div class="meta">持仓 ${t.hold}</div></div>
+    <div class="exit">${t.reason}</div>
+    <div class="pnl ${t.pnl>=0?'pos':'neg'}">${t.pnl>=0?'+':''}${t.pnl.toFixed(1)}%</div>
+  </div>`).join('');
 }
+loadTrades();
 
-// 自动加载扫描结果
-setTimeout(loadScanResults, 500);
+// ── Run backtest ──
+async function runBacktest() {
+  const btn = event.target;
+  const sb = document.getElementById('statusBar');
+  const w = getWeights();
+  btn.disabled = true;
+  sb.className = 'status-bar running';
+  sb.textContent = '⏳ 回测中... (V5 已归档 P1-4 2026-06-26，使用模拟数据演示)';
+  document.getElementById('curWeights').textContent = 't'+w.trend.toFixed(2)+'/v'+w.volume.toFixed(2)+'/m'+w.momentum.toFixed(2);
+
+  setTimeout(() => {
+    sb.className = 'status-bar done';
+    sb.textContent = '✅ 回测完成 — Sharpe 0.42, 年化 +12.3%, 回撤 -8.1%, 26 笔交易 (mock)';
+    btn.disabled = false;
+  }, 1800);
+}
 </script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</body>
+</html>

@@ -646,6 +646,10 @@ async def get_strategy_compare(
         return {"success": True, "data": summaries}
 
     # 无 stock_code: 聚合按策略分组的全量回测
+    # 修复: 始终以 YAML 配置为策略源, 有回测数据则补充, 无数据则显示 0
+    strategies_config = load_strategies()
+    all_strategy_names = {s.get("name", ""): s for s in strategies_config.get("strategies", [])}
+    
     results = repo.get_recent_backtests(limit=500)
 
     # 按 strategy_name 分组聚合
@@ -654,41 +658,39 @@ async def get_strategy_compare(
         name = r.strategy.name if r.strategy else "未知"
         by_strategy[name].append(r)
 
-    strategies_agg = []
-    for name, rows in by_strategy.items():
+    def _aggregate(rows: list) -> dict:
+        """从回测行聚合统计"""
         returns = [r.total_return for r in rows if r.total_return is not None]
         sharpes = [r.sharpe_ratio for r in rows if r.sharpe_ratio is not None]
         win_rates = [r.win_rate for r in rows if r.win_rate is not None]
         trade_counts = [r.total_trades for r in rows if r.total_trades is not None]
-
         cnt = len(rows)
-        # flat_count: 收益接近 0 的回测数(认为无意义)
         flat_count = sum(1 for r in returns if abs(r) < 0.5)
-        active = cnt - flat_count
         win_count = sum(1 for r in returns if r > 0)
-
         avg_return = round(sum(returns) / len(returns), 2) if returns else 0
         avg_sharpe = round(sum(sharpes) / len(sharpes), 2) if sharpes else 0
         avg_win_rate = round(sum(win_rates) / len(win_rates), 2) if win_rates else 0
         best_return = round(max(returns), 2) if returns else 0
         worst_return = round(min(returns), 2) if returns else 0
         avg_trades = round(sum(trade_counts) / len(trade_counts), 1) if trade_counts else 0
+        return {
+            "cnt": cnt, "flat_count": flat_count, "win_count": win_count,
+            "avg_return": avg_return, "avg_sharpe": avg_sharpe,
+            "avg_win_rate": avg_win_rate, "best_return": best_return,
+            "worst_return": worst_return, "avg_trades": avg_trades,
+        }
 
-        strategies_agg.append({
-            "name": name,
-            "cnt": cnt,
-            "flat_count": flat_count,
-            "win_count": win_count,
-            "avg_return": avg_return,
-            "avg_sharpe": avg_sharpe,
-            "avg_win_rate": avg_win_rate,
-            "best_return": best_return,
-            "worst_return": worst_return,
-            "avg_trades": avg_trades,
-        })
+    empty_agg = _aggregate([])  # 兜底模板 {cnt:0, ...}
 
-    # 按 avg_return 降序排
-    strategies_agg.sort(key=lambda x: x["avg_return"], reverse=True)
+    strategies_agg = []
+    for name in sorted(all_strategy_names.keys()):
+        rows = by_strategy.get(name, [])
+        agg = _aggregate(rows) if rows else empty_agg.copy()
+        agg["name"] = name
+        strategies_agg.append(agg)
+
+    # 有回测的按 avg_return 降序排, 无回测的排在末尾
+    strategies_agg.sort(key=lambda x: (x["cnt"] > 0, x["avg_return"]), reverse=True)
 
     # 聚合统计
     total_stocks = len({r.stock_code for r in results if r.stock_code})
@@ -697,8 +699,9 @@ async def get_strategy_compare(
         "success": True,
         "total_records": len(results),
         "total_stocks": total_stocks,
+        "total_strategies": len(all_strategy_names),  # 来自 YAML 的真实策略数
         "strategies": strategies_agg,
-        "data": strategies_agg,  # 别名 (兼容其他可能的调用方)
+        "data": strategies_agg,
     }
 
 

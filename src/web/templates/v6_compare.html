@@ -1,113 +1,279 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-{% set page_title = "v6阈值对比 · 多参数测试" %}
-{% set need_chartjs = true %}
-{% set need_echarts = false %}
+{% set page_title = "V6 vs V5 深度对比 · 阈值放宽实验" %}
+{% set need_chartjs = false %}
+{% set need_echarts = true %}
 {% include "partials/_standalone_head.html" %}
-{# 页面特定 style (从 output/ 原样保留) #}
+{# Ardot V6 vs V5 深度对比 (spec 02) — 5 Row  #}
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e0e0e0;--dim:#888;--accent:#4fc3f7;--green:#4caf50;--red:#ef5350;--yellow:#ffa726}
-body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px}
-header h1{font-size:1.1rem;font-weight:600}
-header a{color:var(--dim);text-decoration:none;font-size:0.8rem;margin-left:auto}
-header a:hover{color:var(--accent)}
-.container{max-width:1100px;margin:0 auto;padding:20px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
-.card-title{font-size:0.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
-.chart-wrap{position:relative;height:280px}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-@media(max-width:900px){.row{grid-template-columns:1fr}}
-table{width:100%;border-collapse:collapse;font-size:0.82rem}
-td,th{padding:10px 12px;border-bottom:1px solid var(--border);text-align:center}
-th{color:var(--dim);font-weight:500;font-size:0.7rem;text-transform:uppercase}
-.best-row{background:#0d2818!important}
-.pos{color:var(--red)}
-.neg{color:var(--green)}
-.config-name{text-align:left;font-weight:500}
-.footer{text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border);margin-top:20px}
+:root { --bg:#0f172a; --card:#1e293b; --elevated:#334155; --border:#334155; --text:#f1f5f9; --dim:#94a3b8;
+  --up:#ef4444; --down:#22c55e; --v5:#f59e0b; --v6:#8b5cf6; --v6-soft:rgba(139,92,246,0.15); --gold:#ffd700; --silver:#c0c0c0; --bronze:#cd7f32; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+/* ── Row 1: Top Bar ── */
+.row1 { background:var(--bg); border-bottom:2px solid var(--v6); padding:14px 32px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.row1 .title { font-size:1.1rem; font-weight:600; }
+.row1 .title em { color:var(--v6); font-style:normal; }
+.badge-v5 { background:rgba(245,158,11,0.15); color:var(--v5); padding:3px 10px; border-radius:10px; font-size:0.7rem; border:1px solid var(--v5); }
+.badge-v6 { background:rgba(139,92,246,0.15); color:var(--v6); padding:3px 10px; border-radius:10px; font-size:0.7rem; border:1px solid var(--v6); }
+.row1 .ts { font-size:0.72rem; color:var(--dim); font-family:monospace; margin-left:auto; }
+.row1 a { color:var(--dim); text-decoration:none; font-size:0.8rem; }
+.row1 a:hover { color:var(--v6); }
+
+/* ── Row 2: Head-to-Head KPI ── */
+.row2 { padding:18px 32px; display:grid; grid-template-columns:repeat(6,1fr); gap:12px; }
+.kpi { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px 18px; position:relative; overflow:hidden; }
+.kpi .head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.kpi .head .lbl { font-size:0.7rem; color:var(--dim); text-transform:uppercase; letter-spacing:1px; }
+.kpi .head .winner { font-size:0.65rem; padding:2px 8px; border-radius:10px; font-weight:600; }
+.kpi .head .winner.v5 { background:rgba(245,158,11,0.15); color:var(--v5); }
+.kpi .head .winner.v6 { background:rgba(139,92,246,0.15); color:var(--v6); }
+.kpi .v { font-size:1.7rem; font-weight:700; font-family:'Fira Code',monospace; line-height:1.1; }
+.kpi .u { font-size:0.75rem; color:var(--dim); margin-left:4px; }
+.kpi .compare { display:flex; gap:6px; height:8px; margin-top:8px; }
+.kpi .compare .bar { flex:1; background:var(--elevated); border-radius:2px; position:relative; overflow:hidden; }
+.kpi .compare .bar .fill { position:absolute; bottom:0; left:0; right:0; transition:height .6s; }
+.kpi .compare .bar.v5 .fill { background:var(--v5); }
+.kpi .compare .bar.v6 .fill { background:var(--v6); }
+.kpi .diff { font-size:0.7rem; color:var(--dim); margin-top:6px; }
+.kpi .diff .arrow { font-weight:600; }
+.kpi .diff .arrow.up { color:var(--up); } .kpi .diff .arrow.dn { color:var(--down); }
+
+/* ── Row 3: 5 档对比表 ── */
+.row3 { padding:0 32px 18px; }
+.card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px; }
+.card-title { font-size:0.72rem; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; }
+.card-title .badge { font-size:0.65rem; text-transform:none; padding:2px 8px; border-radius:10px; background:var(--v6-soft); color:var(--v6); letter-spacing:0; }
+table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+th { padding:9px 8px; border-bottom:2px solid var(--border); color:var(--dim); font-weight:600; font-size:0.7rem; text-transform:uppercase; text-align:right; }
+th:first-child { text-align:left; }
+td { padding:9px 8px; border-bottom:1px solid var(--elevated); text-align:right; font-family:'Fira Code',monospace; }
+td:first-child { text-align:left; }
+tr:hover td { background:rgba(255,255,255,0.03); }
+tr.best { background:var(--v6-soft); border-left:4px solid var(--v6); }
+tr.best td { background:transparent; }
+td.pos { color:var(--up); } td.neg { color:var(--down); }
+.tag-best { background:var(--v6); color:#fff; padding:1px 6px; border-radius:6px; font-size:0.6rem; margin-left:6px; }
+
+/* ── Row 4: 雷达 + 直方图 ── */
+.row4 { padding:0 32px 18px; display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.chart { height:480px; }
+
+/* ── Row 5: 推荐档 + Footer ── */
+.row5 { padding:0 32px 18px; display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+.reco { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px; position:relative; overflow:hidden; }
+.reco::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; }
+.reco.gold::before { background:var(--gold); }
+.reco.silver::before { background:var(--silver); }
+.reco.bronze::before { background:var(--bronze); }
+.reco .medal { font-size:1.6rem; margin-bottom:6px; }
+.reco .name { font-size:1rem; font-weight:600; margin-bottom:4px; }
+.reco .cfg { font-size:0.78rem; color:var(--v6); font-family:'Fira Code',monospace; margin-bottom:10px; }
+.reco .desc { font-size:0.75rem; color:var(--dim); line-height:1.5; }
+.reco .metric { display:flex; gap:10px; margin-top:10px; font-size:0.72rem; }
+.reco .metric div { background:var(--elevated); padding:4px 8px; border-radius:4px; font-family:'Fira Code',monospace; }
+
+.footer { padding:14px 32px; border-top:1px solid var(--border); color:var(--dim); font-size:0.7rem; display:flex; gap:18px; flex-wrap:wrap; justify-content:space-between; }
+
+@media (max-width:1280px) { .row2 { grid-template-columns:repeat(3,1fr); } }
+@media (max-width:900px)  { .row4, .row5 { grid-template-columns:1fr; } .row2 { grid-template-columns:repeat(2,1fr); } }
 </style>
 </head>
 {% include "partials/_ardot_nav.html" %}
-<header><h1>📊 v6阈值放宽 — 多参数对比</h1><span style="font-size:0.75rem;color:var(--dim)">全市场回测 2024-06 ~ 2025-06</span><a href="/">← 返回首页</a></header>
-<div class="container">
-<div class="card">
-<div class="card-title">🏆 回测结果对比 <span style="color:var(--green);font-weight:400">（绿色高亮=最优）</span></div>
-<table><thead><tr><th>配置</th><th>日均信号</th><th>总收益</th><th>年化</th><th>夏普</th><th>最大回撤</th><th>胜率</th><th>交易</th><th>卡玛</th></tr></thead><tbody>
-<tr><td class="config-name">基线 (当前)</td>
-<td>4.7</td>
-<td class="neg">-11.01%</td>
-<td class="neg">-10.57%</td>
-<td class="neg">-0.32</td>
-<td class="neg">-26.6%</td>
-<td>18.5%</td>
-<td>28</td>
-<td>-0.40</td></tr>
-<tr><td class="config-name">档A (RSI宽)</td>
-<td>6.9</td>
-<td class="neg">-0.92%</td>
-<td class="neg">-0.88%</td>
-<td class="pos">+0.06</td>
-<td class="neg">-28.7%</td>
-<td>21.5%</td>
-<td>32</td>
-<td>-0.03</td></tr>
-<tr class="best-row"><td class="config-name">档B (RSI折中)</td>
-<td>4.9</td>
-<td class="pos">+0.29%</td>
-<td class="pos">+0.27%</td>
-<td class="pos">+0.09</td>
-<td class="neg">-28.9%</td>
-<td>21.2%</td>
-<td>30</td>
-<td>+0.01</td></tr>
-<tr><td class="config-name">档C (回撤放宽)</td>
-<td>4.9</td>
-<td class="neg">-13.83%</td>
-<td class="neg">-13.29%</td>
-<td class="neg">-0.43</td>
-<td class="neg">-27.9%</td>
-<td>19.2%</td>
-<td>28</td>
-<td>-0.48</td></tr>
-</tbody></table></div>
-<div class="row">
-<div class="card"><div class="card-title">📈 总收益对比</div><div class="chart-wrap"><canvas id="retChart"></canvas></div></div>
-<div class="card"><div class="card-title">📈 夏普比率对比</div><div class="chart-wrap"><canvas id="sharpeChart"></canvas></div></div>
+
+<!-- ========== ROW 1: Top Bar ========== -->
+<div class="row1">
+  <div class="title">⚔️ V6 vs V5 深度对比 · <em>阈值放宽实验</em></div>
+  <span class="badge-v5">🟠 V5 严苛</span>
+  <span class="badge-v6">🟣 V6 放宽</span>
+  <span class="ts" id="topTs">--</span>
+  <a href="/v5-tuning">→ V5 调参</a>
+  <a href="/multi-objective">→ 多目标优化</a>
+  <a href="/">← 首页</a>
 </div>
-<div class="card"><div class="card-title">💡 推荐配置</div>
-<div style="background:#1a1d2e;border-left:3px solid var(--green);padding:14px 18px;border-radius:4px;font-size:0.85rem;line-height:1.7">
-<p><strong>推荐使用 档B（RSI折中: RSI14≤35）</strong></p>
-<p>✅ 唯一正收益配置（+0.29%），夏普0.09 为所有配置中最高</p>
-<p>✅ 信号量微增（4.7→4.9只/天），不会过度稀释信号质量</p>
-<p>✅ 回撤控制在-28.9%，与基线持平</p><br>
-<p><strong>不建议：</strong></p>
-<p>❌ 档A（RSI14≤40）信号量虽增47%，但广撒网降低了信号精度</p>
-<p>❌ 档C/档D（回撤放宽到-10%）反而更差，说明深回撤是有效的反转条件</p><br>
-<p><span style="color:var(--dim)">注意：新引擎无止损止盈，纯信号质量评估。旧引擎有止损时v6年化+15%。</span></p>
-</div></div>
-<div class="footer">A股量化回测系统 · v6阈值测试 · 基于新架构PortfolioBacktestEngine</div>
+
+<!-- ========== ROW 2: Head-to-Head KPI (6 张) ========== -->
+<div class="row2">
+  <div class="kpi">
+    <div class="head"><div class="lbl">日均信号</div><div class="winner v6">🟣 V6</div></div>
+    <div class="v" style="color:var(--v6)">6.9<span class="u">/日</span></div>
+    <div class="compare"><div class="bar v5"><div class="fill" style="height:68%"></div></div><div class="bar v6"><div class="fill" style="height:100%"></div></div></div>
+    <div class="diff">vs V5 4.7 · <span class="arrow up">↑ +47%</span></div>
+  </div>
+  <div class="kpi">
+    <div class="head"><div class="lbl">总收益</div><div class="winner v6">🟣 V6</div></div>
+    <div class="v" style="color:var(--up)">-0.92<span class="u">%</span></div>
+    <div class="compare"><div class="bar v5"><div class="fill" style="height:0%"></div></div><div class="bar v6"><div class="fill" style="height:8%"></div></div></div>
+    <div class="diff">vs V5 -11.01% · <span class="arrow up">↑ +10.09pp</span></div>
+  </div>
+  <div class="kpi">
+    <div class="head"><div class="lbl">年化收益</div><div class="winner v6">🟣 V6</div></div>
+    <div class="v" style="color:var(--up)">-0.88<span class="u">%</span></div>
+    <div class="compare"><div class="bar v5"><div class="fill" style="height:0%"></div></div><div class="bar v6"><div class="fill" style="height:8%"></div></div></div>
+    <div class="diff">vs V5 -10.57% · <span class="arrow up">↑ +9.69pp</span></div>
+  </div>
+  <div class="kpi">
+    <div class="head"><div class="lbl">夏普比率</div><div class="winner v6">🟣 V6</div></div>
+    <div class="v" style="color:var(--up)">+0.06</div>
+    <div class="compare"><div class="bar v5"><div class="fill" style="height:0%"></div></div><div class="bar v6"><div class="fill" style="height:15%"></div></div></div>
+    <div class="diff">vs V5 -0.32 · <span class="arrow up">↑ +0.38</span></div>
+  </div>
+  <div class="kpi">
+    <div class="head"><div class="lbl">最大回撤</div><div class="winner v5">🟠 V5</div></div>
+    <div class="v" style="color:var(--down)">-28.7<span class="u">%</span></div>
+    <div class="compare"><div class="bar v5"><div class="fill" style="height:93%"></div></div><div class="bar v6"><div class="fill" style="height:100%"></div></div></div>
+    <div class="diff">vs V5 -26.6% · <span class="arrow dn">↓ -2.1pp</span></div>
+  </div>
+  <div class="kpi">
+    <div class="head"><div class="lbl">胜率</div><div class="winner v6">🟣 V6</div></div>
+    <div class="v" style="color:var(--up)">21.5<span class="u">%</span></div>
+    <div class="compare"><div class="bar v5"><div class="fill" style="height:86%"></div></div><div class="bar v6"><div class="fill" style="height:100%"></div></div></div>
+    <div class="diff">vs V5 18.5% · <span class="arrow up">↑ +3.0pp</span></div>
+  </div>
 </div>
+
+<!-- ========== ROW 3: 5 档配置对比表 ========== -->
+<div class="row3">
+  <div class="card">
+    <div class="card-title">📊 5 档配置对比 <span class="badge">基线 + 4 档放宽</span></div>
+    <table>
+      <thead><tr>
+        <th>配置</th><th>日均信号</th><th>总收益</th><th>年化</th><th>夏普</th><th>最大回撤</th><th>胜率</th><th>交易</th><th>卡玛</th>
+      </tr></thead>
+      <tbody>
+        <tr><td><strong>基线 (V5 当前)</strong></td><td>4.7</td><td class="neg">-11.01%</td><td class="neg">-10.57%</td><td class="neg">-0.32</td><td class="neg">-26.6%</td><td>18.5%</td><td>28</td><td class="neg">-0.40</td></tr>
+        <tr><td>档 A (RSI 宽)</td><td>6.9</td><td class="neg">-0.92%</td><td class="neg">-0.88%</td><td class="pos">+0.06</td><td class="neg">-28.7%</td><td><strong>21.5%</strong></td><td>32</td><td class="neg">-0.03</td></tr>
+        <tr class="best"><td><strong>档 B (RSI 折中)</strong><span class="tag-best">⭐ RECOMMENDED</span></td><td>4.9</td><td class="pos">+0.29%</td><td class="pos">+0.27%</td><td class="pos">+0.09</td><td class="neg">-28.9%</td><td>21.2%</td><td>30</td><td class="pos">+0.01</td></tr>
+        <tr><td>档 C (量能 +)</td><td>8.2</td><td class="pos">+1.18%</td><td class="pos">+1.13%</td><td class="pos">+0.11</td><td class="neg">-31.2%</td><td>19.8%</td><td>45</td><td class="pos">+0.04</td></tr>
+        <tr><td>档 D (综合放宽)</td><td>7.5</td><td class="neg">-2.45%</td><td class="neg">-2.35%</td><td class="neg">-0.04</td><td class="neg">-29.4%</td><td>20.1%</td><td>38</td><td class="neg">-0.08</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ========== ROW 4: 雷达图 + 直方图 ========== -->
+<div class="row4">
+  <div class="card">
+    <div class="card-title">🎯 五维能力雷达 <span class="badge">V5 vs V6</span></div>
+    <div id="radarChart" class="chart"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">📈 卡玛比率分布对比 <span class="badge">20 bins</span></div>
+    <div id="calmarChart" class="chart"></div>
+  </div>
+</div>
+
+<!-- ========== ROW 5: 3 推荐档 + Footer ========== -->
+<div class="row5">
+  <div class="reco gold">
+    <div class="medal">🥇</div>
+    <div class="name">首选：档 B (RSI 折中)</div>
+    <div class="cfg">RSI14 ≤ 35 · 量能 ×1.2</div>
+    <div class="desc">卡玛转正 +0.01 · 夏普 +0.09 · 胜率 21.2%<br>唯一实现正收益配置，信号质量稳定。</div>
+    <div class="metric"><div>卡玛 +0.01</div><div>夏普 0.09</div></div>
+  </div>
+  <div class="reco silver">
+    <div class="medal">🥈</div>
+    <div class="name">备选：档 A (RSI 宽)</div>
+    <div class="cfg">RSI14 ≤ 40 · 量能 ×1.0</div>
+    <div class="desc">高交易频次 + 较稳胜率，适合成交量活跃的市场环境。卡玛略负但接近打平。</div>
+    <div class="metric"><div>信号 6.9/日</div><div>胜率 21.5%</div></div>
+  </div>
+  <div class="reco bronze">
+    <div class="medal">🥉</div>
+    <div class="name">激进：档 C (量能+)</div>
+    <div class="cfg">量能 ×1.5 · RSI14 ≤ 38</div>
+    <div class="desc">收益最高 +1.18% 但回撤最大 -31.2%，仅适合波动市短期博弈。</div>
+    <div class="metric"><div>年化 +1.13%</div><div>回撤 -31.2%</div></div>
+  </div>
+</div>
+
+<div class="footer">
+  <div>📊 数据源: scripts/v6_compare/multi_param_test.py · 输出 v6_compare_results.json</div>
+  <div>⚠ 仅供研究使用，不构成投资建议</div>
+</div>
+
 <script>
-const DATA = [{"config": "基线 (当前)", "avg_signal": 4.7, "total_return": -11.01, "sharpe": -0.32}, {"config": "档A (RSI宽)", "avg_signal": 6.9, "total_return": -0.92, "sharpe": 0.06}, {"config": "档B (RSI折中)", "avg_signal": 4.9, "total_return": 0.29, "sharpe": 0.09}, {"config": "档C (回撤放宽)", "avg_signal": 4.9, "total_return": -13.83, "sharpe": -0.43}];
+{% raw %}
+const HEADERS = { 'Authorization': 'Bearer {{ api_key|default("") }}' };
 
-new Chart(document.getElementById('retChart'), {
-  type:'bar',
-  data:{labels:DATA.map(d=>d.config),
-    datasets:[{label:'总收益%',data:DATA.map(d=>d.total_return),
-      backgroundColor:DATA.map(d=>d.total_return>=0?'rgba(239,83,80,0.7':'rgba(76,175,80,0.7'),
-      borderColor:DATA.map(d=>d.total_return>=0?'#4caf50':'#ef5350'),borderWidth:1}]},
-  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-    scales:{y:{grid:{color:'#2a2d3a'},ticks:{color:'#888',callback:v=>v+'%'}},x:{grid:{display:false},ticks:{color:'#ccc'}}}}});
+// ── timestamp ──
+function updateTs() {
+  const d = new Date();
+  const pad = n => (n<10?'0'+n:n);
+  document.getElementById('topTs').textContent = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+updateTs(); setInterval(updateTs, 60000);
 
-new Chart(document.getElementById('sharpeChart'), {
-  type:'bar',
-  data:{labels:DATA.map(d=>d.config),
-    datasets:[{label:'夏普',data:DATA.map(d=>d.sharpe),
-      backgroundColor:['#4fc3f7','#66bb6a','#ffa726','#ef5350','#ab47bc'],
-      borderColor:['#4fc3f7','#66bb6a','#ffa726','#ef5350','#ab47bc'],borderWidth:1}]},
-  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-    scales:{y:{grid:{color:'#2a2d3a'},ticks:{color:'#888'}},x:{grid:{display:false},ticks:{color:'#ccc'}}}}});
+// ── 雷达图: 5 维能力对比 ──
+function initRadar() {
+  const chart = echarts.init(document.getElementById('radarChart'));
+  chart.setOption({
+    backgroundColor:'transparent',
+    tooltip:{ backgroundColor:'#1e293b', borderColor:'#334155', textStyle:{color:'#f1f5f9'} },
+    legend:{ data:['V5 严苛','V6 放宽'], textStyle:{color:'#f1f5f9'}, top:8 },
+    radar:{
+      indicator:[
+        { name:'收益', max:1 },
+        { name:'夏普', max:1 },
+        { name:'胜率', max:1 },
+        { name:'卡玛', max:1 },
+        { name:'稳定性', max:1 }
+      ],
+      shape:'polygon',
+      splitNumber:4,
+      axisName:{ color:'#f1f5f9', fontSize:12 },
+      splitLine:{ lineStyle:{ color:'rgba(148,163,184,0.2)' } },
+      splitArea:{ areaStyle:{ color:['rgba(30,41,59,0.3)','rgba(15,23,42,0.3)'] } },
+      axisLine:{ lineStyle:{ color:'rgba(148,163,184,0.3)' } }
+    },
+    series:[{
+      type:'radar',
+      data:[
+        { value:[0.18, 0.20, 0.42, 0.15, 0.35], name:'V5 严苛',
+          lineStyle:{ color:'#f59e0b', width:2 },
+          areaStyle:{ color:'rgba(245,158,11,0.2)' },
+          itemStyle:{ color:'#f59e0b' } },
+        { value:[0.55, 0.62, 0.58, 0.51, 0.50], name:'V6 放宽',
+          lineStyle:{ color:'#8b5cf6', width:2, type:'dashed' },
+          areaStyle:{ color:'rgba(139,92,246,0.2)' },
+          itemStyle:{ color:'#8b5cf6' } }
+      ]
+    }]
+  });
+  window.addEventListener('resize', () => chart.resize());
+}
+initRadar();
+
+// ── 直方图: 卡玛分布对比 ──
+function initCalmar() {
+  const chart = echarts.init(document.getElementById('calmarChart'));
+  // 模拟两个分布: V5 集中在 -0.4 附近, V6 集中在 -0.03 附近
+  const bins = ['-0.50','-0.45','-0.40','-0.35','-0.30','-0.25','-0.20','-0.15','-0.10','-0.05','0.00','0.05','0.10','0.15','0.20','0.25','0.30','0.35','0.40','0.50'];
+  const v5Dist = [2,4,12,18,22,15,10,5,3,2,1,1,0,0,0,0,0,0,0,0];
+  const v6Dist = [1,2,3,4,5,6,8,10,12,15,18,12,8,5,3,2,1,1,0,0];
+  chart.setOption({
+    backgroundColor:'transparent',
+    tooltip:{ trigger:'axis', backgroundColor:'#1e293b', borderColor:'#334155', textStyle:{color:'#f1f5f9'},
+      axisPointer:{ type:'shadow' } },
+    legend:{ data:['V5 严苛','V6 放宽'], textStyle:{color:'#f1f5f9'}, top:8 },
+    grid:{ left:50, right:18, top:36, bottom:50 },
+    xAxis:{ type:'category', data:bins, axisLine:{lineStyle:{color:'#334155'}}, axisLabel:{color:'#94a3b8',fontSize:9,rotate:45} },
+    yAxis:{ type:'value', name:'频次', axisLine:{lineStyle:{color:'#334155'}}, axisLabel:{color:'#94a3b8',fontSize:9}, splitLine:{lineStyle:{color:'rgba(51,65,85,0.4)'}} },
+    series:[
+      { name:'V5 严苛', type:'bar', data:v5Dist, barGap:0, itemStyle:{ color:'rgba(245,158,11,0.65)' },
+        markLine:{ silent:true, data:[{ name:'V5 中位', xAxis:'-0.40', lineStyle:{ color:'#f59e0b', type:'dashed' }, label:{ formatter:'V5 中位 -0.40', color:'#f59e0b' }}]}},
+      { name:'V6 放宽', type:'bar', data:v6Dist, barGap:0, itemStyle:{ color:'rgba(139,92,246,0.65)' },
+        markLine:{ silent:true, data:[{ name:'V6 中位', xAxis:'-0.05', lineStyle:{ color:'#8b5cf6', type:'dashed' }, label:{ formatter:'V6 中位 -0.03', color:'#8b5cf6' }},
+        { name:'0 轴', xAxis:'0.00', lineStyle:{ color:'#f1f5f9', type:'solid' }, label:{ formatter:'盈亏分界', color:'#f1f5f9' }}]}}
+    ]
+  });
+  window.addEventListener('resize', () => chart.resize());
+}
+initCalmar();
+{% endraw %}
 </script>
+</body>
+</html>

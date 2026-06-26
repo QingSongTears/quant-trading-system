@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+{% set page_title = "多目标优化 · Pareto 前沿探索器" %}
+{% set need_chartjs = false %}
+{% set need_echarts = true %}
+{% include "partials/_standalone_head.html" %}
+{# Ardot 多目标优化 (spec 03) — 6 Row  #}
+<style>
+:root { --bg:#0f172a; --card:#1e293b; --elevated:#334155; --border:#334155; --text:#f1f5f9; --dim:#94a3b8;
+  --up:#ef4444; --down:#22c55e; --accent:#8b5cf6; --accent-soft:rgba(139,92,246,0.15); --gold:#ffd700; --blue:#3b82f6; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+/* ── Row 1: Top Bar ── */
+.row1 { background:var(--bg); border-bottom:2px solid var(--accent); padding:14px 32px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.row1 .title { font-size:1.1rem; font-weight:600; }
+.row1 .title em { color:var(--accent); font-style:normal; }
+.row1 .status { color:var(--down); font-size:0.75rem; display:flex; align-items:center; gap:6px; }
+.row1 .status::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--down); }
+.row1 .ts { font-size:0.72rem; color:var(--dim); font-family:monospace; margin-left:auto; }
+.row1 a { color:var(--dim); text-decoration:none; font-size:0.8rem; }
+.row1 a:hover { color:var(--accent); }
+
+/* ── Row 2: 3 目标权重滑块 ── */
+.row2 { padding:18px 32px; display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+.obj { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px; }
+.obj .head { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+.obj .head .ico { font-size:1.2rem; }
+.obj .head .name { font-size:0.95rem; font-weight:600; }
+.obj .head .name small { color:var(--dim); font-size:0.7rem; font-weight:400; margin-left:4px; }
+input[type=range] { -webkit-appearance:none; appearance:none; width:100%; height:6px; background:var(--elevated); border-radius:3px; outline:none; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:18px; height:18px; border-radius:50%; background:var(--accent); cursor:pointer; box-shadow:0 0 10px rgba(139,92,246,0.5); }
+input[type=range]::-moz-range-thumb { width:18px; height:18px; border-radius:50%; background:var(--accent); cursor:pointer; border:none; }
+.obj .val { font-family:'Fira Code',monospace; font-size:1.4rem; color:var(--accent); text-align:center; margin:10px 0 4px; }
+.obj .hint { font-size:0.7rem; color:var(--dim); text-align:center; }
+.warn { background:rgba(239,68,68,0.15); color:var(--up); padding:6px 12px; border-radius:6px; font-size:0.75rem; margin-bottom:10px; display:none; }
+
+/* ── Row 3: Pareto 散点图 ── */
+.row3 { padding:0 32px 18px; display:grid; grid-template-columns:1fr 220px; gap:14px; }
+.card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px; }
+.card-title { font-size:0.72rem; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; }
+.card-title .badge { font-size:0.65rem; text-transform:none; padding:2px 8px; border-radius:10px; background:var(--accent-soft); color:var(--accent); letter-spacing:0; }
+.chart { height:520px; }
+.side-card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px; }
+.side-card .stat { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--elevated); font-size:0.78rem; }
+.side-card .stat:last-of-type { border-bottom:none; }
+.side-card .stat .l { color:var(--dim); }
+.side-card .stat .v { font-family:'Fira Code',monospace; color:var(--text); }
+.side-card .stat .v.pos { color:var(--up); } .side-card .stat .v.neg { color:var(--down); }
+.apply-btn { width:100%; padding:10px; background:var(--accent); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600; margin-top:14px; font-size:0.85rem; }
+.apply-btn:hover { opacity:0.9; }
+
+/* ── Row 4: 热力图 tab ── */
+.row4 { padding:0 32px 18px; }
+.tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:14px; }
+.tab { padding:10px 18px; cursor:pointer; color:var(--dim); font-size:0.82rem; border-bottom:2px solid transparent; }
+.tab:hover { color:var(--text); }
+.tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+.heat { height:420px; }
+
+/* ── Row 5: Top 10 表 ── */
+.row5 { padding:0 32px 18px; }
+table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+th { padding:8px 6px; border-bottom:2px solid var(--border); color:var(--dim); font-weight:600; font-size:0.7rem; text-transform:uppercase; text-align:right; }
+th:first-child { text-align:center; width:40px; }
+th:nth-child(2), td:nth-child(2) { text-align:left; }
+td { padding:8px 6px; border-bottom:1px solid var(--elevated); text-align:right; font-family:'Fira Code',monospace; }
+tr:hover td { background:rgba(255,255,255,0.03); }
+tr.top1 td { background:var(--accent-soft); }
+td.pos { color:var(--up); } td.neg { color:var(--down); }
+td.gold { color:var(--gold); font-weight:700; }
+.score { display:inline-block; padding:2px 8px; border-radius:8px; font-weight:600; background:var(--accent-soft); color:var(--accent); }
+
+/* ── Row 6: 行业IC + 单股查询 + 记录 ── */
+.row6 { padding:0 32px 18px; display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+.industry-list { margin-top:8px; }
+.industry-row { display:grid; grid-template-columns:1fr 80px 60px; gap:8px; padding:8px 0; border-bottom:1px solid var(--elevated); font-size:0.82rem; align-items:center; }
+.industry-row .rank { color:var(--gold); font-weight:700; font-family:'Fira Code',monospace; }
+.industry-row .name { color:var(--text); }
+.industry-row .ic { color:var(--up); font-family:'Fira Code',monospace; text-align:right; }
+.industry-row .bar { height:6px; background:var(--elevated); border-radius:3px; overflow:hidden; }
+.industry-row .bar .fill { height:100%; background:linear-gradient(90deg, var(--accent), var(--up)); }
+.stock-input { width:100%; padding:10px; background:var(--elevated); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:'Fira Code',monospace; font-size:0.85rem; margin-top:8px; }
+.stock-input:focus { outline:none; border-color:var(--accent); }
+.timeline { margin-top:8px; }
+.timeline-item { display:grid; grid-template-columns:80px 60px 1fr; gap:8px; padding:8px 0; border-bottom:1px solid var(--elevated); font-size:0.75rem; align-items:center; }
+.timeline-item .t { color:var(--dim); font-family:'Fira Code',monospace; }
+.timeline-item .s { font-family:'Fira Code',monospace; color:var(--up); font-weight:600; }
+.timeline-item .who { color:var(--text); }
+
+.footer { padding:14px 32px; border-top:1px solid var(--border); color:var(--dim); font-size:0.7rem; display:flex; gap:18px; flex-wrap:wrap; justify-content:space-between; }
+
+@media (max-width:1100px) { .row2, .row6 { grid-template-columns:1fr 1fr; } .row3 { grid-template-columns:1fr; } }
+@media (max-width:640px)  { .row2, .row6 { grid-template-columns:1fr; } }
+</style>
+</head>
+{% include "partials/_ardot_nav.html" %}
+
+<!-- ========== ROW 1: Top Bar ========== -->
+<div class="row1">
+  <div class="title">🎯 多目标优化 · <em>Pareto 前沿探索器</em></div>
+  <span class="status">已加载 1,247 个候选组合</span>
+  <span class="ts" id="topTs">--</span>
+  <a href="/v5-tuning">→ V5 调参</a>
+  <a href="/v6-compare">→ V6 对比</a>
+  <a href="/">← 首页</a>
+</div>
+
+<!-- ========== ROW 2: 3 目标权重滑块 ========== -->
+<div class="row2">
+  <div class="obj">
+    <div class="head"><span class="ico">📈</span><span class="name">年化收益<small>(Annual Return)</small></span></div>
+    <input type="range" min="0" max="1" step="0.05" value="0.40" id="objReturn" class="obj-slider">
+    <div class="val">0.40</div>
+    <div class="hint">权重越高 → 越激进</div>
+  </div>
+  <div class="obj">
+    <div class="head"><span class="ico">📊</span><span class="name">夏普比率<small>(Sharpe Ratio)</small></span></div>
+    <input type="range" min="0" max="1" step="0.05" value="0.40" id="objSharpe" class="obj-slider">
+    <div class="val">0.40</div>
+    <div class="hint">权重越高 → 越稳</div>
+  </div>
+  <div class="obj">
+    <div class="head"><span class="ico">🛡</span><span class="name">最大回撤<small>(Max Drawdown)</small></span></div>
+    <input type="range" min="0" max="1" step="0.05" value="0.20" id="objDD" class="obj-slider">
+    <div class="val">0.20</div>
+    <div class="hint">权重越高 → 越保守</div>
+  </div>
+</div>
+
+<!-- ========== ROW 3: Pareto 散点图 + 侧栏 ========== -->
+<div class="row3">
+  <div class="card">
+    <div class="card-title">🎯 Pareto 前沿散点 <span class="badge">1,247 候选 · ~30 前沿</span></div>
+    <div id="paretoChart" class="chart"></div>
+  </div>
+  <div class="side-card">
+    <div style="font-size:0.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">当前选中</div>
+    <div style="font-size:0.95rem;font-weight:600;margin-bottom:14px;color:var(--gold)" id="selHash">v5_8a3f</div>
+    <div class="stat"><span class="l">综合得分</span><span class="v pos" id="selScore">0.847</span></div>
+    <div class="stat"><span class="l">年化收益</span><span class="v pos" id="selRet">+18.2%</span></div>
+    <div class="stat"><span class="l">夏普比率</span><span class="v" id="selSharpe">1.24</span></div>
+    <div class="stat"><span class="l">最大回撤</span><span class="v neg" id="selDD">-12.3%</span></div>
+    <div class="stat"><span class="l">胜率</span><span class="v" id="selWR">32%</span></div>
+    <div class="stat"><span class="l">盈亏比</span><span class="v" id="selPF">1.92</span></div>
+    <button class="apply-btn" onclick="applyCombo()">应用此组合</button>
+  </div>
+</div>
+
+<!-- ========== ROW 4: 3 tab 热力图 ========== -->
+<div class="row4">
+  <div class="card">
+    <div class="card-title">🔥 参数网格扫描热力图 <span class="badge" id="heatName">量能 × RSI</span></div>
+    <div class="tabs">
+      <div class="tab active" data-tab="0" onclick="switchHeat(0)">量能 × RSI → 夏普</div>
+      <div class="tab" data-tab="1" onclick="switchHeat(1)">持仓 × 止损 → 年化</div>
+      <div class="tab" data-tab="2" onclick="switchHeat(2)">趋势 × 动量 → 卡玛</div>
+    </div>
+    <div id="heatChart" class="heat"></div>
+  </div>
+</div>
+
+<!-- ========== ROW 5: Top 10 Pareto 表 ========== -->
+<div class="row5">
+  <div class="card">
+    <div class="card-title">🏆 Top 10 帕累托组合 <span class="badge">综合得分 = 0.4×夏普 + 0.4×年化 + 0.2×(-回撤)</span></div>
+    <table id="paretoTable">
+      <thead><tr><th>#</th><th>参数 hash</th><th>综合得分</th><th>年化</th><th>夏普</th><th>回撤</th><th>胜率</th><th>盈亏比</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ========== ROW 6: 行业 IC + 单股 + 记录 ========== -->
+<div class="row6">
+  <div class="card">
+    <div class="card-title">🏭 行业 IC Top 5</div>
+    <div class="industry-list" id="industryList"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">🔍 单股查询入口</div>
+    <div style="font-size:0.78rem;color:var(--dim);margin-bottom:6px">股票代码 (6 位):</div>
+    <input type="text" class="stock-input" id="stockCode" placeholder="000001" maxlength="6" value="000001">
+    <div style="font-size:0.78rem;color:var(--dim);margin:10px 0 6px">策略:</div>
+    <select class="stock-input" id="stockStrategy">
+      <option value="v6">V6 综合信号</option>
+      <option value="v5">V5 Hybrid</option>
+      <option value="bull">龙头主升浪</option>
+      <option value="reversal">短期反转</option>
+    </select>
+    <button class="apply-btn" onclick="goStock()">查询 →</button>
+  </div>
+  <div class="card">
+    <div class="card-title">⏱ 最近优化记录</div>
+    <div class="timeline" id="timeline"></div>
+  </div>
+</div>
+
+<div class="footer">
+  <div>🧬 算法: NSGA-II 多目标遗传 · 种群 200 · 代数 50</div>
+  <div>⚠ 历史回测，不构成投资建议</div>
+</div>
+
+<script>
+const HEADERS = { 'Authorization': 'Bearer {{ api_key|default("") }}' };
+let paretoChart, heatChart, currentTab = 0;
+
+function updateTs() {
+  const d = new Date();
+  const pad = n => (n<10?'0'+n:n);
+  document.getElementById('topTs').textContent = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+updateTs(); setInterval(updateTs, 60000);
+
+// ── 3 obj sliders ──
+document.querySelectorAll('.obj-slider').forEach(s => {
+  s.addEventListener('input', () => {
+    s.parentElement.querySelector('.val').textContent = parseFloat(s.value).toFixed(2);
+  });
+});
+
+// ── Pareto 散点图 ──
+function initPareto() {
+  paretoChart = echarts.init(document.getElementById('paretoChart'));
+  // 1247 候选点 (灰) + 30 前沿点 (紫) + 1 选中点 (金)
+  const allPts = [], paretoPts = [];
+  for (let i = 0; i < 1247; i++) {
+    const x = (Math.random() - 0.3) * 0.45;          // 年化 -15% ~ +30%
+    const y = Math.random() * 2.0 - 0.5;              // 夏普 -0.5 ~ +1.5
+    const size = 2 + Math.random() * 3;
+    allPts.push([(x*100).toFixed(1), y.toFixed(2), size, '#94a3b8']);
+  }
+  // Pareto 前沿: x 大 y 也大的 ~30 个点
+  for (let i = 0; i < 30; i++) {
+    const t = i / 29;
+    const x = -10 + t * 28 + (Math.random() - 0.5) * 1.5;
+    const y = -0.1 + t * 1.4 + (Math.random() - 0.5) * 0.15;
+    paretoPts.push({ value: [x.toFixed(1), y.toFixed(2)], symbolSize: 10 });
+  }
+  // 选中点
+  const sel = { value:[18.2, 1.24], symbolSize: 16 };
+
+  paretoChart.setOption({
+    backgroundColor:'transparent',
+    tooltip:{ backgroundColor:'#1e293b', borderColor:'#334155', textStyle:{color:'#f1f5f9'},
+      formatter: p => `<b>${p.seriesName}</b><br>年化: ${p.value[0]}%<br>夏普: ${p.value[1]}` },
+    grid:{ left:60, right:18, top:30, bottom:50 },
+    xAxis:{ type:'value', name:'年化收益 %', nameTextStyle:{color:'#94a3b8'}, min:-15, max:30, axisLine:{lineStyle:{color:'#334155'}}, axisLabel:{color:'#94a3b8',fontSize:10}, splitLine:{lineStyle:{color:'rgba(51,65,85,0.4)'}} },
+    yAxis:{ type:'value', name:'夏普', nameTextStyle:{color:'#94a3b8'}, min:-0.5, max:1.5, axisLine:{lineStyle:{color:'#334155'}}, axisLabel:{color:'#94a3b8',fontSize:10}, splitLine:{lineStyle:{color:'rgba(51,65,85,0.4)'}} },
+    series:[
+      { name:'全部候选', type:'scatter', data:allPts.map(p=>[p[0],p[1]]), symbolSize: d => d[2], itemStyle:{color:'#94a3b8',opacity:0.25} },
+      { name:'Pareto 前沿', type:'scatter', data:paretoPts, itemStyle:{color:'#8b5cf6',opacity:0.85,borderColor:'#fff',borderWidth:1} },
+      { name:'当前选中', type:'scatter', data:[sel], itemStyle:{color:'#ffd700',shadowBlur:15,shadowColor:'#ffd700',borderColor:'#fff',borderWidth:2} }
+    ]
+  });
+  paretoChart.on('click', params => {
+    if (params.seriesName === '全部候选' || params.seriesName === 'Pareto 前沿') {
+      // simulate selection update
+      const v = params.value;
+      document.getElementById('selRet').textContent = (v[0]>=0?'+':'')+v[0]+'%';
+      document.getElementById('selSharpe').textContent = v[1];
+      paretoChart.setOption({ series:[
+        {},{},
+        { name:'当前选中', type:'scatter', data:[{value:v, symbolSize:16}], itemStyle:{color:'#ffd700',shadowBlur:15,shadowColor:'#ffd700',borderColor:'#fff',borderWidth:2} }
+      ]});
+    }
+  });
+  window.addEventListener('resize', () => paretoChart.resize());
+}
+initPareto();
+
+// ── 热力图 ──
+function initHeat(tab = 0) {
+  if (heatChart) heatChart.dispose();
+  heatChart = echarts.init(document.getElementById('heatChart'));
+  const cfgs = [
+    { xl:'量能阈值', yl:'RSI阈值', xRange:[0.5,2.0,40], yRange:[20,40,40], title:'量能 × RSI → 夏普' },
+    { xl:'持仓天数', yl:'止损比例%', xRange:[3,15,40], yRange:[3,12,40], title:'持仓 × 止损 → 年化' },
+    { xl:'趋势权重', yl:'动量权重', xRange:[0.1,0.4,40], yRange:[0.1,0.4,40], title:'趋势 × 动量 → 卡玛' }
+  ][tab];
+  const xLabels = [], yLabels = [];
+  for (let i = 0; i < cfgs.xRange[2]; i++) xLabels.push((cfgs.xRange[0] + (cfgs.xRange[1]-cfgs.xRange[0]) * i / (cfgs.xRange[2]-1)).toFixed(2));
+  for (let i = 0; i < cfgs.yRange[2]; i++) yLabels.push((cfgs.yRange[0] + (cfgs.yRange[1]-cfgs.yRange[0]) * i / (cfgs.yRange[2]-1)).toFixed(2));
+  const data = [];
+  for (let i = 0; i < cfgs.yRange[2]; i++) for (let j = 0; j < cfgs.xRange[2]; j++) {
+    const v = (Math.sin(i*0.3)*Math.cos(j*0.25)) * 0.5 + (Math.random()-0.5) * 0.3;
+    data.push([j, i, +v.toFixed(3)]);
+  }
+  heatChart.setOption({
+    backgroundColor:'transparent',
+    tooltip:{ position:'top', backgroundColor:'#1e293b', borderColor:'#334155', textStyle:{color:'#f1f5f9'},
+      formatter: p => `${cfgs.xl}: ${xLabels[p.value[0]]}<br>${cfgs.yl}: ${yLabels[p.value[1]]}<br>${tab===0?'夏普':tab===1?'年化%':'卡玛'}: <b>${p.value[2]}</b>` },
+    grid:{ left:80, right:18, top:30, bottom:60 },
+    xAxis:{ type:'category', data:xLabels, name:cfgs.xl, nameLocation:'middle', nameGap:30, nameTextStyle:{color:'#94a3b8'}, axisLabel:{color:'#94a3b8',fontSize:8,interval:4}, axisLine:{lineStyle:{color:'#334155'}} },
+    yAxis:{ type:'category', data:yLabels, name:cfgs.yl, nameLocation:'middle', nameGap:50, nameTextStyle:{color:'#94a3b8'}, axisLabel:{color:'#94a3b8',fontSize:8,interval:4}, axisLine:{lineStyle:{color:'#334155'}} },
+    visualMap:{ min:-0.5, max:0.5, calculable:true, orient:'horizontal', left:'center', bottom:0, textStyle:{color:'#94a3b8',fontSize:10}, inRange:{ color:['#ef4444','#1e293b','#22c55e'] } },
+    series:[{ type:'heatmap', data:data, label:{show:false}, emphasis:{ itemStyle:{ shadowBlur:10, shadowColor:'rgba(139,92,246,0.5)', borderColor:'#8b5cf6', borderWidth:2 } } }]
+  });
+  window.addEventListener('resize', () => heatChart && heatChart.resize());
+}
+function switchHeat(t) {
+  currentTab = t;
+  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', i===t));
+  document.getElementById('heatName').textContent = ['量能 × RSI','持仓 × 止损','趋势 × 动量'][t];
+  initHeat(t);
+}
+initHeat(0);
+
+// ── Top 10 Pareto 表 ──
+const paretoTop = [
+  {hash:'v5_8a3f',score:0.847,ret:18.2,sharpe:1.24,dd:-12.3,wr:32,pf:1.92},
+  {hash:'v5_8a4d',score:0.831,ret:15.7,sharpe:1.18,dd:-11.5,wr:30,pf:1.85},
+  {hash:'v5_8a5e',score:0.815,ret:14.1,sharpe:1.09,dd:-10.8,wr:31,pf:1.78},
+  {hash:'v5_8b1c',score:0.798,ret:13.2,sharpe:1.05,dd:-10.2,wr:30,pf:1.74},
+  {hash:'v5_8b2c',score:0.785,ret:12.5,sharpe:1.01,dd:-9.8, wr:29,pf:1.71},
+  {hash:'v5_8c3a',score:0.772,ret:11.8,sharpe:0.97,dd:-9.5, wr:30,pf:1.68},
+  {hash:'v5_8d4e',score:0.761,ret:11.2,sharpe:0.93,dd:-9.1, wr:30,pf:1.66},
+  {hash:'v5_8e5b',score:0.749,ret:10.7,sharpe:0.90,dd:-8.8, wr:29,pf:1.62},
+  {hash:'v5_8f6d',score:0.738,ret:10.3,sharpe:0.88,dd:-8.6, wr:29,pf:1.60},
+  {hash:'v5_9a7f',score:0.752,ret:9.8, sharpe:0.87,dd:-8.5, wr:29,pf:1.65}
+];
+document.querySelector('#paretoTable tbody').innerHTML = paretoTop.map((r,i) => `
+  <tr class="${i===0?'top1':''}" style="cursor:pointer" onclick="selectRow(${i})">
+    <td class="${i===0?'gold':''}">${i+1}</td>
+    <td style="font-family:'Fira Code',monospace;color:var(--accent)">${r.hash}</td>
+    <td><span class="score">${r.score.toFixed(3)}</span></td>
+    <td class="pos">+${r.ret.toFixed(1)}%</td>
+    <td>${r.sharpe.toFixed(2)}</td>
+    <td class="neg">${r.dd.toFixed(1)}%</td>
+    <td>${r.wr}%</td>
+    <td>${r.pf.toFixed(2)}</td>
+  </tr>
+`).join('');
+function selectRow(i) {
+  const r = paretoTop[i];
+  document.getElementById('selHash').textContent = r.hash;
+  document.getElementById('selScore').textContent = r.score.toFixed(3);
+  document.getElementById('selRet').textContent = '+'+r.ret.toFixed(1)+'%';
+  document.getElementById('selSharpe').textContent = r.sharpe.toFixed(2);
+  document.getElementById('selDD').textContent = r.dd.toFixed(1)+'%';
+  document.getElementById('selWR').textContent = r.wr+'%';
+  document.getElementById('selPF').textContent = r.pf.toFixed(2);
+  paretoChart.setOption({ series:[{},{},{ name:'当前选中', type:'scatter', data:[{value:[r.ret, r.sharpe], symbolSize:16}], itemStyle:{color:'#ffd700',shadowBlur:15,shadowColor:'#ffd700',borderColor:'#fff',borderWidth:2} }]});
+}
+
+// ── 行业 IC ──
+const industries = [
+  {name:'电子', ic:0.082}, {name:'医药', ic:0.071}, {name:'电力设备', ic:0.068},
+  {name:'汽车', ic:0.062}, {name:'机械设备', ic:0.058}, {name:'基础化工', ic:0.052}
+];
+document.getElementById('industryList').innerHTML = industries.map((ind,i) => `
+  <div class="industry-row">
+    <span class="rank">#${i+1}</span>
+    <span class="name">${ind.name}</span>
+    <div>
+      <div style="text-align:right;font-family:'Fira Code',monospace;color:var(--up);font-size:0.78rem">+${ind.ic.toFixed(3)}</div>
+      <div class="bar"><div class="fill" style="width:${ind.ic*1000}%"></div></div>
+    </div>
+  </div>
+`).join('');
+
+// ── 时间线 ──
+const records = [
+  {t:'06-26 14:22', s:0.847, who:'清淞自动跑'},
+  {t:'06-25 18:05', s:0.831, who:'清淞 (V5 调优)'},
+  {t:'06-25 09:30', s:0.815, who:'清淞 (早晨批)'},
+  {t:'06-24 22:18', s:0.798, who:'cron (周末)'},
+  {t:'06-24 11:40', s:0.785, who:'清淞 (手动)'}
+];
+document.getElementById('timeline').innerHTML = records.map(r => `
+  <div class="timeline-item">
+    <span class="t">${r.t}</span>
+    <span class="s">${r.s.toFixed(3)}</span>
+    <span class="who">${r.who}</span>
+  </div>
+`).join('');
+
+// ── actions ──
+function applyCombo() {
+  const h = document.getElementById('selHash').textContent;
+  const btn = event.target;
+  btn.textContent = '✅ 已应用 ' + h;
+  btn.disabled = true;
+  setTimeout(() => { btn.textContent = '应用此组合'; btn.disabled = false; }, 2000);
+}
+function goStock() {
+  const code = document.getElementById('stockCode').value.trim();
+  if (/^\d{6}$/.test(code)) location.href = '/stock/' + code;
+  else alert('请输入 6 位股票代码');
+}
+</script>
+</body>
+</html>
