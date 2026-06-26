@@ -365,7 +365,7 @@ _STANDALONE_PAGES = {
     # "/tuning": "tuning.html",                  # 2026-06-25 合并到 /research?type=tuning
     # "/dim-compare": "dim-compare.html",        # 2026-06-25 合并到 /research?type=dim
     # "/ic": "ic.html",                          # 2026-06-25 合并到 /research?type=ic
-    "/walk_forward": "walk_forward.html",
+    "/walk-forward": "walk_forward.html",
     # 2026-06-25 (Phase D — Ardot 新设计稿)
     "/backtest-lab": "backtest_lab.html",       # 原 workbench?mode=lab 优先
     "/signal-dashboard": "signal_dashboard.html",  # 龙头模型 v2 综合信号
@@ -373,6 +373,7 @@ _STANDALONE_PAGES = {
     "/tuning-panel": "tuning_panel.html",       # 七维量化评分参数调优
     "/v5-tuning": "v5_tuning.html",             # v5_hybrid 参数调优
     "/v6-compare": "v6_compare.html",           # v6阈值对比
+    "/multi-objective": "multi_objective.html", # Ardot spec 03 多目标优化 (2026-06-26)
     "/ic-analysis": "ic_analysis.html",         # IC分析
     "/dim-compare": "dim_compare.html",         # 维度贡献
     # 2026-06-26: 补齐最后 3 个 Ardot 设计稿

@@ -47,6 +47,10 @@ market_data/parquet/
 market_data/dataset/
 .workbuddy/
 .tmp_*.json
+
+# 备份 (运维脚本生成, 不入 git)
+backups/
+*.bak
 *.tmp
 
 # 截图/审计产物 (本地生成, 不入 git)
