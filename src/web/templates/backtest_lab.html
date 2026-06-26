@@ -302,14 +302,18 @@ function setupDates() {
 }
 
 // ===== 加载策略 =====
+// 2026-06-26: 修复 — 后端返回 {success, data:[...]} 包裹结构, 不能直接 Object.entries
 async function loadStrategies() {
   try {
     const r = await fetch(STRATEGY_META_URL);
     const d = await r.json();
-    state.strategies = d;
+    const arr = Array.isArray(d) ? d : (d.data || []);
+    const map = {};
+    arr.forEach(v => { if (v && v.name) map[v.name] = v; });
+    state.strategies = map;
     const sel = document.getElementById('strategySelect');
     sel.innerHTML = '<option value="">-- 请选择策略 --</option>' +
-      Object.entries(d).map(([k, v]) =>
+      Object.entries(map).map(([k, v]) =>
         `<option value="${k}">${v.name || k}</option>`
       ).join('');
   } catch(e) {
@@ -373,7 +377,8 @@ function setupSearch() {
       try {
         const r = await fetch('/api/stock/search?q=' + encodeURIComponent(q));
         const d = await r.json();
-        const items = d.results || [];
+        // 2026-06-26: 后端返回 {success, data:[...]}, 兼容旧 {results:[]}
+        const items = d.data || d.results || [];
         if (!items.length) {
           sug.innerHTML = '<div style="color:var(--dim);padding:8px 12px;">无匹配</div>';
           sug.style.display = 'block'; return;
@@ -382,7 +387,7 @@ function setupSearch() {
           `<div onclick="selectStock('${s.code}','${escHtml(s.name)}')">
             <span style="color:var(--accent);font-family:monospace;">${s.code}</span>
             <span>${escHtml(s.name)}</span>
-            <span style="color:var(--dim);font-size:0.7rem;margin-left:6px;">[${s.match}]</span>
+            <span style="color:var(--dim);font-size:0.7rem;margin-left:6px;">[${s.match||s.market||''}]</span>
            </div>`
         ).join('');
         sug.style.display = 'block';
@@ -508,7 +513,8 @@ function renderResult(result) {
   const s = result.summary || {};
   document.getElementById('emptyState').style.display = 'none';
   document.getElementById('resultArea').style.display = 'block';
-  document.getElementById('resultTitle').textContent = result.strategyName + ' · ' + result.code +
+  // 2026-06-26: result.strategyName 在 result 上不存在, 应读 summary.strategyName
+  document.getElementById('resultTitle').textContent = (s.strategyName || state.stockCode) + ' · ' + (s.stockCode || state.stockCode) +
     ' · ' + (s.totalTrades || 0) + '笔交易';
 
   // 指标卡片
@@ -648,9 +654,9 @@ function saveToHistory(result, sid, code, capital) {
   const record = {
     id: Date.now(),
     time: new Date().toLocaleString(),
-    strategy: result.strategyName || sid,
+    strategy: (result.summary && result.summary.strategyName) || sid,
     strategyId: sid,
-    code: result.code || code,
+    code: (result.summary && result.summary.stockCode) || code,
     capital: capital,
     params: JSON.stringify(params),
     totalReturn: s.totalReturn,
