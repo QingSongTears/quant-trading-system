@@ -1,0 +1,142 @@
+{% include "partials/_standalone_head.html" %}
+{% set page_title = "Ardot 设计 Spec · V5/V6 调参增强页" %}
+{% set page_subtitle = "等待 Ardot MCP 连接后落地 · 基于 output/*.html 真实数据反向推导" %}
+
+<div class="page-header">
+    <div class="page-header-left">
+        <h1>📐 Ardot 设计 Spec</h1>
+        <p class="subtitle">{{ page_subtitle }}</p>
+    </div>
+    <div class="page-header-right">
+        <span class="status-badge status-pending">⏳ 待 Ardot MCP 落地</span>
+    </div>
+</div>
+
+<div class="meta-bar">
+    <div class="meta-item">
+        <span class="meta-label">文件位置</span>
+        <code>output/ardot_specs/</code>
+    </div>
+    <div class="meta-item">
+        <span class="meta-label">生成时间</span>
+        <code>2026-06-26 11:21</code>
+    </div>
+    <div class="meta-item">
+        <span class="meta-label">数据源</span>
+        <code>output/v5_tuning.html + v6_compare.html + tuning_panel.html + walk_forward.html</code>
+    </div>
+    <div class="meta-item">
+        <span class="meta-label">画布接续位置</span>
+        <code>x=34000 (接 Index Navigation 右侧)</code>
+    </div>
+</div>
+
+{% if readme_exists %}
+<div class="card">
+    <h2>📖 项目说明</h2>
+    <div class="markdown-content">
+        <p>本目录包含 4 个 Ardot 设计稿的详细规格（spec），用于在没有 Ardot MCP 连接时也能查阅已规划的页面设计。</p>
+        <ul>
+            <li><strong>设计语言</strong>: Dark Mode OLED + Fira Code/Sans + A股红绿配色（沿用前 19 页）</li>
+            <li><strong>节点位置</strong>: 接续现有 Index Navigation 页面（x=32300），新增 4 页位于 x=34000 ~ 40800</li>
+            <li><strong>数据真实性</strong>: 所有数值、参数、配置均来自现有 output/*.html 的真实数据</li>
+            <li><strong>落地流程</strong>: MCP 可用时，按 spec 中的"Ardot MCP 操作提示"小节分批 batch_edit</li>
+        </ul>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <h2>📋 4 个待落地页面</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th style="width:60px">#</th>
+                <th>页面名称</th>
+                <th style="width:100px">画布 x</th>
+                <th style="width:140px">节点范围</th>
+                <th style="width:90px">估算节点</th>
+                <th style="width:80px">文件大小</th>
+                <th style="width:120px">操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for spec in specs %}
+            <tr>
+                <td><span class="num-badge">{{ spec.num }}</span></td>
+                <td>
+                    <strong>{{ spec.title }}</strong>
+                    <div class="slug">{{ spec.slug }}</div>
+                </td>
+                <td><code>{% set x = 34000 + (loop.index0 * 1700) %}{{ x }}</code></td>
+                <td><code>16:{{ "%d"|format((loop.index0 * 90) + 1) }} ~ 16:{{ "%d"|format(loop.index0 * 90 + 90) }}</code></td>
+                <td>~{{ 80 + loop.index0 * 10 }}</td>
+                <td>{{ spec.size_kb }} KB</td>
+                <td><a class="btn btn-primary btn-sm" href="/ardot-specs/{{ spec.slug }}">查看 →</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h2>🎨 设计 Token 统一规范</h2>
+    <div class="token-grid">
+        <div class="token-row">
+            <div class="token-color" style="background:#0F172A"></div>
+            <code>#0F172A</code>
+            <span class="token-name">bg_primary · 主背景</span>
+        </div>
+        <div class="token-row">
+            <div class="token-color" style="background:#1E293B"></div>
+            <code>#1E293B</code>
+            <span class="token-name">bg_card · 卡片背景</span>
+        </div>
+        <div class="token-row">
+            <div class="token-color" style="background:#334155"></div>
+            <code>#334155</code>
+            <span class="token-name">bg_elevated · 浮层/分隔</span>
+        </div>
+        <div class="token-row">
+            <div class="token-color" style="background:#EF4444"></div>
+            <code>#EF4444</code>
+            <span class="token-name">up_red · A股涨（红）</span>
+        </div>
+        <div class="token-row">
+            <div class="token-color" style="background:#22C55E"></div>
+            <code>#22C55E</code>
+            <span class="token-name">down_green · A股跌（绿）</span>
+        </div>
+        <div class="token-row">
+            <div class="token-color" style="background:#F59E0B"></div>
+            <code>#F59E0B</code>
+            <span class="token-name">accent_v5 · V5 琥珀</span>
+        </div>
+        <div class="token-row">
+            <div class="token-color" style="background:#8B5CF6"></div>
+            <code>#8B5CF6</code>
+            <span class="token-name">accent_v6 · V6 紫</span>
+        </div>
+        <div class="token-row">
+            <div class="token-color" style="background:#3B82F6"></div>
+            <code>#3B82F6</code>
+            <span class="token-name">accent_blue · 验证蓝</span>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>🚀 Ardot MCP 落地流程</h2>
+    <ol class="step-list">
+        <li><strong>Step 1</strong>: <code>mcp__ardot__open_design(fileUrl="https://ardot.tencent.com/file/697128059547574")</code> — 加载现有 File</li>
+        <li><strong>Step 2</strong>: 串行 4 个页面，每个页面 4-6 个 <code>batch_edit</code> 调用，按各 spec 中的"Ardot MCP 操作提示"小节分批</li>
+        <li><strong>Step 3</strong>: 每批后用 <code>capture_layout(parentId=..., problemsOnly=True)</code> 验证布局，最多重试 2 轮</li>
+        <li><strong>Step 4</strong>: 4 张整体截图 + 添加 changelog 节点（右下角小卡）</li>
+    </ol>
+</div>
+
+<div class="footer-bar">
+    <span>📁 规格源文件: <code>output/ardot_specs/*.md</code></span>
+    <span>🔗 Ardot File: <a href="https://ardot.tencent.com/file/697128059547574" target="_blank">697128059547574</a></span>
+    <span>📌 Tag: v2.0-ardot-landing</span>
+</div>
