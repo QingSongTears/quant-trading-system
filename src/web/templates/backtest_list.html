@@ -2,6 +2,8 @@
 {% block title %}回测记录 - {{ app_name }}{% endblock %}
 
 {% block extra_head %}
+{# 2026-06-26 P1-5: 强制 Dark OLED 主题 (原 base.html 浅色) #}
+{% include "partials/_dark_theme_override.html" %}
 <style>
   body { background: #0f1117; color: #e0e0e0; }
   .navbar, .footer, .ai-disclaimer {
@@ -41,8 +43,8 @@
       background: #2a2d3a; padding: 2px 8px; border-radius: 4px;
       font-family: monospace; font-size: 0.78rem; color: #4fc3f7;
   }
-  .ret-pos { color: #22c55e; font-weight: 700; font-family: monospace; }
-  .ret-neg { color: #ef4444; font-weight: 700; font-family: monospace; }
+  .ret-pos { color: #ef4444; font-weight: 700; font-family: monospace; }
+  .ret-neg { color: #22c55e; font-weight: 700; font-family: monospace; }
   .empty-state {
       padding: 60px 20px; text-align: center; color: #888;
   }

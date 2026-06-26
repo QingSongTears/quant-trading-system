@@ -36,6 +36,8 @@ HTML_PAGES = [
     "/walk_forward",
     "/verify",
     "/predict",
+    "/predict-dashboard",   # 2026-06-26: 8维预测看板
+    "/predict-verify",      # 2026-06-26: 预测验证
     "/signal",
     "/portfolio",
     "/sector",
@@ -70,6 +72,11 @@ API_PAGES = [
     "/api/simulate/list",
     "/api/research/ic?window=5&stock_limit=5",
     "/api/research/dim-ic?window=5&stock_limit=5",
+    # 2026-06-26: 预测面板 4 端点
+    "/api/predict/000001",
+    "/api/predict/history?code=000001&limit=10",
+    "/api/predict/verify",
+    "/api/predict/stats",
 ]
 
 

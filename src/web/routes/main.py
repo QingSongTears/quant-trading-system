@@ -358,7 +358,7 @@ _STANDALONE_PAGES = {
     "/signal": "signal.html",
     "/verify": "verify.html",
     "/predict": "predict.html",
-    "/tuning": "tuning.html",
+    # "/tuning": "tuning.html",  # 2026-06-26: 删 dead route, 改 /research?type=tuning (旧链接自动 redirect 兼容)
     "/data-monitor": "data-monitor.html",
     # "/v5": "v5.html",                          # 2026-06-25 合并到 /research?type=v5
     # "/v6-compare": "v6-compare.html",          # 2026-06-25 合并到 /research?type=v6
@@ -375,6 +375,10 @@ _STANDALONE_PAGES = {
     "/v6-compare": "v6_compare.html",           # v6阈值对比
     "/ic-analysis": "ic_analysis.html",         # IC分析
     "/dim-compare": "dim_compare.html",         # 维度贡献
+    # 2026-06-26: 补齐最后 3 个 Ardot 设计稿
+    "/predict-verify": "predict_verify.html",   # 预测验证
+    "/predict-dashboard": "predict_dashboard.html",  # 预测面板
+    "/bull-backtest-report": "bull_backtest_report.html",  # 多头回测报告
 }
 
 
@@ -384,6 +388,16 @@ def _register_standalone_routes():
         async def _handler(request: Request, _t=tmpl):
             return templates.TemplateResponse(request, _t, _get_global_context())
         router.add_api_route(path, _handler, response_class=HTMLResponse, methods=["GET"])
+
+
+# 2026-06-26: /tuning 旧路由重定向到 /research?type=tuning
+# 原 /tuning 模板已删除(2026-06-25 Phase C3 合并到 research),
+# 但 dashboard / TopBar 旧链接仍指向 /tuning → 301 redirect 保持兼容
+@router.get("/tuning", response_class=HTMLResponse)
+async def tuning_redirect():
+    """旧 /tuning 路由 → /research?type=tuning (兼容旧链接)"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/research?type=tuning", status_code=301)
 
 
 # ============================================================

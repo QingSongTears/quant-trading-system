@@ -25,6 +25,9 @@
     <a href="/screener" {% if request.url.path == '/screener' %}class="active"{% endif %}>🔍 选股器</a>
     <a href="/signal-dashboard" {% if request.url.path == '/signal-dashboard' %}class="active"{% endif %}>⚡ 综合信号</a>
     <a href="/data-monitor" {% if request.url.path == '/data-monitor' %}class="active"{% endif %}>📊 数据监控</a>
+    <a href="/predict-dashboard" {% if request.url.path == '/predict-dashboard' %}class="active"{% endif %}>🔮 预测面板</a>
+    <a href="/predict-verify" {% if request.url.path == '/predict-verify' %}class="active"{% endif %}>✅ 预测验证</a>
+    <a href="/bull-backtest-report" {% if request.url.path == '/bull-backtest-report' %}class="active"{% endif %}>📈 多头回测</a>
   </nav>
   <div class="ardot-topbar-right">
     <span class="ardot-status-dot" title="系统正常"></span>
