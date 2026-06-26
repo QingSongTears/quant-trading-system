@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% block title %}回测工作台 - {{ app_name }}{% endblock %}
+{% block extra_head %}
+{# 2026-06-26 P1-5: 强制 Dark OLED 主题 (原 base.html 浅色) #}
+{% include "partials/_dark_theme_override.html" %}
+{% endblock %}
 
 {% block content %}
 <div class="d-flex align-items-center mb-4">

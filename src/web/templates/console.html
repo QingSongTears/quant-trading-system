@@ -152,7 +152,8 @@ select:focus,input:focus{border-color:var(--blue)}
 </style>
 </head>
 <body>
-{% include "partials/_ardot_nav.html" %}
+{# 2026-06-26 P1-6: console.html 用 sidebar 布局, 不注入 Ardot topbar (会破坏 flex 布局) #}
+{# 改为在 sidebar 顶部加 logo 链接回首页 #}
 
 <div class="sidebar">
   <div class="logo"><h1><span class="icon">Q</span> {{ app_name | default('AI QuantX') }}</h1><p>Quantitative Trading Console v3.0</p></div>

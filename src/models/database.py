@@ -459,3 +459,37 @@ class FundFlowData(Base):
 
     def __repr__(self):
         return f"<FundFlowData(code={self.code}, date={self.trade_date})>"
+
+
+class PredictionRecord(Base):
+    """预测记录表 — param_server.py 兼容 schema (2026-06-26)
+
+    写入方: /api/predict/{code} (每次在线预测)
+    读出方: /api/predict/history, /api/predict/verify, /api/predict/stats
+
+    字段命名严格对齐 scripts/param_server.py:2541-2629, 2704, 2717 的 SQL,
+    保证 Flask (param_server) 与 FastAPI 两端 INSERT/UPDATE/SELECT 无障碍。
+    """
+    __tablename__ = "prediction_record"
+    __table_args__ = (
+        Index("idx_pr_code_month", "code", "pred_month"),
+        Index("idx_pr_created", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(10), nullable=False, comment="股票代码")
+    stock_name: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="股票名称")
+    pred_month: Mapped[str] = mapped_column(String(7), nullable=False, comment="YYYY-MM")
+    as_of_date: Mapped[date] = mapped_column(Date, nullable=False, comment="数据截止日")
+    pred_proba: Mapped[float | None] = mapped_column(Float, nullable=True, comment="上涨概率 0-1")
+    signal: Mapped[str | None] = mapped_column(String(10), nullable=True, comment="买入/中性/回避")
+    auc: Mapped[float | None] = mapped_column(Float, nullable=True, comment="模型 AUC")
+    dim_scores: Mapped[str | None] = mapped_column(Text, nullable=True, comment="8维评分 JSON")
+    logistic_coef: Mapped[str | None] = mapped_column(Text, nullable=True, comment="LogReg 系数 JSON")
+    actual_return_20d: Mapped[float | None] = mapped_column(Float, nullable=True, comment="20日实际收益%")
+    actual_return_60d: Mapped[float | None] = mapped_column(Float, nullable=True, comment="60日实际收益%")
+    verified: Mapped[int] = mapped_column(Integer, default=0, nullable=False, comment="0=未验证 1=已验证")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<PredictionRecord(code={self.code}, month={self.pred_month}, proba={self.pred_proba})>"

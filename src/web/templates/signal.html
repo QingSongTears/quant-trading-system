@@ -132,9 +132,11 @@ let moodChart = null;
 
 async function load() {
   try {
-    const r = await fetch('/api/stock/screener?min_score=0&sort_by=avg_score&limit=500');
+    // 2026-06-26: 改用 /api/signal/list (返回完整 dim_scores / ret_20d / ret_60d)
+    // 旧 /api/stock/screener 只返基础信息, 缺评分字段 → signal.html 加载失败
+    const r = await fetch('/api/signal/list?min_score=0&sort_by=avg_score&limit=500');
     const d = await r.json();
-    if (!d.stocks) throw new Error('API 返回无效');
+    if (!d.stocks) throw new Error('API 返回无效: ' + (d.error || '未知错误'));
     const stocks = d.stocks;
 
     // 大盘情绪: 技术面均值

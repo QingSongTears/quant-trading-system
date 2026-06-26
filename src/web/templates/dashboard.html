@@ -40,6 +40,165 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .footer{text-align:center;padding:20px;color:var(--dim);font-size:0.75rem;border-top:1px solid var(--border)}
 @keyframes spin{to{transform:rotate(360deg)}}
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.6s linear infinite;vertical-align:middle;margin-right:6px}
+
+/* ═══ 功能矩阵 Tab 样式 (2026-06-26 还原旧 index.html 的"一堆子页签") ═══ */
+.ardot-subtabs {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  list-style: none !important;
+  padding: 0 !important;
+  margin: 0 0 12px 0 !important;
+  gap: 6px !important;
+}
+.ardot-subtabs .nav-item { flex: 0 0 auto; }
+.ardot-subtabs .nav-link {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  color: var(--dim);
+  font-size: 0.82rem;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.15s;
+  text-decoration: none;
+  cursor: pointer;
+}
+.ardot-subtabs .nav-link:hover {
+  background: rgba(79,195,247,0.08);
+  color: var(--text);
+  border-color: rgba(79,195,247,0.3);
+}
+.ardot-subtabs .nav-link.active {
+  background: rgba(79,195,247,0.15);
+  color: var(--accent);
+  border-color: rgba(79,195,247,0.45);
+  box-shadow: 0 0 0 1px rgba(79,195,247,0.15) inset;
+}
+.ardot-subtabs .badge { font-size: 0.62rem; padding: 2px 6px; }
+
+.nav-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.nav-card {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  text-decoration: none;
+  color: var(--text);
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nav-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent);
+  background: rgba(79,195,247,0.06);
+  box-shadow: 0 8px 20px rgba(79,195,247,0.08);
+  color: var(--text);
+}
+.nav-card .icon { font-size: 1.5rem; line-height: 1; }
+.nav-card .name { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+.nav-card .desc { font-size: 0.72rem; color: var(--dim); line-height: 1.4; }
+.nav-card .tag {
+  font-size: 0.65rem; color: var(--accent); margin-top: 4px;
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+.tab-content > .tab-pane { display: none; }
+.tab-content > .tab-pane.active { display: block; animation: fadeInTab 0.25s ease; }
+@keyframes fadeInTab { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+
+/* ═══ 2026-06-26 首页布局重排: 左侧 sidebar + 右侧主内容流 (解决页签在底部问题) ═══ */
+.layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  align-items: start;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+}
+.sidebar {
+  position: sticky;
+  top: 92px;             /* 顶栏 + sub-header 高度 */
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+.sidebar-title {
+  font-size: 0.7rem;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.sidebar-title .badge { font-size: 0.6rem; padding: 1px 8px; }
+.ardot-subtabs { flex-wrap: wrap; gap: 4px !important; margin-bottom: 12px !important; }
+.ardot-subtabs .nav-link {
+  padding: 4px 10px !important;
+  font-size: 0.72rem !important;
+  border-radius: 14px !important;
+}
+.ardot-subtabs .badge { font-size: 0.58rem !important; padding: 1px 5px !important; }
+
+.nav-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+.nav-card {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(42,45,58,0.6);
+  border-radius: 8px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+.nav-card:hover {
+  background: rgba(79,195,247,0.08);
+  border-color: var(--accent);
+  transform: translateX(2px);
+}
+.nav-card .icon { font-size: 1.15rem; line-height: 1; text-align: center; }
+.nav-card .name { font-size: 0.82rem; font-weight: 600; color: var(--text); line-height: 1.2; }
+.nav-card .desc {
+  font-size: 0.66rem;
+  color: var(--dim);
+  line-height: 1.35;
+  margin-top: 1px;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.nav-card .tag { display: none; }    /* sidebar 太窄, 隐藏路径标签 */
+.nav-card .meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+@media (max-width: 980px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { position: static; max-height: none; }
+}
+
+.main { min-width: 0; }              /* 防止 grid 溢出 */
 </style>
 </head>
 <body>
@@ -48,7 +207,86 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   <h1>📊 量化系统数据总览</h1>
   <span style="font-size:0.75rem;color:var(--dim)" id="headerSub">加载中...</span>
 </header>
-<div class="container">
+<div class="layout">
+  <!-- ═══ 左侧 sidebar: 功能矩阵 (5 Tab + 19 张卡片) — 取代原本在底部的位置 ═══ -->
+  <aside class="sidebar" aria-label="功能矩阵导航">
+    <div class="sidebar-title">🧭 功能矩阵 <span class="badge">19 · 5分类</span></div>
+    <ul class="nav nav-pills ardot-subtabs" id="funcTab" role="tablist">
+      <li class="nav-item" role="presentation"><button class="nav-link active" data-bs-target="#pane-all" type="button" role="tab">全部 <span class="badge bg-secondary">19</span></button></li>
+      <li class="nav-item" role="presentation"><button class="nav-link" data-bs-target="#pane-analyze" type="button" role="tab">📊 分析 <span class="badge bg-secondary">4</span></button></li>
+      <li class="nav-item" role="presentation"><button class="nav-link" data-bs-target="#pane-backtest" type="button" role="tab">🧪 回测 <span class="badge bg-secondary">6</span></button></li>
+      <li class="nav-item" role="presentation"><button class="nav-link" data-bs-target="#pane-report" type="button" role="tab">📋 报告 <span class="badge bg-secondary">4</span></button></li>
+      <li class="nav-item" role="presentation"><button class="nav-link" data-bs-target="#pane-system" type="button" role="tab">⚙️ 系统 <span class="badge bg-secondary">5</span></button></li>
+    </ul>
+    <div class="tab-content" id="funcTabContent">
+      <!-- 全部 (19) -->
+      <div class="tab-pane fade show active" id="pane-all" role="tabpanel">
+        <div class="nav-grid">
+          <a class="nav-card" href="/diagnose"><span class="icon">🔬</span><span class="meta"><span class="name">个股诊断</span><span class="desc">8维评分·K线·信号·结论</span></span></a>
+          <a class="nav-card" href="/sector"><span class="icon">🏭</span><span class="meta"><span class="name">行业板块</span><span class="desc">行业排名·成分股·轮动</span></span></a>
+          <a class="nav-card" href="/screener"><span class="icon">🔍</span><span class="meta"><span class="name">选股工作台</span><span class="desc">多条件筛选·排序</span></span></a>
+          <a class="nav-card" href="/portfolio"><span class="icon">📦</span><span class="meta"><span class="name">持仓分析</span><span class="desc">组合评分·诊断</span></span></a>
+          <a class="nav-card" href="/backtest-lab"><span class="icon">🧪</span><span class="meta"><span class="name">回测实验室</span><span class="desc">参数调整·实时回测</span></span></a>
+          <a class="nav-card" href="/signal-dashboard"><span class="icon">⚡</span><span class="meta"><span class="name">综合信号</span><span class="desc">XGBoost·策略投票</span></span></a>
+          <a class="nav-card" href="/predict-dashboard"><span class="icon">🔮</span><span class="meta"><span class="name">预测看板</span><span class="desc">上涨概率·8维评分</span></span></a>
+          <a class="nav-card" href="/predict-verify"><span class="icon">✅</span><span class="meta"><span class="name">预测验证</span><span class="desc">命中率·散点分析</span></span></a>
+          <a class="nav-card" href="/ic-analysis"><span class="icon">📊</span><span class="meta"><span class="name">IC分析</span><span class="desc">维度IC·因子有效</span></span></a>
+          <a class="nav-card" href="/strategy-compare"><span class="icon">⚔️</span><span class="meta"><span class="name">策略对比</span><span class="desc">7大策略·净值曲线</span></span></a>
+          <a class="nav-card" href="/v6-compare"><span class="icon">⚖️</span><span class="meta"><span class="name">V6参数对比</span><span class="desc">5档配置·推荐</span></span></a>
+          <a class="nav-card" href="/bull-backtest-report"><span class="icon">🐂</span><span class="meta"><span class="name">多头回测报告</span><span class="desc">194只·3807笔·TOP10</span></span></a>
+          <a class="nav-card" href="/fund-flow-report"><span class="icon">💰</span><span class="meta"><span class="name">资金流融合</span><span class="desc">Sharpe+67%·加权</span></span></a>
+          <a class="nav-card" href="/dim-compare"><span class="icon">📐</span><span class="meta"><span class="name">维度IC对比</span><span class="desc">牛市vs全市场</span></span></a>
+          <a class="nav-card" href="/data-monitor"><span class="icon">📊</span><span class="meta"><span class="name">数据监控</span><span class="desc">库状态·新鲜度</span></span></a>
+          <a class="nav-card" href="/tuning-panel"><span class="icon">⚙️</span><span class="meta"><span class="name">参数调优</span><span class="desc">8维权重·IC计算</span></span></a>
+          <a class="nav-card" href="/console"><span class="icon">🖥️</span><span class="meta"><span class="name">控制台</span><span class="desc">7模块统一入口</span></span></a>
+          <a class="nav-card" href="/v5-tuning"><span class="icon">📐</span><span class="meta"><span class="name">V5策略调优</span><span class="desc">v5混合·深度回测</span></span></a>
+          <a class="nav-card" href="/walk_forward"><span class="icon">🔁</span><span class="meta"><span class="name">Walk-Forward</span><span class="desc">滚动窗口·样本外</span></span></a>
+        </div>
+      </div>
+      <!-- 分析诊断 (4) -->
+      <div class="tab-pane fade" id="pane-analyze" role="tabpanel">
+        <div class="nav-grid">
+          <a class="nav-card" href="/diagnose"><span class="icon">🔬</span><span class="meta"><span class="name">个股诊断</span><span class="desc">8维评分·K线·结论</span></span></a>
+          <a class="nav-card" href="/sector"><span class="icon">🏭</span><span class="meta"><span class="name">行业板块</span><span class="desc">行业排名·成分股</span></span></a>
+          <a class="nav-card" href="/screener"><span class="icon">🔍</span><span class="meta"><span class="name">选股工作台</span><span class="desc">多条件筛选</span></span></a>
+          <a class="nav-card" href="/portfolio"><span class="icon">📦</span><span class="meta"><span class="name">持仓分析</span><span class="desc">组合评分·诊断</span></span></a>
+        </div>
+      </div>
+      <!-- 策略与回测 (6) -->
+      <div class="tab-pane fade" id="pane-backtest" role="tabpanel">
+        <div class="nav-grid">
+          <a class="nav-card" href="/backtest-lab"><span class="icon">🧪</span><span class="meta"><span class="name">回测实验室</span><span class="desc">参数调整</span></span></a>
+          <a class="nav-card" href="/strategy-compare"><span class="icon">⚔️</span><span class="meta"><span class="name">策略对比</span><span class="desc">7大策略·净值</span></span></a>
+          <a class="nav-card" href="/signal-dashboard"><span class="icon">⚡</span><span class="meta"><span class="name">综合信号</span><span class="desc">策略投票</span></span></a>
+          <a class="nav-card" href="/predict-dashboard"><span class="icon">🔮</span><span class="meta"><span class="name">预测看板</span><span class="desc">上涨概率</span></span></a>
+          <a class="nav-card" href="/predict-verify"><span class="icon">✅</span><span class="meta"><span class="name">预测验证</span><span class="desc">命中率</span></span></a>
+          <a class="nav-card" href="/ic-analysis"><span class="icon">📊</span><span class="meta"><span class="name">IC分析</span><span class="desc">维度IC</span></span></a>
+        </div>
+      </div>
+      <!-- 研究报告 (4) -->
+      <div class="tab-pane fade" id="pane-report" role="tabpanel">
+        <div class="nav-grid">
+          <a class="nav-card" href="/v6-compare"><span class="icon">⚖️</span><span class="meta"><span class="name">V6参数对比</span><span class="desc">5档配置</span></span></a>
+          <a class="nav-card" href="/bull-backtest-report"><span class="icon">🐂</span><span class="meta"><span class="name">多头回测报告</span><span class="desc">194只·TOP10</span></span></a>
+          <a class="nav-card" href="/fund-flow-report"><span class="icon">💰</span><span class="meta"><span class="name">资金流融合</span><span class="desc">Sharpe+67%</span></span></a>
+          <a class="nav-card" href="/dim-compare"><span class="icon">📐</span><span class="meta"><span class="name">维度IC对比</span><span class="desc">牛市vs市场</span></span></a>
+        </div>
+      </div>
+      <!-- 系统 (5) -->
+      <div class="tab-pane fade" id="pane-system" role="tabpanel">
+        <div class="nav-grid">
+          <a class="nav-card" href="/data-monitor"><span class="icon">📊</span><span class="meta"><span class="name">数据监控</span><span class="desc">库状态·新鲜度</span></span></a>
+          <a class="nav-card" href="/tuning-panel"><span class="icon">⚙️</span><span class="meta"><span class="name">参数调优</span><span class="desc">8维权重</span></span></a>
+          <a class="nav-card" href="/console"><span class="icon">🖥️</span><span class="meta"><span class="name">控制台</span><span class="desc">7模块入口</span></span></a>
+          <a class="nav-card" href="/v5-tuning"><span class="icon">📐</span><span class="meta"><span class="name">V5策略调优</span><span class="desc">v5混合</span></span></a>
+          <a class="nav-card" href="/walk_forward"><span class="icon">🔁</span><span class="meta"><span class="name">Walk-Forward</span><span class="desc">滚动验证</span></span></a>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══ 右侧主内容流: 原 6 个数据卡片 ═══ -->
+  <main class="main">
   <div class="loading" id="loadingState"><span class="spinner"></span> 加载数据...</div>
   <div id="content" style="display:none">
     <!-- 概览 -->
@@ -85,8 +323,10 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </tr></thead><tbody id="topBody"></tbody></table></div>
     </div>
   </div>
-  <div class="footer">数据截至 <span id="dataDate">2026-06-21</span> · 量化回测系统 v4</div>
+  </main>
 </div>
+
+  <div class="footer">数据截至 <span id="dataDate">2026-06-21</span> · 量化回测系统 v4</div>
 <script>
 /* 2026-06-26: dashboard 数据接入 — 用 /api/data/coverage + /api/strategy/compare + /api/backtest/results 多源聚合
    替代不存在的 /api/dashboard/stats, common.js 自动注入 Bearer */
@@ -327,6 +567,31 @@ function renderTop20(strategyKey) {
 }
 
 document.addEventListener('DOMContentLoaded', loadData);
+
+/* ═══ 功能矩阵 Tab 切换 (2026-06-26 还原) ═══ */
+(function(){
+  function showPane(target){
+    document.querySelectorAll('.ardot-subtabs .nav-link').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#funcTabContent .tab-pane').forEach(p => p.classList.remove('show','active'));
+    const btn = document.querySelector(`.ardot-subtabs .nav-link[data-bs-target="${target}"]`);
+    const pane = document.querySelector(target);
+    if (btn) btn.classList.add('active');
+    if (pane) pane.classList.add('show','active');
+  }
+  document.querySelectorAll('.ardot-subtabs .nav-link').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      const target = btn.dataset.bsTarget;
+      showPane(target);
+      try { localStorage.setItem('dashboard_func_tab', target); } catch(_){}
+    });
+  });
+  // 恢复上次 Tab
+  try {
+    const saved = localStorage.getItem('dashboard_func_tab');
+    if (saved) showPane(saved);
+  } catch(_){}
+})();
 </script>
 </body>
 </html>

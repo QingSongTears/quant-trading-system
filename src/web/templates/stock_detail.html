@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ stock_code }} - 个股详情{% endblock %}
 {% block extra_head %}
+{# 2026-06-26 P1-4: 强制 Dark OLED 主题 (原 base.html 浅色) #}
+{% include "partials/_dark_theme_override.html" %}
 <style>
     /* K线 tab 切换 */
     .kline-tabs .nav-link {
@@ -20,7 +22,7 @@
 
     /* 加载态 */
     .skeleton {
-        background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 50%, #f1f5f9 100%);
+        background: linear-gradient(90deg, #1e2030 0%, #2a2d3a 50%, #1e2030 100%);
         background-size: 200% 100%;
         animation: shimmer 1.5s infinite;
         border-radius: 6px;
@@ -35,9 +37,10 @@
     }
     .concept-chip {
         padding: 4px 12px; border-radius: 14px;
-        background: linear-gradient(135deg, #eef2ff 0%, #ddd6fe 100%);
-        color: #4338ca; font-size: 0.85rem; font-weight: 500;
+        background: linear-gradient(135deg, rgba(79,195,247,0.12) 0%, rgba(129,140,248,0.12) 100%);
+        color: #818cf8; font-size: 0.85rem; font-weight: 500;
         cursor: pointer; transition: transform .15s ease;
+        border: 1px solid rgba(129,140,248,0.2);
     }
     .concept-chip:hover { transform: translateY(-2px); }
 </style>
@@ -52,7 +55,7 @@
             <i class="bi bi-arrow-left"></i> 返回首页
         </a>
         <div class="input-group" style="max-width: 360px;">
-            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+            <span class="input-group-text" style="background:#0c0c1e;border-color:var(--border-soft);color:var(--text-secondary)"><i class="bi bi-search"></i></span>
             <input type="text" id="code-input" class="form-control" placeholder="输入代码或名称" value="{{ stock_code }}">
             <button class="btn btn-primary" onclick="loadStock()">查询</button>
         </div>

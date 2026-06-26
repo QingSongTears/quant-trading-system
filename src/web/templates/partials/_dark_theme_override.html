@@ -1,0 +1,232 @@
+{# ============================================================================
+   _dark_theme_override.html — 浅色页 (extends base.html) 转 Ardot Dark OLED 注入 (2026-06-26)
+
+   解决问题: stock_detail / compare / strategies / backtest 等页继承 base.html (浅色),
+            强制把 CSS 变量翻成 Dark OLED 配色.
+
+   用法: 在 {% block extra_head %} 内第一行 include 即可.
+        {% block extra_head %}
+          {% include "partials/_dark_theme_override.html" %}
+          <style>...</style>
+        {% endblock %}
+
+   注意: 这个 partial 重定义 :root CSS 变量 + 全局 background/text 颜色,
+        不会破坏页面原有 layout (Bootstrap 5 仍生效, 只是颜色变深).
+   ============================================================================ #}
+<style>
+/* Ardot Dark OLED 强制覆盖 — 2026-06-26 P1-4/5 修复 */
+:root {
+    --bg-soft: #0F172A !important;      /* 主背景: Dark Slate 900 */
+    --bg-card: #1A1D27 !important;      /* 卡片: Ardot Card */
+    --border-soft: #2A2D3A !important;  /* 边框: Ardot Border */
+    --text-primary: #E0E0E0 !important; /* 主文字: Ardot Text */
+    --text-secondary: #888 !important;  /* 副文字: Argot Dim */
+    --ai-blue: #4FC3F7 !important;
+    --indigo: #818cf8 !important;
+    --profit-green: #EF4444 !important;  /* A股: 涨红 */
+    --loss-green: #22C55E !important;    /* A股: 跌绿 */
+    --profit-text: #EF4444 !important;
+    --loss-text: #22C55E !important;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.4) !important;
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.5) !important;
+    --shadow-lg: 0 10px 24px rgba(0,0,0,0.6) !important;
+    --gradient-primary: linear-gradient(135deg, #4FC3F7 0%, #818cf8 100%) !important;
+    --gradient-profit: linear-gradient(135deg, #EF4444 0%, #F97316 100%) !important;
+    --gradient-loss: linear-gradient(135deg, #22C55E 0%, #10B981 100%) !important;
+}
+body {
+    background: var(--bg-soft) !important;
+    color: var(--text-primary) !important;
+}
+/* 强制所有 .card 变深色 + 边框可见 */
+.card {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-soft) !important;
+    color: var(--text-primary) !important;
+}
+.card-header {
+    background: #13151D !important;
+    border-bottom: 1px solid var(--border-soft) !important;
+    color: var(--text-primary) !important;
+}
+/* 表格 Bootstrap 默认白底 → 深色 */
+.table {
+    color: var(--text-primary) !important;
+    --bs-table-bg: transparent !important;
+    --bs-table-color: var(--text-primary) !important;
+    --bs-table-border-color: var(--border-soft) !important;
+    --bs-table-striped-bg: rgba(255,255,255,0.02) !important;
+    --bs-table-striped-color: var(--text-primary) !important;
+    --bs-table-hover-bg: rgba(255,255,255,0.04) !important;
+    --bs-table-hover-color: var(--text-primary) !important;
+}
+.table > thead { color: var(--text-secondary) !important; }
+.table > tbody > tr > td,
+.table > tbody > tr > th { border-color: var(--border-soft) !important; }
+.table > :not(caption) > * > * { background-color: transparent !important; }
+/* 列表 / 列表组 */
+.list-group-item {
+    background: var(--bg-card) !important;
+    border-color: var(--border-soft) !important;
+    color: var(--text-primary) !important;
+}
+/* 文字 muted 提亮 (原本太暗看不见) */
+.text-muted { color: var(--text-secondary) !important; }
+.text-secondary { color: var(--text-secondary) !important; }
+/* form-control / form-select 深色化 */
+.form-control, .form-select {
+    background: #0c0c1e !important;
+    border-color: var(--border-soft) !important;
+    color: var(--text-primary) !important;
+}
+.form-control:focus, .form-select:focus {
+    background: #0c0c1e !important;
+    color: var(--text-primary) !important;
+    border-color: var(--ai-blue) !important;
+    box-shadow: 0 0 0 0.2rem rgba(79,195,247,0.15) !important;
+}
+/* 警示色 / badge */
+.alert-info { background: rgba(79,195,247,0.1) !important; border-color: rgba(79,195,247,0.3) !important; color: var(--ai-blue) !important; }
+.alert-warning { background: rgba(255,167,38,0.1) !important; border-color: rgba(255,167,38,0.3) !important; color: #FFA726 !important; }
+.alert-danger { background: rgba(239,68,68,0.1) !important; border-color: rgba(239,68,68,0.3) !important; color: #EF4444 !important; }
+/* 滚动条 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #0a0a14; }
+::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3d4a; }
+/* h1-h6 提亮 */
+h1, h2, h3, h4, h5, h6 { color: var(--text-primary) !important; }
+p { color: var(--text-primary); }
+/* 页脚深色 */
+.footer { background: var(--bg-card) !important; color: var(--text-secondary) !important; border-top: 1px solid var(--border-soft) !important; }
+/* Bootstrap 按钮深色化 (2026-06-26 P1) */
+.btn-primary {
+    background: linear-gradient(135deg, #4FC3F7, #818cf8) !important;
+    border-color: rgba(79,195,247,0.4) !important;
+    color: #fff !important;
+}
+.btn-primary:hover { opacity: 0.9; }
+.btn-outline-primary {
+    color: var(--ai-blue) !important;
+    border-color: rgba(79,195,247,0.4) !important;
+    background: transparent !important;
+}
+.btn-outline-primary:hover {
+    background: rgba(79,195,247,0.1) !important;
+    color: var(--ai-blue) !important;
+}
+.btn-outline-secondary {
+    color: var(--text-secondary) !important;
+    border-color: var(--border-soft) !important;
+    background: transparent !important;
+}
+.btn-outline-secondary:hover {
+    background: rgba(255,255,255,0.05) !important;
+    color: var(--text-primary) !important;
+}
+.btn-outline-light {
+    color: var(--text-secondary) !important;
+    border-color: var(--border-soft) !important;
+    background: transparent !important;
+}
+.btn-outline-light:hover {
+    background: rgba(255,255,255,0.08) !important;
+    color: var(--text-primary) !important;
+}
+.btn-group .btn-outline-primary.active,
+.btn-group .btn-outline-primary:active {
+    background: rgba(79,195,247,0.2) !important;
+    color: var(--ai-blue) !important;
+}
+.bg-secondary {
+    background: #2a2d3a !important;
+    color: var(--text-secondary) !important;
+}
+.bg-warning { background: rgba(255,167,38,0.2) !important; color: #ffa726 !important; }
+/* input-group */
+.input-group-text {
+    background: #0c0c1e !important;
+    border-color: var(--border-soft) !important;
+    color: var(--text-secondary) !important;
+}
+/* nav-tabs / nav-link */
+.nav-link { color: var(--text-secondary) !important; }
+.nav-link:hover { color: var(--ai-blue) !important; }
+.nav-link.active { background: rgba(79,195,247,0.1) !important; color: var(--ai-blue) !important; }
+/* card-footer */
+.card-footer {
+    background: rgba(0,0,0,0.15) !important;
+    border-top: 1px solid var(--border-soft) !important;
+    color: var(--text-secondary) !important;
+}
+/* modal */
+.modal-content {
+    background: var(--bg-card) !important;
+    border-color: var(--border-soft) !important;
+    color: var(--text-primary) !important;
+}
+.modal-header { border-bottom: 1px solid var(--border-soft) !important; }
+.modal-footer { border-top: 1px solid var(--border-soft) !important; }
+/* 浅色 Bootstrap 表格 hover → 暗色 */
+.table-hover tbody tr:hover { background-color: rgba(255,255,255,0.04) !important; }
+/* badge */
+.badge { color: var(--text-primary) !important; }
+/* section-title border */
+.section-title { border-bottom-color: var(--border-soft) !important; }
+/* info-panel */
+.info-panel {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-soft) !important;
+    color: var(--text-primary) !important;
+}
+/* metric-grid */
+.metric-grid__item { background: var(--bg-card) !important; }
+.metric-grid { background: var(--border-soft) !important; }
+/* stock-hero code */
+.stock-hero__code {
+    background: rgba(79,195,247,0.1) !important;
+    color: var(--ai-blue) !important;
+}
+/* chart container */
+.chart-container { background: transparent !important; }
+/* hr */
+hr { border-color: var(--border-soft) !important; opacity: 0.5; }
+/* code */
+code { color: var(--ai-blue) !important; background: rgba(79,195,247,0.08) !important; padding: 2px 6px; border-radius: 3px; }
+/* stock-tag */
+.stock-tag { background: rgba(79,195,247,0.08) !important; color: var(--ai-blue) !important; }
+/* AI disclaimer */
+.ai-disclaimer { background: rgba(79,195,247,0.06) !important; border-left-color: var(--ai-blue) !important; color: var(--ai-blue) !important; }
+/* navbar */
+.navbar { background: #1a1d27 !important; border-bottom: 1px solid var(--border-soft) !important; }
+.navbar-brand, .navbar-nav .nav-link { color: var(--text-primary) !important; }
+.navbar-nav .nav-link:hover, .navbar-nav .nav-link.active { color: var(--ai-blue) !important; }
+.navbar-text { color: var(--text-secondary) !important; }
+/* hr 在 card 内 */
+.card hr { border-color: var(--border-soft) !important; opacity: 0.3; }
+/* 全局 hover-shadow 暗色边框 */
+.hover-shadow:hover { border-color: var(--border-soft) !important; }
+/* chip */
+.chip { background: rgba(255,255,255,0.05) !important; color: var(--text-secondary) !important; }
+.chip:hover { background: rgba(79,195,247,0.08) !important; color: var(--ai-blue) !important; }
+/* page-header (backtest_list) */
+.page-header { background: var(--bg-card) !important; border-color: var(--border-soft) !important; }
+.page-header h2 { color: var(--text-primary) !important; }
+.page-header .sub { color: var(--text-secondary) !important; }
+/* list-card (backtest_list) */
+.list-card { background: var(--bg-card) !important; border-color: var(--border-soft) !important; }
+.list-card .table thead th { background: #13151D !important; color: var(--text-secondary) !important; border-bottom-color: var(--border-soft) !important; }
+.list-card .table tbody tr { border-color: var(--border-soft) !important; }
+.list-card .table tbody tr:hover { background: #1f2230 !important; }
+.list-card .table tbody td { color: var(--text-primary) !important; }
+.list-card .table a { color: var(--ai-blue) !important; }
+.code-tag { background: rgba(79,195,247,0.08) !important; color: var(--ai-blue) !important; }
+/* empty-state */
+.empty-state { color: var(--text-secondary) !important; }
+.empty-state i { color: var(--border-soft) !important; }
+/* nav-pills */
+.nav-pills .nav-link.active {
+    background: linear-gradient(135deg, #4FC3F7, #818cf8) !important;
+    box-shadow: 0 4px 12px rgba(79,195,247,0.3) !important;
+}
+</style>
