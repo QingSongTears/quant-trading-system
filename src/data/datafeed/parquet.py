@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import OrderedDict
 from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional
@@ -81,8 +82,12 @@ class ParquetDatafeed(BaseDatafeed):
     def __init__(self, parquet_dir: Optional[Path] = None) -> None:
         super().__init__()
         self.parquet_dir = Path(parquet_dir) if parquet_dir else DEFAULT_PARQUET_DIR
-        # 单只股票缓存 (LazyFrame → collect 后)
-        self._file_cache: Dict[str, pl.DataFrame] = {}
+        # 单只股票缓存 (P1-5 2026-06-26: 用 OrderedDict + maxsize 强制 LRU 淘汰)
+        # 防止未来加缓存时无内存上限 (vnpy_vs_ours_deep_diff.md §3 #9-10 风险)
+        # 现状: 此 dict 初始化但未写入 (旧代码残留), 0 内存占用
+        # maxsize=512 足够缓存 ~50% 股票 (5000+ 只股票场景下不会爆内存)
+        self._file_cache: "OrderedDict[str, pl.DataFrame]" = OrderedDict()
+        self._file_cache_maxsize: int = 512  # P1-5: 防止 OOM
 
     def init(self) -> None:
         """检查 parquet 目录是否存在"""
@@ -104,6 +109,39 @@ class ParquetDatafeed(BaseDatafeed):
         """清缓存"""
         self._file_cache.clear()
         self.inited = False
+
+    def _cache_put(self, key: str, df: pl.DataFrame) -> None:
+        """P1-5 (2026-06-26): 带 maxsize + 内存监控的安全缓存写入
+
+        - 超 maxsize 自动 LRU 淘汰最旧条目
+        - 估算 DataFrame 内存, 超过阈值时 warning
+        """
+        if key in self._file_cache:
+            # 已有则移到末尾 (LRU 语义)
+            self._file_cache.move_to_end(key)
+            self._file_cache[key] = df
+            return
+
+        # 估算内存 (polars DataFrame.estimated_size() 单位 bytes, polars >= 0.20)
+        try:
+            size_bytes = df.estimated_size()
+            size_mb = size_bytes / (1024 * 1024)
+        except AttributeError:
+            # 老版 polars 无 estimated_size, 粗估: 行数 × 100 bytes
+            size_mb = df.height * 100 / (1024 * 1024)
+
+        if size_mb > 50:
+            logger.warning(
+                f"parquet 缓存单文件 {key} 占用 {size_mb:.1f}MB, "
+                f"超过 50MB 阈值, 建议改用 LocalDatafeed"
+            )
+
+        self._file_cache[key] = df
+
+        # LRU 淘汰: 超过 maxsize 弹出最旧
+        while len(self._file_cache) > self._file_cache_maxsize:
+            evicted_key, _ = self._file_cache.popitem(last=False)
+            logger.debug(f"parquet 缓存淘汰: {evicted_key}")
 
     # ── 取历史 K 线 ─────────────────────────────────
 
