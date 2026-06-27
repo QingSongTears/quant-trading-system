@@ -417,11 +417,15 @@ async function loadScores(code) {
     dimBody.innerHTML = latestValues.map((v, i) => {
       const pct = Math.min(100, Math.max(0, v / 15 * 100));
       const barColor = v >= 8 ? 'var(--red)' : (v >= 5 ? 'var(--yellow)' : 'var(--green)');
-      return '<tr>' +
+      // 2026-06-27: v=0 时显示"—无数据—"灰显, 避免误读为"评分=0=最差"
+      const noData = v === 0;
+      const dirText = noData ? '— 无数据 —' : (v >= 7 ? '偏多' : (v >= 4.5 ? '中性' : '偏空'));
+      const dirColor = noData ? 'var(--dim)' : (v >= 7 ? 'var(--red)' : (v >= 4.5 ? 'var(--yellow)' : 'var(--green)'));
+      return '<tr' + (noData ? ' style="opacity:0.55;"' : '') + '>' +
         '<td><span style="color:' + COLORS[i] + ';font-weight:600;">●</span> ' + dimLabels[i] + '</td>' +
-        '<td style="font-weight:600;">' + v.toFixed(1) + '</td>' +
+        '<td style="font-weight:600;">' + (noData ? '—' : v.toFixed(1)) + '</td>' +
         '<td><div style="width:60px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="width:' + pct.toFixed(0) + '%;height:100%;background:' + barColor + ';border-radius:3px;"></div></div></td>' +
-        '<td style="color:' + (v >= 7 ? 'var(--red)' : (v >= 4.5 ? 'var(--yellow)' : 'var(--green)')) + ';font-size:0.75rem;">' + (v >= 7 ? '偏多' : (v >= 4.5 ? '中性' : '偏空')) + '</td>' +
+        '<td style="color:' + dirColor + ';font-size:0.75rem;">' + dirText + '</td>' +
       '</tr>';
     }).join('');
 
