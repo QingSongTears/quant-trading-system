@@ -88,6 +88,8 @@ VNPY_SHORTHAND_EXEMPTIONS = {
     "PnlCollector": "vnpy-collector",       # ADR-0012 #83 — PnL 事件订阅器
     "PositionCollector": "vnpy-collector", # ADR-0012 #83 — 持仓事件订阅器
     "RiskAlertCollector": "vnpy-collector", # ADR-0012 #83 — 风控告警事件订阅器
+    "AlertRule": "vnpy-alert-rule",        # ADR-0012 #83 — 报警规则 dataclass
+    "AlertDispatcher": "vnpy-dispatcher",  # ADR-0012 #83 — 报警分发器
 }
 
 # Forbidden filename patterns
