@@ -15,12 +15,16 @@
   5. 研报关注度     (0-3): 近90日研报数量
   6. 评级动量       (0-3): 近期评级上调趋势
   7. 事件综合       (0-3): 综合事件催化剂评分
+
+ADR-0010 (2026-06-27):
+  - _load_research_cache 改走 datafeed.get_news_events (替代 pd.read_sql)
+  - 公告仍走 read_sql (announcements 暂未纳入 datafeed,后续 Step X 视情况扩)
 """
 from __future__ import annotations
 import numpy as np
 import pandas as pd
 from sqlalchemy import text  # PR3.2: create_engine 由 base.py 通过 get_engine 单例提供
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from ..config import get_config, get_db_url
@@ -60,26 +64,53 @@ class NewsEventScorer(BaseScorer):
             return pd.DataFrame(columns=["title", "date"])
 
     def _load_research_cache(self):
-        """首次加载研报全量数据到 dict（按code索引），避免重复 DataFrame 过滤"""
+        """首次加载研报全量数据到 dict（按code索引），避免重复 DataFrame 过滤
+
+        ADR-0010 (2026-06-27): 改走 datafeed.get_news_events(),不再 pd.read_sql
+        """
         global _research_cache
         if _research_cache is not None:
             return
 
+        # ADR-0010: 通过 datafeed 拉取研报事件 (替代 pd.read_sql 直读 research_report 表)
         try:
-            df = pd.read_sql(
-                "SELECT code, market, name, date, org, title, rating, rating_change "
-                "FROM research_report ORDER BY code, date DESC",
-                self.engine
+            from src.data import data_mgr
+            datafeed = data_mgr.datafeed
+            # 用宽日期范围覆盖全历史 (2020-01-01 → 今天+1y),与原"全量加载"语义一致
+            today = date.today()
+            events = datafeed.get_news_events(
+                codes=[],  # 空 = 全市场
+                start=date(2020, 1, 1),
+                end=date(today.year + 1, 12, 31),
             )
         except Exception:
             _research_cache = {}
             return
 
+        if not events:
+            _research_cache = {}
+            return
+
+        # 转 DataFrame,按 code 索引 (与原 cache shape 一致)
+        df = pd.DataFrame([
+            {
+                "code": e.code,
+                "market": "",  # NewsEvent 不带 market (从 stock_basic 派生,这里不需)
+                "name": "",
+                "date": e.date,
+                "org": e.institution or "",
+                "title": e.title,
+                "rating": e.rating or "",
+                "rating_change": e.rating_change or "",
+            }
+            for e in events
+        ])
         if df.empty:
             _research_cache = {}
             return
 
         # 按 code 分组存入 dict（快速 O(1) 查找）
+        df["date"] = df["date"].astype(str)  # 兼容下游 _load_research_data 的字符串比较
         _research_cache = {}
         for code, grp in df.groupby("code"):
             _research_cache[code] = grp.reset_index(drop=True)
