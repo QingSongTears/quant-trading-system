@@ -76,37 +76,34 @@ def capture_console(page: Page):
 def test_workbench_full_flow(page: Page):
     """场景1: 模型选择→股票搜索→开始回测完整流程"""
     page.goto(f"{SERVER_URL}/workbench")
-
-    # 等待页面加载完成
     page.wait_for_load_state("networkidle")
 
     # 确认页面标题存在
     expect(page).to_have_title(re.compile(".*回测.*|.*工作台.*|.*Workbench.*|Quant.*"))
 
-    # 选择策略 — 找一个下拉框或选择器
-    strategy_select = page.locator("select#strategy, select.strategy-select, [data-testid=strategy-select]")
-    if strategy_select.count() > 0:
-        strategy_select.first.select_option(index=0)
-        page.wait_for_timeout(500)
+    # ① 选择模型
+    model_select = page.locator("#model-select")
+    expect(model_select).to_be_visible(timeout=5000)
+    model_select.select_option(index=1)  # index=0 是提示语, 选 index=1
+    page.wait_for_timeout(500)
 
-    # 输入股票代码
-    stock_input = page.locator(
-        "input[placeholder*='代码'], input[placeholder*='code'], input[data-testid=stock-code], "
-        "input#stockCode, input#stock_code, input[name=stock_code]"
-    )
-    if stock_input.count() > 0:
-        stock_input.first.fill("000001")
-        page.wait_for_timeout(300)
+    # ② 直接设置股票代码（绕过搜索建议 UI）
+    page.evaluate("""
+        document.getElementById('stock-code').value = '000001';
+        document.getElementById('stock-name').value = '平安银行';
+        if (typeof updateConfigStatus === 'function') updateConfigStatus();
+    """)
+    page.wait_for_timeout(300)
 
-    # 点击开始回测按钮
-    start_btn = page.locator(
-        "button:has-text('回测'), button:has-text('开始'), button:has-text('运行'), "
-        "button[data-testid=run-backtest]"
-    )
-    if start_btn.count() > 0:
-        start_btn.first.click()
-        # 等待回测结果出现（最多 30s）
-        page.wait_for_timeout(3000)  # 先给一些时间
+    # ③ 等待按钮变为可用
+    btn_run = page.locator("#btn-run")
+    expect(btn_run).to_be_enabled(timeout=5000)
+
+    # ④ 点击开始回测
+    btn_run.click()
+
+    # 等待回测结果出现（最多 30s）
+    page.wait_for_timeout(3000)
 
     # 验证页面有结果输出（表格/图表/状态信息）
     page.wait_for_timeout(2000)
@@ -185,23 +182,30 @@ class TestApiErrors:
     @pytest.mark.e2e
     def test_api_with_auth_succeeds(self, page: Page):
         """带有效认证请求 API 应成功"""
+        # 先导航到一个服务页面，使相对 URL 可解析
+        page.goto(f"{SERVER_URL}/")
+        page.wait_for_load_state("networkidle")
+
         # 获取 API key
         api_key = os.environ.get("QUANT_API_KEY", "")
         if not api_key:
             pytest.skip("QUANT_API_KEY 未设置，跳过认证测试")
-        result = page.evaluate(
-            f"""async () => {{
+        result = page.evaluate(f"""
+            async () => {{
                 const r = await fetch('/api/strategies', {{
                     headers: {{ 'Authorization': 'Bearer {api_key}' }}
                 }});
                 return {{ status: r.status, ok: r.ok }};
-            }}"""
-        )
+            }}
+        """)
         assert result["status"] == 200, f"期望 200，实际 {result['status']}"
 
     @pytest.mark.e2e
     def test_api_invalid_stock_code(self, page: Page):
         """非法股票代码应返回 400 或合理错误"""
+        # 先导航到一个服务页面，使相对 URL 可解析
+        page.goto(f"{SERVER_URL}/")
+        page.wait_for_load_state("networkidle")
         try:
             resp = page.evaluate(
                 """async () => {
