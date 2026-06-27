@@ -19,7 +19,7 @@ import threading
 import json
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -188,12 +188,21 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     # 注册路由
-    from .routes import main, api, research, monitoring
+    from .routes import (
+        main, research, monitoring,
+        data_routes, backtest_routes, simulate_routes,
+        stock_routes, system_routes, predict_routes,
+    )
+    from .auth import verify_api_key
     app.include_router(main.router)
-    # /api/* 全部需要 Bearer token
-    # 依赖在路由模块内部用 Depends 显式标注,这里不再做 router 级依赖
-    # (避免影响未来添加的 public 端点)
-    app.include_router(api.router, prefix="/api")
+    # /api/* 全部需要 Bearer token (原 api.py 拆 6 个子路由, #85)
+    api_auth = [Depends(verify_api_key)]
+    app.include_router(data_routes.router, prefix="/api", dependencies=api_auth)
+    app.include_router(backtest_routes.router, prefix="/api", dependencies=api_auth)
+    app.include_router(simulate_routes.router, prefix="/api", dependencies=api_auth)
+    app.include_router(stock_routes.router, prefix="/api", dependencies=api_auth)
+    app.include_router(system_routes.router, prefix="/api", dependencies=api_auth)
+    app.include_router(predict_routes.router, prefix="/api", dependencies=api_auth)
     app.include_router(research.router, prefix="/api")  # 2026-06-25 Phase 12: IC/Dim-IC API
     app.include_router(monitoring.router, prefix="/api")  # ADR-0012 #83: 监控 API
 

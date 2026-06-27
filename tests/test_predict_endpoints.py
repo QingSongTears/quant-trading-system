@@ -28,7 +28,7 @@ def client():
 def test_predict_stats_handles_missing_table(client):
     """prediction_record 表被 drop 时, stats 应返 200 + available=False 而非 500"""
     from sqlalchemy.exc import OperationalError
-    from src.web.routes import api as api_mod
+    from src.web.routes import predict_routes as api_mod
 
     real_query = api_mod.get_data_manager
 
@@ -80,7 +80,7 @@ def test_predict_for_stock_returns_flat_schema(client):
 def test_predict_history_handles_missing_table(client):
     """prediction_record 不存在时, history 应返 200 + available=False"""
     from sqlalchemy.exc import OperationalError
-    from src.web.routes import api as api_mod
+    from src.web.routes import predict_routes as api_mod
 
     real_query = api_mod.get_data_manager
 
@@ -105,7 +105,7 @@ def test_predict_history_handles_missing_table(client):
 # ============================================================
 def test_predict_verify_handles_missing_scores_file(client, monkeypatch):
     """all_7d_scores.json 不存在时, verify 应返 available=False"""
-    import src.web.routes.api as api_mod
+    import src.web.routes.predict_routes as api_mod
 
     # 直接 mock _Path 让 scores_path 检查返回 False
     real_Path = api_mod._Path
