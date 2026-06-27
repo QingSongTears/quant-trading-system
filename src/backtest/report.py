@@ -1,20 +1,100 @@
 """
-回测报告生成器
-=============
+回测报告 dataclass + ECharts 转换器
+===================================
 
-将 BacktestReport 转换为 HTML 可消费的格式，
-包含净值曲线、回撤曲线、指标数据等。
+ADR-0009: BacktestReport dataclass 保留在 report.py (D2-A 决策)。
+原 engine.py 内嵌的 dataclass 已迁移至此, 公开 API 路径不变:
+  - from src.backtest.engine import BacktestReport (向后兼容)
+  - from src.backtest.report import BacktestReport (直接导入)
 """
 from __future__ import annotations
+
 import json
-from typing import Any
-from .engine import BacktestReport
+from dataclasses import dataclass, asdict
+from datetime import date
+from typing import Any, Dict
+
+
+@dataclass
+class BacktestReport:
+    """标准化回测报告"""
+    strategy_name: str
+    stock_code: str
+    stock_name: str
+    start_date: date
+    end_date: date
+    initial_capital: float
+    final_equity: float
+    total_return: float          # 总收益率(%)
+    annual_return: float         # 年化收益率(%)
+    sharpe_ratio: float          # 夏普比率
+    max_drawdown: float          # 最大回撤(%)
+    win_rate: float              # 胜率(%)
+    profit_factor: float         # 盈亏比
+    total_trades: int            # 总交易次数
+    annual_volatility: float     # 年化波动率(%)
+    calmar_ratio: float          # 卡玛比率
+
+    # 基准对比
+    benchmark_return: float = 0.0
+    excess_return: float = 0.0
+
+    # 序列化数据（供前端渲染图表）
+    equity_curve: list[Dict] = None
+    trades_detail: list[Dict] = None
+    monthly_returns: dict[str, float] = None
+
+    # 成本配置快照
+    cost_config: Dict = None
+
+    def __post_init__(self):
+        if self.equity_curve is None:
+            self.equity_curve = []
+        if self.trades_detail is None:
+            self.trades_detail = []
+        if self.monthly_returns is None:
+            self.monthly_returns = {}
+        if self.cost_config is None:
+            self.cost_config = {}
+
+    def to_dict(self) -> dict:
+        """转为字典，用于 JSON 序列化"""
+        d = asdict(self)
+        d["start_date"] = str(d["start_date"])
+        d["end_date"] = str(d["end_date"])
+        d["equity_curve"] = json.dumps(d["equity_curve"])
+        d["trades_detail"] = json.dumps(d["trades_detail"])
+        d["monthly_returns"] = json.dumps(d["monthly_returns"])
+        d["cost_config"] = json.dumps(d["cost_config"])
+        return d
+
+    def to_db_dict(self, strategy_id: int) -> dict:
+        """转为数据库存储格式（排除非DB字段）"""
+        d = asdict(self)
+        db_fields = {
+            "stock_code", "start_date", "end_date", "initial_capital",
+            "final_equity", "total_return", "annual_return", "sharpe_ratio",
+            "max_drawdown", "win_rate", "profit_factor", "total_trades",
+            "annual_volatility", "calmar_ratio", "benchmark_return",
+            "excess_return", "equity_curve", "trades_detail",
+            "monthly_returns", "cost_config"
+        }
+        result = {k: v for k, v in d.items() if k in db_fields}
+        result["strategy_id"] = strategy_id
+        result["stock_name"] = self.stock_name
+        result["start_date"] = self.start_date
+        result["end_date"] = self.end_date
+        result["equity_curve"] = json.dumps(self.equity_curve) if self.equity_curve else "[]"
+        result["trades_detail"] = json.dumps(self.trades_detail) if self.trades_detail else "[]"
+        result["monthly_returns"] = json.dumps(self.monthly_returns) if self.monthly_returns else "{}"
+        result["cost_config"] = json.dumps(self.cost_config) if self.cost_config else "{}"
+        return result
 
 
 def report_to_chart_data(report: BacktestReport) -> dict[str, Any]:
     """
     将回测报告转为前端 ECharts 所需的数据格式
-    
+
     Returns:
         {
             "equity_curve": 净值曲线数据,
