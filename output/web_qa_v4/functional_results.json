@@ -1,0 +1,38 @@
+[
+  {
+    "page": "backtest",
+    "render_ok": true,
+    "api_status": 200,
+    "api_ok": true,
+    "screenshot": "backtest.png"
+  },
+  {
+    "page": "workbench",
+    "render_ok": true,
+    "api_status": 422,
+    "api_ok": false,
+    "options": 1,
+    "screenshot": "workbench.png"
+  },
+  {
+    "page": "screener",
+    "render_ok": true,
+    "api_status": 200,
+    "api_ok": true,
+    "screenshot": "screener.png"
+  },
+  {
+    "page": "data",
+    "render_ok": true,
+    "api_status": 200,
+    "api_ok": true,
+    "screenshot": "data.png"
+  },
+  {
+    "page": "v5",
+    "render_ok": true,
+    "api_status": 404,
+    "api_ok": true,
+    "screenshot": "research.png"
+  }
+]

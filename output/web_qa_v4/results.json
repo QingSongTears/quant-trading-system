@@ -1,0 +1,369 @@
+[
+  {
+    "name": "dashboard",
+    "url": "/dashboard",
+    "status": 200,
+    "elapsed_ms": 4539,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/dashboard.png"
+  },
+  {
+    "name": "data",
+    "url": "/data",
+    "status": 200,
+    "elapsed_ms": 6807,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/data.png"
+  },
+  {
+    "name": "backtest",
+    "url": "/backtest",
+    "status": 200,
+    "elapsed_ms": 2277,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/backtest.png"
+  },
+  {
+    "name": "backtest_detail",
+    "url": "/backtest/1",
+    "status": 404,
+    "elapsed_ms": 2259,
+    "console_errors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "network_404s": [
+      "404 http://localhost:8000/backtest/1"
+    ],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/backtest_detail.png"
+  },
+  {
+    "name": "strategies",
+    "url": "/strategies",
+    "status": 200,
+    "elapsed_ms": 2344,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/strategies.png"
+  },
+  {
+    "name": "compare",
+    "url": "/compare",
+    "status": 200,
+    "elapsed_ms": 2266,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/compare.png"
+  },
+  {
+    "name": "workbench",
+    "url": "/workbench",
+    "status": 200,
+    "elapsed_ms": 2337,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/workbench.png"
+  },
+  {
+    "name": "research",
+    "url": "/research",
+    "status": 200,
+    "elapsed_ms": 2208,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/research.png"
+  },
+  {
+    "name": "simulate",
+    "url": "/simulate",
+    "status": 200,
+    "elapsed_ms": 2188,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/simulate.png"
+  },
+  {
+    "name": "stock_detail",
+    "url": "/stock/600519",
+    "status": 200,
+    "elapsed_ms": 2567,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/stock_detail.png"
+  },
+  {
+    "name": "ardot_specs",
+    "url": "/ardot-specs",
+    "status": 200,
+    "elapsed_ms": 4032,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/ardot_specs.png"
+  },
+  {
+    "name": "console",
+    "url": "/console",
+    "status": 200,
+    "elapsed_ms": 16714,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/console.png"
+  },
+  {
+    "name": "fund_flow_report",
+    "url": "/fund-flow-report",
+    "status": 200,
+    "elapsed_ms": 2221,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/fund_flow_report.png"
+  },
+  {
+    "name": "diagnose",
+    "url": "/diagnose",
+    "status": 200,
+    "elapsed_ms": 2198,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/diagnose.png"
+  },
+  {
+    "name": "sector",
+    "url": "/sector",
+    "status": 200,
+    "elapsed_ms": 2204,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/sector.png"
+  },
+  {
+    "name": "screener",
+    "url": "/screener",
+    "status": 200,
+    "elapsed_ms": 2180,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/screener.png"
+  },
+  {
+    "name": "portfolio",
+    "url": "/portfolio",
+    "status": 200,
+    "elapsed_ms": 2168,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/portfolio.png"
+  },
+  {
+    "name": "bull_report",
+    "url": "/bull-report",
+    "status": 200,
+    "elapsed_ms": 2226,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/bull_report.png"
+  },
+  {
+    "name": "signal",
+    "url": "/signal",
+    "status": 200,
+    "elapsed_ms": 2229,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/signal.png"
+  },
+  {
+    "name": "verify",
+    "url": "/verify",
+    "status": 200,
+    "elapsed_ms": 2154,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/verify.png"
+  },
+  {
+    "name": "predict",
+    "url": "/predict",
+    "status": 200,
+    "elapsed_ms": 2161,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/predict.png"
+  },
+  {
+    "name": "data_monitor",
+    "url": "/data-monitor",
+    "status": 200,
+    "elapsed_ms": 2182,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/data_monitor.png"
+  },
+  {
+    "name": "walk_forward",
+    "url": "/walk-forward",
+    "status": 200,
+    "elapsed_ms": 2372,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/walk_forward.png"
+  },
+  {
+    "name": "backtest_lab",
+    "url": "/backtest-lab",
+    "status": 200,
+    "elapsed_ms": 2364,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/backtest_lab.png"
+  },
+  {
+    "name": "signal_dashboard",
+    "url": "/signal-dashboard",
+    "status": 200,
+    "elapsed_ms": 2194,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/signal_dashboard.png"
+  },
+  {
+    "name": "strategy_compare",
+    "url": "/strategy-compare",
+    "status": 200,
+    "elapsed_ms": 2261,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/strategy_compare.png"
+  },
+  {
+    "name": "tuning_panel",
+    "url": "/tuning-panel",
+    "status": 200,
+    "elapsed_ms": 2233,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/tuning_panel.png"
+  },
+  {
+    "name": "v5_tuning",
+    "url": "/v5-tuning",
+    "status": 200,
+    "elapsed_ms": 2454,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/v5_tuning.png"
+  },
+  {
+    "name": "v6_compare",
+    "url": "/v6-compare",
+    "status": 200,
+    "elapsed_ms": 2296,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/v6_compare.png"
+  },
+  {
+    "name": "multi_objective",
+    "url": "/multi-objective",
+    "status": 200,
+    "elapsed_ms": 2636,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/multi_objective.png"
+  },
+  {
+    "name": "ic_analysis",
+    "url": "/ic-analysis",
+    "status": 200,
+    "elapsed_ms": 2269,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/ic_analysis.png"
+  },
+  {
+    "name": "dim_compare",
+    "url": "/dim-compare",
+    "status": 200,
+    "elapsed_ms": 2174,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/dim_compare.png"
+  },
+  {
+    "name": "predict_verify",
+    "url": "/predict-verify",
+    "status": 200,
+    "elapsed_ms": 2174,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "screenshot": "output/web_qa_v4/predict_verify.png"
+  }
+]
