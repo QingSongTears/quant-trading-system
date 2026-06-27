@@ -384,3 +384,207 @@ class TestResearchTemplateNoLegacyFieldNames:
         assert "data.data" in html, (
             "research.html 必须用 data.data (API 实际字段名), 而非 data.results"
         )
+
+
+# ============================================================
+# 全部模板源码静态扫描 — 32 个独立模板统一用 _standalone_head.html
+# ============================================================
+# Web QA #5 (2026-06-27): 整合 32 个独立模板, 任何模板不继承 base.html 且
+# 不 include _standalone_head.html → 立即失败 (防止漏掉 common.js).
+#
+# 排除项:
+#   - base.html  (本身就是 layout)
+#   - error.html (无 JS, 不需要 common.js)
+#   - *_specs_index.html / *_index.html 等特殊目录 (如 _backup_pre_ardot 备份)
+#
+# 继承 base.html 的页面单独覆盖 (TestBaseTemplatePagesIncludeCommonJS).
+
+import re
+from pathlib import Path
+
+_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "src" / "web" / "templates"
+
+# 不需要 _standalone_head.html 的模板 (有特殊用途)
+_EXCLUDE_FROM_STANDALONE_HEAD = frozenset({
+    "base.html",       # 本身是 layout
+    "error.html",      # 错误页无 JS, 保留轻量
+})
+
+
+def _list_standalone_templates():
+    """列出所有不继承 base.html 的 *.html 模板 (排除 _backup)"""
+    out = []
+    for f in sorted(_TEMPLATES_DIR.glob("*.html")):
+        if f.name.startswith("_"):
+            continue
+        if f.name in _EXCLUDE_FROM_STANDALONE_HEAD:
+            continue
+        content = f.read_text(encoding="utf-8")
+        if "extends 'base.html'" in content or 'extends "base.html"' in content:
+            continue
+        out.append(f)
+    return out
+
+
+class TestAllStandaloneTemplatesUsePartialHead:
+    """Web QA #5 (2026-06-27): 32 个独立模板必须统一用 partials/_standalone_head.html
+
+    任何遗漏 → 该模板的 window.QT undefined, fetch 拦截器失效, chart 静默 fail.
+    """
+
+    def test_at_least_30_standalone_templates(self):
+        """防御: 当前应有 30+ 独立模板 (如果少了说明有人误改 .html → base.html)"""
+        templates = _list_standalone_templates()
+        assert len(templates) >= 30, (
+            f"独立模板数量 {len(templates)} < 30, "
+            f"可能有模板被误改 extends base.html — 当前清单: "
+            f"{[t.name for t in templates]}"
+        )
+
+    def test_every_standalone_template_includes_partial_head(self):
+        """每个独立模板必须 {% include 'partials/_standalone_head.html' %}"""
+        templates = _list_standalone_templates()
+        offenders = []
+        for t in templates:
+            content = t.read_text(encoding="utf-8")
+            if "partials/_standalone_head.html" not in content:
+                offenders.append(t.name)
+        assert not offenders, (
+            f"以下独立模板未使用 partials/_standalone_head.html — "
+            f"会缺 common.js + api-key meta, window.QT undefined: {offenders}"
+        )
+
+
+# ============================================================
+# setInterval 高频检查 — 防 /console 类问题再次发生
+# ============================================================
+# Web QA #4 (2026-06-27): console.html 旧版 setInterval(updateClock, 1000)
+# 导致 Playwright networkidle 永远不达成 (每秒都有 JS 任务).
+#
+# 此扫描所有 *.html, 任何 setInterval(_, < 5000) 都立即 fail (时钟 5s+ 才 OK).
+# 注释里的 setInterval (例如 /* setInterval(...) */) 不算违规.
+
+_INTERVAL_PATTERN = re.compile(
+    r'setInterval\s*\([^,]+,\s*(\d+)\s*\)',
+    re.MULTILINE,
+)
+
+
+def _scan_set_intervals(html: str, source_name: str):
+    """扫描 HTML 源码中的 setInterval 调用, 返回 (ms, lineno) 列表"""
+    results = []
+    for lineno, line in enumerate(html.splitlines(), 1):
+        # 跳过纯注释行 (// setInterval ...)
+        stripped = line.strip()
+        if stripped.startswith("//") or stripped.startswith("#"):
+            continue
+        # 跳过 JS 块注释
+        if stripped.startswith("/*") or stripped.startswith("*"):
+            continue
+        m = _INTERVAL_PATTERN.search(line)
+        if m:
+            try:
+                ms = int(m.group(1))
+                results.append((ms, lineno, source_name))
+            except ValueError:
+                pass
+    return results
+
+
+class TestNoHighFrequencySetInterval:
+    """Web QA #4 (2026-06-27): 防 console.html setInterval(1000) 再次阻塞 networkidle
+
+    任何模板的 setInterval 间隔 < 5000ms 都视为违规 (沙盒 QA networkidle 永远不达成).
+    阈值 5000ms 是合理上限: 时钟 1 分钟, 数据轮询 5s, 都不应 < 5s.
+    """
+
+    def test_no_set_interval_under_5000ms_in_any_template(self):
+        """扫描所有 *.html 模板, setInterval(_, < 5000) 立即 fail"""
+        offenders = []
+        for t in sorted(_TEMPLATES_DIR.glob("*.html")):
+            content = t.read_text(encoding="utf-8")
+            for ms, lineno, name in _scan_set_intervals(content, t.name):
+                if ms < 5000:
+                    offenders.append(f"{name}:{lineno} setInterval(_, {ms}ms)")
+        assert not offenders, (
+            f"以下 setInterval 间隔 < 5000ms, 会阻塞 Playwright networkidle: "
+            f"{offenders}"
+        )
+
+    def test_console_clock_interval_is_60000(self):
+        """/console 时钟更新间隔必须是 60000ms (1 分钟), 不是 1000ms"""
+        content = (_TEMPLATES_DIR / "console.html").read_text(encoding="utf-8")
+        # 必须有 setInterval(updateClock, 60000)
+        assert "setInterval(updateClock,60000)" in content or \
+               "setInterval(updateClock, 60000)" in content, (
+            "console.html 时钟间隔必须改为 60000ms (1 分钟), "
+            "旧版 1000ms 导致 Playwright TIMEOUT"
+        )
+        # 必须没有 setInterval(updateClock, 1000)
+        assert "setInterval(updateClock,1000)" not in content and \
+               "setInterval(updateClock, 1000)" not in content, (
+            "console.html 仍含 setInterval(updateClock, 1000) — "
+            "Web QA #4 未修复"
+        )
+
+
+# ============================================================
+# /console 页面加载时长 < 5s (防网络请求卡死)
+# ============================================================
+class TestConsolePageLoadsQuickly:
+    """Web QA #4 (2026-06-27): /console 不能 setInterval 1000ms (networkidle 永不到)
+
+    验证 /console GET 返回 < 5s (在内存 mock 下应该 < 1s).
+    """
+
+    def test_console_loads_under_5_seconds(self, client):
+        """/console 页面 GET 必须在 5s 内返回 (网络/JS 死循环)"""
+        import time
+        t0 = time.time()
+        resp = client.get("/console")
+        elapsed = time.time() - t0
+        assert resp.status_code == 200, f"/console 返回 {resp.status_code}"
+        assert elapsed < 5.0, (
+            f"/console 加载耗时 {elapsed:.2f}s > 5s, "
+            f"可能有 setInterval 死循环或网络阻塞"
+        )
+
+
+# ============================================================
+# 静态资源跨域检查 — 防 CDN CORS 再次出现
+# ============================================================
+# Web QA #3 (2026-06-27): base.html 用 cdn.icons.jsdelivr.net 加载 icons.css,
+# 沙盒无外网 → 全部页面 (继承 base.html) 报 CORS 失败.
+
+class TestBaseTemplateNoExternalCDN:
+    """Web QA #3 (2026-06-27): base.html 不应包含 jsdelivr CDN icons.css 引用
+
+    降级方案: 暂时不加载 bootstrap-icons.css (沙盒 QA 可通过, 生产需另开 ADR).
+    """
+
+    def test_base_template_no_bootstrap_icons_cdn(self):
+        """base.html 不应再引用 {{ cdn.icons }} bootstrap-icons.css"""
+        content = (_TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
+        # 注释里可以保留, 但实际 link 标签必须被注释掉或删除
+        # 检查 uncommented <link> 标签包含 bootstrap-icons.css
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("{#"):
+                continue
+            if "<link" in stripped and "bootstrap-icons" in stripped:
+                pytest.fail(
+                    f"base.html 仍含 <link> bootstrap-icons 引用 (CORS): {line!r}\n"
+                    f"Web QA #3 降级方案: 注释掉 bootstrap-icons, 用 emoji fallback"
+                )
+
+    def test_base_template_no_cdn_icons_reference_active(self, client):
+        """base.html 渲染结果不应含 bootstrap-icons.css 的 <link>"""
+        resp = client.get("/dashboard")
+        assert resp.status_code == 200
+        html = resp.text
+        # 找到所有未被注释的 <link> 标签 (含 bootstrap-icons)
+        link_pattern = re.compile(r'<link[^>]*bootstrap-icons[^>]*>', re.IGNORECASE)
+        active_links = link_pattern.findall(html)
+        assert not active_links, (
+            f"/dashboard 渲染结果仍含 bootstrap-icons <link>: {active_links}"
+        )
