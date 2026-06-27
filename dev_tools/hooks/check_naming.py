@@ -71,6 +71,15 @@ ALLOWED_CLASS_NAMES = {
     "Main", "App", "Simulator",
 }
 
+# VNPY 借鉴类名豁免 (跳过类后缀检查 + 文件名 stem 匹配)
+# 理由: 借鉴 vnpy 原类名时, 去掉 Manager/App/Engine 后缀是本项目简写惯例
+#       (见 ADR-0007 修复 1); 事件载荷 dataclass 借鉴 vnpy.Event 风格
+# 新增条目时: 必须是真"vnpy 借鉴", 不是绕开规范
+VNPY_SHORTHAND_EXEMPTIONS = {
+    "RiskEngine": "vnpy-shorthand",      # vnpy RiskManager → RiskEngine (ADR-0007)
+    "RiskAlert": "vnpy-event-data",      # 事件载荷 dataclass (借鉴 vnpy.Event 风格)
+}
+
 # Forbidden filename patterns
 FORBIDDEN_FILENAME_PATTERNS = [
     re.compile(r"_\d{4}$"),          # _0625, _2025
@@ -154,6 +163,8 @@ def is_skippable_class(cls_name: str) -> bool:
         return True
     if cls_name in ALLOWED_CLASS_NAMES:
         return True
+    if cls_name in VNPY_SHORTHAND_EXEMPTIONS:
+        return True
     return False
 
 
@@ -196,7 +207,7 @@ def check_filename(filepath: Path, main_class_name: str | None) -> List[str]:
             break
 
     # filename <-> main class match
-    if main_class_name:
+    if main_class_name and main_class_name not in VNPY_SHORTHAND_EXEMPTIONS:
         expected = compute_expected_stem(main_class_name)
         if stem != expected:
             errors.append(
