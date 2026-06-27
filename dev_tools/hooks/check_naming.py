@@ -90,6 +90,7 @@ VNPY_SHORTHAND_EXEMPTIONS = {
     "RiskAlertCollector": "vnpy-collector", # ADR-0012 #83 — 风控告警事件订阅器
     "AlertRule": "vnpy-alert-rule",        # ADR-0012 #83 — 报警规则 dataclass
     "AlertDispatcher": "vnpy-dispatcher",  # ADR-0012 #83 — 报警分发器
+    "MonitoringHub": "vnpy-hub",            # ADR-0012 #83 — 监控统一 facade
 }
 
 # Forbidden filename patterns
