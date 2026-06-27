@@ -37,6 +37,7 @@ from ...gateway import BarData, ContractData
 from .base import (
     BaseDatafeed,
     Interval,
+    NewsEvent,
     code_to_market,
     code_to_vt_symbol,
     vt_symbol_to_code,
@@ -290,6 +291,95 @@ class ParquetDatafeed(BaseDatafeed):
         )
 
         return sorted({d.date() for d in df["datetime"].to_list()})
+
+    # ── 基础数据抽象 (ADR-0010 新增) ──────────────
+    # 注: ParquetDatafeed 主用全市场 scan + 特征工程,
+    #     行业映射与研报事件走 stock_basic.parquet / research_report.parquet (若存在)。
+    #     不存在时返回空 dict / 空 list (调用方需 fallback,见 ADR-0010 §D1)
+
+    def get_industry_map(self, codes: List[str]) -> Dict[str, str]:
+        """取股票-行业映射 (从 stock_basic.parquet 或 fallback 到 stock_list extra.industry)
+
+        Parquet 单股票文件不存 industry 字段 (snapshot 仅 OHLCV),所以:
+          - 优先读 self.parquet_dir/stock_basic.parquet (若存在)
+          - 否则从 self.get_stock_list() 拿 ContractData.extra["industry"]
+        """
+        if not codes:
+            return {}
+
+        # 路径 A: stock_basic.parquet (若 build_parquet 导出过)
+        sb_path = self.parquet_dir.parent / "stock_basic.parquet"
+        if sb_path.exists():
+            try:
+                df = (
+                    pl.scan_parquet(str(sb_path))
+                    .filter(pl.col("code").is_in(list(codes)))
+                    .select(["code", "industry"])
+                    .collect()
+                )
+                return {row["code"]: (row["industry"] or "") for row in df.iter_rows(named=True)}
+            except Exception as e:
+                logger.warning(f"ParquetDatafeed.get_industry_map 走 stock_basic.parquet 失败: {e}")
+
+        # 路径 B: 从 get_stock_list() 拿 extra.industry (兼容早期 parquet 导出)
+        try:
+            contracts = self.get_stock_list()
+            ind_map: Dict[str, str] = {}
+            target = set(codes)
+            for c in contracts:
+                if c.symbol in target:
+                    extra = getattr(c, "extra", {}) or {}
+                    ind_map[c.symbol] = extra.get("industry", "")
+            return ind_map
+        except Exception as e:
+            logger.warning(f"ParquetDatafeed.get_industry_map fallback 失败: {e}")
+            return {}
+
+    def get_news_events(
+        self,
+        codes: List[str],
+        start: date,
+        end: date,
+    ) -> List[NewsEvent]:
+        """取研报 / 新闻事件 (从 research_report.parquet, 若存在)
+
+        Parquet 默认导出不含 research_report (build_parquet.py 只导 daily);
+        走 ParquetDatafeed 的调用方需先 build 该 parquet,否则返回空列表。
+        """
+        rr_path = self.parquet_dir.parent / "research_report.parquet"
+        if not rr_path.exists():
+            logger.debug("ParquetDatafeed.get_news_events: research_report.parquet 不存在,返回空")
+            return []
+
+        try:
+            lf = pl.scan_parquet(str(rr_path)).filter(
+                (pl.col("date") >= pl.lit(start))
+                & (pl.col("date") <= pl.lit(end))
+            )
+            if codes:
+                lf = lf.filter(pl.col("code").is_in(list(codes)))
+            df = lf.sort("date", descending=True).collect()
+
+            events: List[NewsEvent] = []
+            for row in df.iter_rows(named=True):
+                d = row.get("date")
+                if isinstance(d, datetime):
+                    d = d.date()
+                events.append(NewsEvent(
+                    code=str(row.get("code", "")),
+                    date=d,
+                    title=str(row.get("title") or ""),
+                    rating=row.get("rating"),
+                    rating_change=row.get("rating_change"),
+                    author=row.get("author"),
+                    institution=row.get("institution"),
+                    url=row.get("url"),
+                    source="research_report",
+                ))
+            return events
+        except Exception as e:
+            logger.warning(f"ParquetDatafeed.get_news_events 失败: {e}")
+            return []
 
     # ── 内部方法 ──────────────────────────────────────
 
