@@ -312,8 +312,8 @@ async function startDownload() {
         const data = await resp.json();
         if (data.success) {
             document.getElementById('progress-current').textContent = '下载任务已启动，正在获取数据...';
-            // 开始轮询进度
-            downloadPollTimer = setInterval(pollDownloadStatus, 2000);
+            // 开始轮询进度 (Web QA #4: 5000ms 阈值 — 防止 networkidle 阻塞)
+            downloadPollTimer = setInterval(pollDownloadStatus, 5000);
         } else {
             showDownloadError(data.error || '启动下载失败');
             resetDownloadUI();

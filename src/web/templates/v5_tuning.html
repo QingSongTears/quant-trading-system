@@ -201,9 +201,10 @@ function updateTs() {
   const d = new Date();
   const pad = n => (n<10?'0'+n:n);
   document.getElementById('topTs').textContent =
-    `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-updateTs(); setInterval(updateTs, 1000);
+{# Web QA #4 (2026-06-27): setInterval 1000ms → 60000ms (与 console.html 一致) #}
+updateTs(); setInterval(updateTs, 60000);
 
 // ── 7 dim sliders ──
 document.querySelectorAll('input.dim').forEach(s => {

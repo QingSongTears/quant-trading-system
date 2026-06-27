@@ -954,13 +954,15 @@ function resetLogFilter(){
 }
 
 // ══════════ CLOCK ══════════
+{# Web QA #4 (2026-06-27): setInterval 1000ms → 60000ms (1 分钟). 旧版每秒刷新导致 Playwright networkidle 永远不达成, /console 页面 TIMEOUT.
+   时钟精度 1 分钟足够, 秒级对量化控制台无意义, 且避免后台空转. #}
 function updateClock(){
   const n=new Date(),p=v=>String(v).padStart(2,'0');
-  document.getElementById('clock').textContent=`${n.getFullYear()}-${p(n.getMonth()+1)}-${p(n.getDate())} ${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`;
+  document.getElementById('clock').textContent=`${n.getFullYear()}-${p(n.getMonth()+1)}-${p(n.getDate())} ${p(n.getHours())}:${p(n.getMinutes())}`;
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  updateClock();setInterval(updateClock,1000);
+  updateClock();setInterval(updateClock,60000);
   initOverview();
 });
 </script>
