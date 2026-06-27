@@ -38,6 +38,19 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT / "src"
 HOOKS_SELF = ROOT / "dev_tools" / "hooks"
 
+# Route 文件白名单 (#85 拆 api.py 时新增, 6 个文件)
+# 理由: 路由模块只放 endpoint function + Pydantic BaseModel 请求体,
+#       没有"主业务类", 不适用 类名↔文件名 1:1 匹配规则
+ROUTE_FILE_WHITELIST = {
+    "src/web/routes/data_routes.py",
+    "src/web/routes/backtest_routes.py",
+    "src/web/routes/simulate_routes.py",
+    "src/web/routes/stock_routes.py",
+    "src/web/routes/system_routes.py",
+    "src/web/routes/predict_routes.py",
+    "src/web/routes/_helpers.py",  # 内部 helper, 不放业务类
+}
+
 # Business base classes (must declare zh_name / en_name)
 BUSINESS_BASES = {
     "BaseStrategy", "BaseSelectionStrategy", "EquityStrategy",
@@ -310,6 +323,11 @@ def main() -> int:
             "check_test_required.py", "check_import_canonical.py",
             "check_file_size.py", "check_commit_msg.py", "run_all.py"
         ]}
+    ]
+    # 路由文件白名单 — 跳过类名匹配检查 (见顶部 ROUTE_FILE_WHITELIST 注释)
+    targets = [
+        t for t in targets
+        if str(t.relative_to(ROOT)).replace("\\", "/") not in ROUTE_FILE_WHITELIST
     ]
 
     if not targets:

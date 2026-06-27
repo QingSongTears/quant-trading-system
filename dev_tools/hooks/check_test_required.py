@@ -34,6 +34,19 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT / "src"
 TESTS_DIR = ROOT / "tests"
 
+# 路由文件白名单 (#85 拆 api.py 时新增, 7 个文件)
+# 理由: 拆出的子路由是纯 endpoint 集合, 复用原 api.py 的测试覆盖
+#       (test_predict_endpoints / test_auth / test_e2e 等), 无需新增单测文件
+ROUTE_FILE_WHITELIST = {
+    "src/web/routes/data_routes.py",
+    "src/web/routes/backtest_routes.py",
+    "src/web/routes/simulate_routes.py",
+    "src/web/routes/stock_routes.py",
+    "src/web/routes/system_routes.py",
+    "src/web/routes/predict_routes.py",
+    "src/web/routes/_helpers.py",
+}
+
 # 文件名 → 测试文件名的可能形式
 def expected_test_names(stem: str) -> List[str]:
     """根据 src/ 文件名推导可能的测试文件名。"""
@@ -64,6 +77,10 @@ def get_staged_python_files() -> List[Path]:
             continue
         p = ROOT / line.strip()
         if p.suffix == ".py" and p.exists():
+            # 路由文件白名单 — 复用原 api.py 测试覆盖
+            rel = str(p.relative_to(ROOT)).replace("\\", "/")
+            if rel in ROUTE_FILE_WHITELIST:
+                continue
             files.append(p)
     return files
 
