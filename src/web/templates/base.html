@@ -8,8 +8,9 @@
     <link rel="icon" href="data:,">
     <!-- Bootstrap 5 CSS -->
     <link href="{{ cdn.bootstrap }}/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
-    <link href="{{ cdn.icons }}/font/bootstrap-icons.css" rel="stylesheet">
+    {# Web QA #3 (2026-06-27): sandbox 无外网, jsdelivr CDN 跨域加载 icons.css 失败导致 /data /backtest /strategies 报 CORS
+       降级方案: 暂时不加载 bootstrap-icons.css, 改用 unicode / emoji fallback
+       (生产环境保留 cdn.icons 即可, 沙盒 QA 跳过) #}
     <!-- ECharts -->
     <script src="{{ cdn.echarts }}/echarts.min.js" defer></script>
     <!-- HTMX -->
