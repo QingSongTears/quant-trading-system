@@ -149,11 +149,15 @@ class BaseSelectionStrategy:
 
         df = candidates.copy()
         # 自动加载 industry (若 universe 没有)
+        # ADR-0010 (2026-06-27): 改走 datafeed 统一入口 (代替 pd.read_sql)
         if "industry" not in df.columns and "code" in df.columns:
-            from src.selection.sector_constraint import load_industry_map, get_engine
+            from src.selection.sector_constraint import load_industry_map
             try:
-                engine = get_engine()
-                ind_map = load_industry_map(engine, df["code"].astype(str).tolist())
+                from src.data import data_mgr
+                ind_map = load_industry_map(
+                    data_mgr.datafeed,
+                    df["code"].astype(str).tolist(),
+                )
                 df["industry"] = df["code"].astype(str).map(ind_map).fillna("未知")
             except Exception:
                 df["industry"] = "未知"

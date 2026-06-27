@@ -23,13 +23,20 @@
 
     constraint = SectorConstraint(max_pct=0.30, max_count=3)
     selected = apply_sector_cap(candidates, constraint)
+
+ADR-0010 (2026-06-27): load_industry_map 改走 datafeed 统一入口,
+不再直接 pd.read_sql stock_basic 表 (绕过 datafeed 反模式终结)。
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
+
+if TYPE_CHECKING:
+    from ..data.datafeed.base import BaseDatafeed
+
 
 UNKNOWN = "未知"
 
@@ -133,36 +140,36 @@ def apply_sector_cap(
     return result
 
 
-def load_industry_map(engine, codes: list[str]) -> dict[str, str]:
-    """从 stock_basic.industry 批量加载行业映射
+def load_industry_map(
+    datafeed: "BaseDatafeed | None",
+    codes: list[str],
+) -> dict[str, str]:
+    """从 datafeed 加载股票-行业映射 (ADR-0010 改走 datafeed 统一入口)
 
     Args:
-        engine: SQLAlchemy engine
-        codes: 股票代码列表
+        datafeed: BaseDatafeed 实例 (LocalDatafeed / ParquetDatafeed);
+                  None 时直接返回 {} (避免冷启动失败)
+        codes: 股票代码列表 (6 位不带 .SH/.SZ)
 
     Returns:
-        {code: industry} dict, 缺失为 "未知"
+        {code: industry} dict, 缺失为 ""
     """
     if not codes:
         return {}
+    if datafeed is None:
+        return {}
 
     try:
-        with engine.connect() as conn:
-            from sqlalchemy import bindparam, text
-            stmt = text(
-                "SELECT code, industry FROM stock_basic "
-                "WHERE code IN :codes AND industry IS NOT NULL AND industry != ''"
-            ).bindparams(bindparam("codes", expanding=True))
-            df = pd.read_sql(stmt, conn, params={"codes": list(codes)})
-        return dict(zip(df["code"].astype(str), df["industry"].astype(str)))
+        return datafeed.get_industry_map(codes)
     except Exception:
         return {}
 
 
 def get_engine():
-    """获取数据库 engine (懒加载)
+    """获取数据库 engine (懒加载) — 仅供 SectorConstraint.apply_sector_constraint 自动加载 industry 时用
 
-    用于 SectorConstraint.apply_sector_constraint 自动加载 industry
+    ADR-0010: 推荐改用 get_datafeed().datafeed.get_industry_map(), 此函数保留仅
+    作为兼容入口 (portfoliorunner 等历史调用方)。新代码不应再 import 此函数。
     """
     from ..config import get_config, get_db_url
     from sqlalchemy import create_engine

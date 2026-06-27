@@ -146,19 +146,28 @@ class TestApplySectorCap:
 
 
 class TestLoadIndustryMap:
-    """load_industry_map DB 集成测试"""
+    """load_industry_map DB 集成测试 (ADR-0010 改走 datafeed)"""
 
     def test_returns_dict_for_known_codes(self):
-        from src.selection.sector_constraint import load_industry_map, get_engine
-        ind = load_industry_map(get_engine(), ["000001", "600519", "300750"])
+        """通过 datafeed.get_industry_map 取行业映射"""
+        from src.selection.sector_constraint import load_industry_map
+        from src.data.datafeed import get_datafeed
+        df = get_datafeed()
+        ind = load_industry_map(df, ["000001", "600519", "300750"])
         assert isinstance(ind, dict)
         assert "000001" in ind
         # 000001=平安银行 → industry 应含 '银行'
         assert "银行" in ind["000001"]
 
     def test_empty_codes_returns_empty_dict(self):
-        from src.selection.sector_constraint import load_industry_map, get_engine
-        assert load_industry_map(get_engine(), []) == {}
+        from src.selection.sector_constraint import load_industry_map
+        from src.data.datafeed import get_datafeed
+        assert load_industry_map(get_datafeed(), []) == {}
+
+    def test_none_datafeed_returns_empty_dict(self):
+        """datafeed=None 时 (冷启动容错),返空 dict 不抛错"""
+        from src.selection.sector_constraint import load_industry_map
+        assert load_industry_map(None, ["000001"]) == {}
 
 
 class TestBaseSelectionStrategyIntegration:
