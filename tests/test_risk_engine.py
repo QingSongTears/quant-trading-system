@@ -1,5 +1,10 @@
-"""测试: VNPY-3 — RiskEngine 风控骨架 (含 ADR-0007 修复)"""
-from datetime import date
+"""测试: VNPY-3 — RiskEngine 风控骨架 (含 ADR-0007 修复)
+
+注: 集中度 + EVENT_RISK_ALERT 相关测试已拆到 tests/test_risk_engine_concentration.py
+(原文件 > 500 行治理, AGENTS.md §4)。共享 fixture 在 tests/_risk_fixtures.py。
+"""
+from __future__ import annotations
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -8,50 +13,9 @@ from src.risk.engine import RiskEngine, RiskConfig
 from src.event import Event, EVENT_ORDER, EVENT_TRADE, EVENT_ACCOUNT
 from src.gateway.object import OrderStatus
 
-
-def _freeze_today(risk: RiskEngine) -> None:
-    """阻止 _ensure_daily_reset 把测试注入的统计数据清零"""
-    risk._today = date.today()
-
-
-class DummyOrder:
-    """兼容 OrderRequest 的最小下单请求 (无 status, 走 on_trade)"""
-
-    def __init__(self, volume, price, vt_symbol="000001.SZ"):
-        self.volume = volume
-        self.price = price
-        self.vt_symbol = vt_symbol
-
-
-class DummyOrderData:
-    """OrderData-like, 含 status (供 on_order ALLTRADED 检查)"""
-
-    def __init__(
-        self,
-        status: OrderStatus = OrderStatus.ALLTRADED,
-        vt_symbol: str = "000001.SZ",
-    ):
-        self.status = status
-        self.symbol = vt_symbol.split(".")[0]
-        self.exchange = vt_symbol.split(".")[1] if "." in vt_symbol else "SZ"
-        self.vt_symbol = vt_symbol
-        self.volume = 100
-        self.price = 10.0
-
-
-class DummyTrade:
-    def __init__(self, volume=100, price=50.0, vt_symbol="000001.SZ", pnl=0.0):
-        self.volume = volume
-        self.price = price
-        self.vt_symbol = vt_symbol
-        self.pnl = pnl
-
-
-class DummyAccount:
-    """AccountData-like, balance 字段"""
-
-    def __init__(self, balance: float = 0.0):
-        self.balance = balance
+from tests._risk_fixtures import (
+    DummyOrder, DummyOrderData, DummyTrade, DummyAccount, freeze_today,
+)
 
 
 # ═════════════════════════════════════════════════════════════
@@ -218,7 +182,7 @@ class TestCheckDailyLimit:
     def test_fails_trades(self):
         event_engine = MagicMock()
         risk = RiskEngine(event_engine, RiskConfig(max_daily_trades=3))
-        _freeze_today(risk)
+        freeze_today(risk)
         risk._daily_trades = 5
         ok, msg = risk.check_daily_limit()
         assert not ok and "交易次数" in msg
@@ -226,7 +190,7 @@ class TestCheckDailyLimit:
     def test_fails_loss(self):
         event_engine = MagicMock()
         risk = RiskEngine(event_engine, RiskConfig(max_daily_loss=1000))
-        _freeze_today(risk)
+        freeze_today(risk)
         risk._daily_pnl = -2000
         ok, msg = risk.check_daily_limit()
         assert not ok and "亏损" in msg
@@ -235,7 +199,7 @@ class TestCheckDailyLimit:
         """日回撤熔断 (小数化后: max_daily_drawdown=0.05 = 5%)"""
         event_engine = MagicMock()
         risk = RiskEngine(event_engine, RiskConfig(max_daily_drawdown=0.05))
-        _freeze_today(risk)
+        freeze_today(risk)
         risk._daily_peak = 100_000
         risk._daily_pnl = -8000  # (100k - (-8k)) / 100k = 108% 远超 5%
         ok, msg = risk.check_daily_limit()
@@ -245,7 +209,7 @@ class TestCheckDailyLimit:
         """小数阈值: 0.03 (3%) 边界正确"""
         event_engine = MagicMock()
         risk = RiskEngine(event_engine, RiskConfig(max_daily_drawdown=0.03))
-        _freeze_today(risk)
+        freeze_today(risk)
         risk._daily_peak = 100_000
         risk._daily_pnl = 96_500  # 回撤 3.5% > 3%
         ok, msg = risk.check_daily_limit()
@@ -255,7 +219,7 @@ class TestCheckDailyLimit:
         """回撤未达阈值 → 通过"""
         event_engine = MagicMock()
         risk = RiskEngine(event_engine, RiskConfig(max_daily_drawdown=0.05))
-        _freeze_today(risk)
+        freeze_today(risk)
         risk._daily_peak = 100_000
         risk._daily_pnl = 96_000  # 回撤 4% < 5%
         ok, _ = risk.check_daily_limit()
@@ -411,7 +375,8 @@ class TestDailyReset:
     def test_crosses_midnight_resets(self):
         event_engine = MagicMock()
         risk = RiskEngine(event_engine, RiskConfig(max_daily_trades=3))
-        risk._today = date(2020, 1, 1)
+        from datetime import date as _date
+        risk._today = _date(2020, 1, 1)
         risk._daily_trades = 999
         ok, _ = risk.check_daily_limit()
         assert ok
@@ -433,6 +398,7 @@ class TestGetStats:
 
 # ═════════════════════════════════════════════════════════════
 #  RiskAlert 数据类 — 见 tests/test_event_data.py
+#  集中度 + EVENT_RISK_ALERT 测试 — 见 tests/test_risk_engine_concentration.py
 # ═════════════════════════════════════════════════════════════
 
 
