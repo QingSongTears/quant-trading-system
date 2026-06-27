@@ -5,15 +5,16 @@ monitoring 包 (ADR-0012 #83) — v3.0 实盘化前置
   - 数据结构: PnlSnapshot / PositionSnapshot / AnomalyEvent
   - 事件类型: EVENT_PNL_UPDATE / EVENT_POSITION_UPDATE / EVENT_ANOMALY / EVENT_ALERT
   - 持久化:   MetricStore (抽象) / InMemoryBuffer / SqliteStore
-  - 采集器:   PnlCollector / PositionCollector
+  - 采集器:   PnlCollector / PositionCollector / RiskAlertCollector
   - 异常检测: AnomalyDetector
   - 报警:     AlertRule / AlertDispatcher
+  - 统一 facade: MonitoringHub / get_hub / reset_hub
 
 结构 (按职责拆分, 单文件 ≤ 200 行):
   - event_data.py:    3 个 dataclass (PnlSnapshot / PositionSnapshot / AnomalyEvent)
   - event_types.py:   4 个 EVENT 常量 re-export
   - store.py:         MetricStore 抽象 + InMemoryBuffer + SqliteStore
-  - collector.py:     PnlCollector / PositionCollector (EventEngine handler)
+  - collector.py:     PnlCollector / PositionCollector / RiskAlertCollector
   - anomaly_detector.py: AnomalyDetector (数据延迟/API 失败/订单超时)
   - alert.py:         AlertRule + AlertDispatcher (阈值规则 + 多通道分发)
   - hub.py:           MonitoringHub (统一 facade — 启动/订阅/查询)
@@ -43,6 +44,34 @@ from .event_types import (
     EVENT_POSITION_UPDATE,
 )
 
+# 持久化
+from .store import (
+    InMemoryBuffer,
+    MetricStore,
+    SqliteStore,
+    make_store,
+)
+
+# 采集器
+from .collector import (
+    PnlCollector,
+    PositionCollector,
+    RiskAlertCollector,
+)
+
+# 异常检测
+from .anomaly_detector import AnomalyDetector
+
+# 报警
+from .alert import (
+    DEFAULT_RULES,
+    AlertDispatcher,
+    AlertRule,
+)
+
+# 统一 facade
+from .hub import MonitoringHub, get_hub, reset_hub
+
 
 __all__ = [
     # 数据结构
@@ -55,4 +84,23 @@ __all__ = [
     "EVENT_POSITION_UPDATE",
     "EVENT_ANOMALY",
     "EVENT_ALERT",
+    # 持久化
+    "MetricStore",
+    "InMemoryBuffer",
+    "SqliteStore",
+    "make_store",
+    # 采集器
+    "PnlCollector",
+    "PositionCollector",
+    "RiskAlertCollector",
+    # 异常检测
+    "AnomalyDetector",
+    # 报警
+    "AlertRule",
+    "AlertDispatcher",
+    "DEFAULT_RULES",
+    # facade
+    "MonitoringHub",
+    "get_hub",
+    "reset_hub",
 ]
