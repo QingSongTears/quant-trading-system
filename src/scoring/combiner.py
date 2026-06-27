@@ -4,9 +4,9 @@
 
 ⚠️ 历史口径混乱 (PR2.5 修复):
 - src/selection/pipeline.py:286  加权平均 sum(s*w)/sum(w)
-- scripts/regenerate_combined_scores.py:162  算术平均 .mean(axis=1)
-- scripts/param_server.py:925  百分位排名(可能)
-- src/strategies/stock_screener/backtest/optimizer.py:27  硬编码
+- scripts/active/regenerate_combined_scores.py:162  算术平均 .mean(axis=1)
+- scripts/active/param_server.py:925  百分位排名(可能)
+- [LEGACY 已删,见 commit 0a1853f] optimizer.py 硬编码
   收益*0.6 + 夏普*0.3 + 胜率*0.1
 - src/models/shield_spear.py:67  矛/盾动态权重
 

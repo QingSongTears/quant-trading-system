@@ -84,13 +84,17 @@ SNAKE_CASE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*\.py$")
 
 
 def get_staged_new_files() -> List[Path]:
-    """Get files that are STAGED or UNTRACKED (about to be committed).
-    Skip existing committed files - those are v2.1 cleanup work."""
+    """Get files that are NEWLY ADDED or UNTRACKED (not just modified).
+
+    Naming/test checks only apply to NEW files. Modified files inherit
+    their original compliance status. file_size / import_canonical apply
+    to all changes.
+    """
     files = set()
-    # Staged
+    # Staged - ONLY added (A), not modified (M)
     try:
         result = subprocess.run(
-            ["git", "diff", "--cached", "--name-only", "--diff-filter=AM"],
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=A"],
             cwd=ROOT, capture_output=True, text=True, check=True,
         )
         for line in result.stdout.splitlines():

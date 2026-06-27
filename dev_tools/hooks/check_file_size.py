@@ -39,9 +39,10 @@ MAX_CODE_LINES = 500
 # 文档最大行数
 MAX_DOC_LINES = 1000
 
-# 允许的大文件（白名单 — v2.2 拆分）
+# 允许的大文件（白名单 — v2.1.2 拆分）
 WHITELIST_LARGE_FILES = {
-    "scripts/param_server.py",          # 2846 行 — 已知待拆
+    "scripts/active/param_server.py",    # 2846 行 — 已知待拆
+    "src/web/routes/api.py",             # 2227 行 — v2.1.2 拆 backtest/data/strategies 子路由
     "requirements.txt",                  # 锁定文件
     "docs/CODE_WIKI.md",                 # 事实单源
     "LIVE_TRADING_ROADMAP.md",           # 主路线图

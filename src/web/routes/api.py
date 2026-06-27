@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 from ...models.repository import DataRepository
 from ...data import get_data_manager
 from ...data.downloader import DataDownloader
-from ...data.westock_downloader import WestockDownloader
+# 2026-06-27: westock_downloader 桩模块已删,统一用 DataDownloader
 from ...backtest.engine import BacktestEngine
 from ...backtest.portfolio_engine import PortfolioBacktestEngine
 from ..app import download_status as _download_status
@@ -292,19 +292,9 @@ async def trigger_download(mode: str = "incremental"):
 
     def _run():
         try:
-            # 下载器选择:WestockDownloader 是桩模块(2026-06-21 PR1.1),
-            # 会抛 NotImplementedError;捕获后回退到 DataDownloader (AKShare)。
-            # 之前的 fallback 逻辑因 WestockDownloader 不抛错而永远不触发,
-            # 导致"全量下载"按钮静默无效 — 现在显式检测。
-            try:
-                from src.data.westock_downloader import WestockDownloaderNotImplemented
-                downloader = WestockDownloader()
-                source_name = "WeStock-Data (腾讯自选股)"
-            except (WestockDownloaderNotImplemented, Exception) as init_err:
-                logger.info(f"westock 不可用, 使用 AKShare (DataDownloader): {init_err}")
-                downloader = DataDownloader()
-                source_name = "AKShare"
-
+            # 2026-06-27: westock 桩模块已删,统一用 DataDownloader (AKShare)
+            downloader = DataDownloader()
+            source_name = "AKShare"
             update_download_status({"current": f"使用 {source_name} 下载中..."})
 
             if mode == "full":
@@ -1195,7 +1185,7 @@ async def api_v5_scan_results(limit: int = Query(20, ge=1, le=200)):
     """v5 扫描结果 — v5.html 用 (兼容旧版移植)"""
     repo = _get_repo()
     try:
-        # 复用 get_recent_backtests 拿最新回测, 前端按 strategy='v5_hybrid' 过滤
+        # 复用 get_recent_backtests 拿最新回测, 前端按 strategy 名字过滤
         rows = repo.get_recent_backtests(limit=limit * 4)
         out = []
         for r in rows:
@@ -2193,7 +2183,7 @@ async def v5_run(
     repo = _get_repo()
     try:
         with repo.engine.connect() as conn:
-            # 查 v5_hybrid 策略 ID
+            # 查 v5 系列策略 ID
             cfg = conn.execute(
                 text("SELECT id, name, class_path FROM strategy_config WHERE name LIKE '%v5%' OR name LIKE '%hybrid%' LIMIT 5")
             ).fetchall()
