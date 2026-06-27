@@ -210,3 +210,177 @@ class TestCommonJSStaticFile:
         assert "api-key" in body, (
             "common.js 必须从 meta[name='api-key'] 读 key"
         )
+
+
+# ============================================================
+# API 契约回归 — 防止字段名漂移
+# ============================================================
+# Web QA #2 (2026-06-27): research.html 前端用 data.results.map() 但 API 返
+# {success, data: [...]} → 'Cannot read properties of undefined (reading map)'。
+#
+# 这些测试是 **API 契约** 测试 — 锁定每个端点的返回结构, 防止未来重构
+# 把字段名从 "data" 改成 "results" 或 "items" 而前端没同步。
+#
+# 注意:
+#   - 不要修改 API 路由 (约束 #3) — 这是研究端点的事实契约
+#   - 前端必须适配 API (data.data || [])
+
+
+class TestAPIResponseContract:
+    """锁定 /research 页面依赖的 4 个 API 端点的返回结构
+
+    任何端点返回结构变更 (例如把 data 改 results / items) 都必须同时:
+    1. 更新前端 (templates/*.html)
+    2. 在此处更新断言, 并在 commit 注明
+    """
+
+    def test_backtest_results_returns_success_data_envelope(self, client):
+        """/api/backtest/results 必须返 {success: True, data: [...]} (tuning chart 用)"""
+        resp = client.get("/api/backtest/results?limit=5")
+        assert resp.status_code == 200, (
+            f"/api/backtest/results 返回 {resp.status_code}"
+        )
+        payload = resp.json()
+        # 必须有 success 标记 + data 字段 (前端 data.data || [] 读)
+        assert "success" in payload, (
+            "API 契约破坏: 缺 'success' 字段 — "
+            "前端需用 payload.success 判断是否成功"
+        )
+        assert "data" in payload, (
+            "API 契约破坏: 缺 'data' 字段 — "
+            "前端 data.data.map() 会 throw 'Cannot read properties of undefined'"
+        )
+        assert isinstance(payload["data"], list), (
+            f"/api/backtest/results data 字段必须是 list, "
+            f"实际 {type(payload['data']).__name__}"
+        )
+
+    def test_v5_scan_results_returns_success_data_envelope(self, client):
+        """/api/v5/scan-results 必须返 {success: True, data: [...]} (v5 chart 用)"""
+        resp = client.get("/api/v5/scan-results?limit=5")
+        assert resp.status_code == 200, (
+            f"/api/v5/scan-results 返回 {resp.status_code}"
+        )
+        payload = resp.json()
+        assert "success" in payload, (
+            "API 契约破坏: 缺 'success' 字段"
+        )
+        assert "data" in payload, (
+            "API 契约破坏: 缺 'data' 字段 — "
+            "前端 data.data.map() 会 throw"
+        )
+        assert isinstance(payload["data"], list), (
+            f"/api/v5/scan-results data 字段必须是 list, "
+            f"实际 {type(payload['data']).__name__}"
+        )
+
+    def test_strategies_returns_success_data_envelope(self, client):
+        """/api/strategies 必须返 {success: True, data: [...]} (v6 chart 用)
+
+        注意: 旧前端用 data.strategies.map() (错), 新前端用 data.data.map()
+        API 必须保持 {success, data} 契约, 不要改名为 {strategies}
+        """
+        resp = client.get("/api/strategies")
+        assert resp.status_code == 200, (
+            f"/api/strategies 返回 {resp.status_code}"
+        )
+        payload = resp.json()
+        assert "success" in payload, (
+            "API 契约破坏: 缺 'success' 字段"
+        )
+        assert "data" in payload, (
+            "API 契约破坏: 缺 'data' 字段 — "
+            "v6 chart 前端 data.data.map() 会 throw 'reading map'"
+        )
+        assert isinstance(payload["data"], list), (
+            f"/api/strategies data 字段必须是 list, "
+            f"实际 {type(payload['data']).__name__}"
+        )
+
+    def test_research_ic_returns_factors_envelope(self, client):
+        """/api/research/ic 必须返 {factors: [...]} (IC chart 用)
+
+        注意: 此端点**特殊** — 直接返 {factors, window, start, end}, 没有 success 字段。
+        前端 data.factors.map() 直接读 factors 字段, 不走 data.data 模式。
+        锁定契约: factors 是 list, 且每个 factor 含 name + window
+        """
+        resp = client.get("/api/research/ic?window=5&stock_limit=5")
+        assert resp.status_code == 200, (
+            f"/api/research/ic 返回 {resp.status_code}"
+        )
+        payload = resp.json()
+        assert "factors" in payload, (
+            "API 契约破坏: 缺 'factors' 字段 — "
+            "前端 data.factors.map() 会 throw"
+        )
+        assert isinstance(payload["factors"], list), (
+            f"/api/research/ic factors 字段必须是 list, "
+            f"实际 {type(payload['factors']).__name__}"
+        )
+
+    def test_research_dim_ic_returns_dims_envelope(self, client):
+        """/api/research/dim-ic 必须返 {dims: [...]} (dim chart 用)
+
+        锁定契约: dims 是 list
+        """
+        resp = client.get("/api/research/dim-ic?window=5&stock_limit=5")
+        assert resp.status_code == 200, (
+            f"/api/research/dim-ic 返回 {resp.status_code}"
+        )
+        payload = resp.json()
+        assert "dims" in payload, (
+            "API 契约破坏: 缺 'dims' 字段 — "
+            "前端 data.dims.map() 会 throw"
+        )
+        assert isinstance(payload["dims"], list), (
+            f"/api/research/dim-ic dims 字段必须是 list, "
+            f"实际 {type(payload['dims']).__name__}"
+        )
+
+
+# ============================================================
+# 模板源码静态检查 — 防止 data.results/data.strategies 再次回归
+# ============================================================
+# Web QA #2 (2026-06-27): research.html 旧版用 data.results.map() 触发
+# 'reading map' 错误. 此测试扫描模板源码, 任何模板出现 data.results.map /
+# data.strategies.map 都立即 fail (前端不能再用错的字段名).
+
+
+class TestResearchTemplateNoLegacyFieldNames:
+    """research.html 必须用 data.data.* (API 实际结构), 不能用 data.results.* / data.strategies.*"""
+
+    def test_research_template_no_data_results_field(self, client):
+        """/research 页面源码不应出现 data.results.map() / data.results.forEach()"""
+        resp = client.get("/research")
+        assert resp.status_code == 200
+        html = resp.text
+        # Web QA #2: data.results 是错误的字段名 (API 返 data 而非 results)
+        assert "data.results" not in html, (
+            "research.html 仍含 'data.results' 字段访问 — "
+            "API 实际返 {success, data: [...]}, 应改为 'data.data'"
+        )
+
+    def test_research_template_no_data_strategies_field(self, client):
+        """/research 页面源码不应出现 data.strategies.map() (v6 tab 旧 bug)"""
+        resp = client.get("/research")
+        assert resp.status_code == 200
+        html = resp.text
+        # /api/strategies 也返 {success, data: [...]}, 不是 {strategies}
+        assert "data.strategies" not in html, (
+            "research.html 仍含 'data.strategies' 字段访问 — "
+            "API 实际返 {success, data: [...]}, 应改为 'data.data'"
+        )
+
+    def test_research_template_uses_data_data_with_fallback(self, client):
+        """/research 页面源码应使用 data.data + 防御性 fallback (data.data || [])"""
+        resp = client.get("/research?type=v5")
+        assert resp.status_code == 200
+        html = resp.text
+        # 防御: data.data 必须 || [] 防止 API 偶发返空对象时 throw
+        assert "data.data || []" in html, (
+            "research.html 缺防御性 'data.data || []' — "
+            "API 偶发返空对象时 items.map() 会 throw"
+        )
+        assert "data.data" in html, (
+            "research.html 必须用 data.data (API 实际字段名), 而非 data.results"
+        )
