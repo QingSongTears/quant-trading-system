@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>研究面板 · 量化调优与归因</title>
 {# Web QA #1 (2026-06-27): 独立模板不继承 base.html, 必须显式注入 api-key meta + common.js, 否则 window.QT undefined, v5/v6/tuning chart 全部 fail #}
+{# Web QA #2 (2026-06-27): API 实际返 {success, data: [...]}, 旧前端用 data.results / data.strategies → 'Cannot read properties of undefined (reading map)'. 现统一改 data.data + 防御 data.data || [] #}
 <meta name="api-key" content="{{ api_key }}">
 <script src="/static/js/common.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -58,9 +59,10 @@ header a:hover { color:var(--accent); }
     (async function() {
       try {
         const resp = await window.QT.fetch('/api/v5/scan-results');
-        const data = resp.ok ? await resp.json() : { results: [] };
-        const labels = data.results.map(r => r.params || JSON.stringify(r.params));
-        const values = data.results.map(r => r.sharpe || 0);
+        const data = resp.ok ? await resp.json() : { data: [] };
+        const items = data.data || [];
+        const labels = items.map(r => r.params || JSON.stringify(r.params));
+        const values = items.map(r => r.sharpe || 0);
         new Chart(document.getElementById('v5-canvas'), {
           type: 'bar', data: { labels, datasets: [{ label: '夏普', data: values, backgroundColor: 'var(--accent)' }] },
           options: { responsive: true, plugins: { legend: { labels: { color: 'var(--text)' } } } },
@@ -76,12 +78,13 @@ header a:hover { color:var(--accent); }
     (async function() {
       try {
         const resp = await window.QT.fetch('/api/strategies');
-        const data = resp.ok ? await resp.json() : { strategies: [] };
-        const labels = data.strategies.map(s => s.name);
+        const data = resp.ok ? await resp.json() : { data: [] };
+        const items = data.data || [];
+        const labels = items.map(s => s.name);
         new Chart(document.getElementById('v6-canvas'), {
           type: 'radar',
           data: { labels: ['收益', '夏普', '胜率', '回撤', 'Calmar'],
-            datasets: data.strategies.map((s, i) => ({
+            datasets: items.map((s, i) => ({
               label: s.name,
               data: [s.annual_return || 0, s.sharpe || 0, s.win_rate || 0,
                      Math.abs(s.max_drawdown || 0), s.calmar || 0],
@@ -101,9 +104,10 @@ header a:hover { color:var(--accent); }
     (async function() {
       try {
         const resp = await window.QT.fetch('/api/backtest/results?limit=20');
-        const data = resp.ok ? await resp.json() : { results: [] };
-        const labels = data.results.map(r => r.start_date || '');
-        const values = data.results.map(r => r.annual_return || 0);
+        const data = resp.ok ? await resp.json() : { data: [] };
+        const items = data.data || [];
+        const labels = items.map(r => r.start_date || '');
+        const values = items.map(r => r.annual_return || 0);
         new Chart(document.getElementById('tuning-canvas'), {
           type: 'line', data: { labels, datasets: [{ label: '年化收益', data: values, borderColor: 'var(--accent)', fill: false }] },
           options: { responsive: true },
