@@ -31,6 +31,9 @@ EVENT_LOG = "eLog"               # 日志
 EVENT_ERROR = "eError"           # 错误
 EVENT_TIMER = "eTimer"            # 定时器
 
+# ── 风控 ────────────────────────────────────
+EVENT_RISK_ALERT = "eRiskAlert"  # 风控告警 (下单前拦截/日内熔断触发, ADR-0007 D3)
+
 
 __all__ = [
     "EventEngine", "Event",
@@ -39,4 +42,5 @@ __all__ = [
     "EVENT_ORDER", "EVENT_TRADE", "EVENT_CANCEL",
     "EVENT_POSITION", "EVENT_ACCOUNT", "EVENT_CONTRACT",
     "EVENT_LOG", "EVENT_ERROR", "EVENT_TIMER",
+    "EVENT_RISK_ALERT",
 ]

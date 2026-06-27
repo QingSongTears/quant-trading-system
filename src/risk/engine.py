@@ -1,19 +1,24 @@
 """
-RiskEngine — 下单前风控检查骨架 (VNPY-3, 2026-06-27)
+RiskEngine — 下单前风控检查骨架 (VNPY-3, ADR-0007, 2026-06-27)
 
 借鉴 vnpy.trader.engine.RiskManager, 实现单笔/单日风控:
-  - check_order: 单笔股数 / 金额 / 持仓数
+  - check_order: 单笔股数 / 金额 / 持仓数 / 仓位比例
   - check_daily_limit: 交易次数 / 亏损 / 日回撤熔断
   - 事件驱动: 订阅 EVENT_ORDER / EVENT_TRADE 更新状态
+  - EVENT_ACCOUNT 异步注入余额 (启动时用 initial_balance 兜底)
   - 日初自动复位
+
+单位约定 (PR2.2 起, 见 src/constants/risk.py):
+  - 百分比统一用**小数** (0.05 = 5%, 与 STOP_LOSS_DEFAULT 一致)
+  - max_order_pct=0.20, max_daily_drawdown=0.05
 
 用法:
     from src.risk import RiskEngine, RiskConfig
-    from src.event import EventEngine, EVENT_ORDER, EVENT_TRADE
+    from src.event import EventEngine, EVENT_ORDER, EVENT_TRADE, EVENT_ACCOUNT
 
-    config = RiskConfig(max_order_pct=0.20, max_daily_trades=20)
+    config = RiskConfig(max_order_pct=0.20, max_daily_trades=20,
+                       initial_balance=200_000)
     risk = RiskEngine(event_engine, config)
-    # 注: 上面的 register 由 __init__ 自动完成
     ok, msg = risk.check_order(req)
     ok, msg = risk.check_daily_limit()
 """
@@ -38,24 +43,31 @@ class RiskConfig:
       - 单笔: 单股仓位比例 / 股数 / 金额
       - 单日: 交易次数 / 亏损金额 / 日内净值回撤
       - 全局: 最大持仓数 (新开仓受限, 已持仓加仓放行)
+
+    单位:
+      - 百分比统一**小数** (0.05 = 5%, 见 src/constants/risk.py)
+      - 金额单位: 元 (人民币)
     """
     # ── 单笔控制 ──
-    max_order_pct: float = 0.20          # 单股最大仓位比例 (相对账户总资产, 留给将来)
+    max_order_pct: float = 0.20          # 单股最大仓位比例 (小数, 0.20=20%)
     max_order_volume: int = 100_000_000  # 单笔最大股数 (A 股单笔上限)
     max_order_amount: float = 5_000_000  # 单笔最大金额 (5百万, 小账户够用)
 
     # ── 单日控制 ──
     max_daily_trades: int = 50           # 日内最大交易次数 (双向)
-    max_daily_drawdown_pct: float = 5.0  # 日内净值回撤熔断 (%)
+    max_daily_drawdown: float = 0.05     # 日内净值回撤熔断 (小数, 0.05=5%)
     max_daily_loss: float = 100_000      # 日内最大亏损金额 (绝对值)
 
     # ── 全局控制 ──
     max_positions: int = 10              # 同时最大持仓数 (新开仓数)
 
+    # ── 账户兜底 (ADR-0007 D1②) ──
+    initial_balance: float = 0.0         # 启动时账户余额 (EVENT_ACCOUNT 未到账前兜底)
+
 
 class RiskEngine:
     """
-    风控引擎 — 下单前拦截 (借鉴 vnpy RiskManager)
+    风控引擎 — 下单前拦截 (借鉴 vnpy RiskManager, 简写 RiskEngine)
 
     设计:
       - 单例绑定 EventEngine, __init__ 自动订阅 EVENT_ORDER / EVENT_TRADE
@@ -63,6 +75,8 @@ class RiskEngine:
       - check_daily_limit() 检查日内限制是否触发
       - 日初自动复位 (_ensure_daily_reset)
       - 持仓从成交事件流累计维护
+      - 账户余额: 优先 EVENT_ACCOUNT 异步注入, 首次注入后注销回调省 CPU
+                  未到账时用 config.initial_balance 兜底
     """
 
     def __init__(
@@ -85,15 +99,31 @@ class RiskEngine:
         # ── 实时持仓 (从成交事件流累计) ──
         # vt_symbol -> 净持仓 (正=多头)
         self._positions: dict[str, int] = {}
-        self._active: bool = False
+
+        # ── 账户余额 (ADR-0007 D1②) ──
+        # 优先 EVENT_ACCOUNT 注入, 兜底用 config.initial_balance
+        self._account_balance: float = self.config.initial_balance
+        self._account_subscribed: bool = True  # False 时已注销回调
 
         # 注册事件 (vnpy 风格: 显式订阅, 不强制要求实现类在 main_engine)
         self._event_engine.register(EVENT_ORDER, self.on_order)
         self._event_engine.register(EVENT_TRADE, self.on_trade)
+
+        # 尝试注册账户回调 (EVENT_ACCOUNT 可选, 测试场景可能没有)
+        try:
+            from ..event import EVENT_ACCOUNT
+            self._event_engine.register(EVENT_ACCOUNT, self.on_account)
+        except ImportError:
+            logger.warning(
+                "EVENT_ACCOUNT 不可用, 使用 initial_balance 兜底: "
+                f"{self.config.initial_balance:,.0f}"
+            )
+
         logger.info(
             f"RiskEngine 初始化完成: "
             f"max_vol={self.config.max_order_volume}, "
-            f"max_daily_trades={self.config.max_daily_trades}"
+            f"max_daily_trades={self.config.max_daily_trades}, "
+            f"initial_balance={self.config.initial_balance:,.0f}"
         )
 
     # ─────────────────────────────────────────
@@ -101,11 +131,18 @@ class RiskEngine:
     # ─────────────────────────────────────────
 
     def on_order(self, event: "Event") -> None:
-        """订单回报回调 — 累加日内交易次数
+        """订单回报回调 — 仅 ALLTRADED 时累加日内交易次数 (ADR-0007 修复 4)
 
-        注: 严格说应该用 ALLTRADED 状态计数, 简化版: 任何订单回报 +1。
-        vnpy 也是这样做的(可用参数配置, 我们默认简单策略)。
+        vnpy 默认也是这样: 部分成交不算交易, 撤单/拒绝不计交易次数。
+        部分成交通过 on_trade 累加, 此处只统计"完成交易的订单"。
         """
+        from ..gateway.object import OrderStatus
+
+        order = event.data
+        if order is None:
+            return
+        if getattr(order, "status", None) != OrderStatus.ALLTRADED:
+            return
         self._ensure_daily_reset()
         self._daily_trades += 1
 
@@ -130,6 +167,35 @@ class RiskEngine:
             # 峰值只升不降 (用于日内回撤熔断)
             if self._daily_pnl > self._daily_peak:
                 self._daily_peak = self._daily_pnl
+
+    def on_account(self, event: "Event") -> None:
+        """账户回报回调 — 首次注入余额后注销回调 (ADR-0007 D1②)
+
+        设计:
+          - 启动时 account 推送可能尚未触发, 用 initial_balance 兜底
+          - 一旦收到有效余额 (balance > 0), 锁定并注销回调, 省 CPU
+          - 注销失败不影响主流程 (容错: try/except 包住)
+        """
+        account = event.data
+        if account is None:
+            return
+        balance = getattr(account, "balance", 0.0)
+        if balance <= 0:
+            # 异常账户数据, 不锁定 (继续监听)
+            logger.debug(f"on_account: balance={balance} ≤ 0, 跳过")
+            return
+
+        self._account_balance = balance
+
+        # 首次拿到有效余额后注销回调, 避免每个 timer tick 都触发
+        if self._account_subscribed:
+            try:
+                from ..event import EVENT_ACCOUNT
+                self._event_engine.unregister(EVENT_ACCOUNT, self.on_account)
+                self._account_subscribed = False
+                logger.info(f"账户余额已锁定, 注销 EVENT_ACCOUNT 回调: {balance:,.0f}")
+            except Exception as e:  # noqa: BLE001 — 容错, 不阻断主流程
+                logger.warning(f"注销 EVENT_ACCOUNT 回调失败 (继续监听): {e}")
 
     # ─────────────────────────────────────────
     #  风控检查 (下单前调用)
@@ -178,6 +244,16 @@ class RiskEngine:
                 f"{self.config.max_positions}, 新开仓被拒"
             )
 
+        # 4. 单股仓位比例校验 (ADR-0007 修复 2)
+        #    仅当账户余额已知时生效 (兜底 initial_balance=0 时跳过)
+        if self._account_balance > 0:
+            pct = amount / self._account_balance
+            if pct > self.config.max_order_pct:
+                return False, (
+                    f"超单股仓位比例: {pct:.2%} > "
+                    f"{self.config.max_order_pct:.2%}"
+                )
+
         return True, ""
 
     def check_daily_limit(self) -> tuple[bool, str]:
@@ -203,13 +279,13 @@ class RiskEngine:
                 f"<= -{self.config.max_daily_loss:,.0f}"
             )
 
-        # 3. 日内回撤熔断 (基于日净值峰值)
+        # 3. 日内回撤熔断 (基于日净值峰值, 小数化: 0.05 = 5%)
         if self._daily_peak > 0:
-            drawdown = (self._daily_peak - self._daily_pnl) / self._daily_peak * 100
-            if drawdown >= self.config.max_daily_drawdown_pct:
+            drawdown = (self._daily_peak - self._daily_pnl) / self._daily_peak
+            if drawdown >= self.config.max_daily_drawdown:
                 return False, (
-                    f"日内回撤达熔断线: {drawdown:.1f}% "
-                    f">= {self.config.max_daily_drawdown_pct}%"
+                    f"日内回撤达熔断线: {drawdown:.2%} "
+                    f">= {self.config.max_daily_drawdown:.2%}"
                 )
 
         return True, ""
@@ -235,13 +311,15 @@ class RiskEngine:
             "daily_pnl": self._daily_pnl,
             "daily_peak": self._daily_peak,
             "max_daily_trades": self.config.max_daily_trades,
-            "max_daily_drawdown_pct": self.config.max_daily_drawdown_pct,
+            "max_daily_drawdown": self.config.max_daily_drawdown,
             "position_count": sum(1 for v in self._positions.values() if v > 0),
+            "account_balance": self._account_balance,
             "today": self._today.isoformat(),
         }
 
     def __repr__(self) -> str:
         return (
             f"<RiskEngine trades={self._daily_trades}/{self.config.max_daily_trades} "
-            f"positions={sum(1 for v in self._positions.values() if v > 0)}>"
+            f"positions={sum(1 for v in self._positions.values() if v > 0)} "
+            f"balance={self._account_balance:,.0f}>"
         )
