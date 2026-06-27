@@ -47,6 +47,7 @@ WHITELIST_LARGE_FILES = {
     "requirements.txt",                  # 锁定文件
     "docs/CODE_WIKI.md",                 # 事实单源
     "LIVE_TRADING_ROADMAP.md",           # 主路线图
+    # ADR-0011 (#82): simulator.py 已拆 simulator/ 包, 不再豁免
 }
 
 # 守门自身 + 生成器
