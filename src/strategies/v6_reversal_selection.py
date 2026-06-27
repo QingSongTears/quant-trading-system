@@ -3,7 +3,7 @@ V6 超卖反转选股策略 — 新架构桥接版
 ====================================
 
 将 v6_improved 策略的核心信号逻辑移植到 BaseSelectionStrategy 接口，
-使用 quant.db 作为数据源，通过 PortfolioBacktestEngine 运行组合级回测。
+使用 datafeed (vnpy 风格) 作为数据源，通过 PortfolioBacktestEngine 运行组合级回测。
 
 注意：
   - 新引擎使用定期等权调仓模式，不支持个股级别的止损/止盈/移动止损
@@ -12,6 +12,8 @@ V6 超卖反转选股策略 — 新架构桥接版
 
 策略来源:
   v3_reversal 实证优化 → v6: 连续阳线确认 + ATR波动率自适应 + 量价背离过滤
+
+ADR-0010 (2026-06-27): 改走 datafeed 统一入口 (替代 pd.read_sql / DataRepository)
 """
 from __future__ import annotations
 
@@ -25,8 +27,6 @@ from ..backtest.base_selection_strategy import BaseSelectionStrategy
 from ..strategy.equity_strategy import EquityStrategy
 from ..config import get_config
 from ..db.engine import get_engine
-from ..db.sql_utils import read_sql
-from ..models.repository import DataRepository
 
 
 class V6ReversalSelectionStrategy(EquityStrategy):
@@ -110,13 +110,62 @@ class V6ReversalSelectionStrategy(EquityStrategy):
             setting=setting,
         )
 
-        # 初始化数据库连接
+        # 初始化数据库连接 (保留 engine 供 potential 兜底场景,主数据通路走 datafeed)
         self.engine = get_engine()
+
+        # ADR-0010 (2026-06-27): datafeed 统一入口,所有读行情路径走它
+        from src.data import data_mgr
+        self.datafeed = data_mgr.datafeed
 
         # 指标缓存: {date_str: DataFrame(index=code)}
         # 类级别共享，多策略实例仅预计算一次
         self._indicator_cache: dict = V6ReversalSelectionStrategy._class_cache
         self._own_cache = False  # 标记是否本实例创建的
+
+    def _load_bars_df(
+        self,
+        codes: list[str],
+        start: date,
+        end: date,
+    ) -> pd.DataFrame:
+        """通过 datafeed 批量加载 N 只股票的历史 K 线 (ADR-0010 替代 read_sql)
+
+        Args:
+            codes: 股票代码列表 (6 位不带 .SH/.SZ)
+            start: 起始日期 (含)
+            end: 结束日期 (含)
+
+        Returns:
+            DataFrame: columns=[code, trade_date, open, high, low, close, volume]
+                       按 (code, trade_date) 排序
+        """
+        from ..data.datafeed.base import code_to_vt_symbol
+        if not codes:
+            return pd.DataFrame()
+
+        rows: list[dict] = []
+        for code in codes:
+            vt = code_to_vt_symbol(code)
+            try:
+                bars = self.datafeed.get_bars(vt, start=start, end=end)
+            except Exception as e:
+                logger.warning(f"datafeed.get_bars({vt}) 失败: {e}")
+                continue
+            for b in bars:
+                rows.append({
+                    "code": code,
+                    "trade_date": b.datetime.date() if hasattr(b.datetime, "date") else b.datetime,
+                    "open": b.open_price,
+                    "high": b.high_price,
+                    "low": b.low_price,
+                    "close": b.close_price,
+                    "volume": b.volume,
+                })
+
+        if not rows:
+            return pd.DataFrame()
+        df = pd.DataFrame(rows)
+        return df.sort_values(["code", "trade_date"]).reset_index(drop=True)
 
     @classmethod
     def clear_cache(cls):
@@ -128,22 +177,24 @@ class V6ReversalSelectionStrategy(EquityStrategy):
         """
         批量预计算所有日期的v6指标。
         一次性加载全市场数据 + 按日期滚动计算指标 → 大幅加速回测。
+
+        ADR-0010 (2026-06-27): 改走 datafeed.get_bars 替代 read_sql
         """
         from datetime import timedelta
         data_start = start_date - timedelta(days=self.lookback_days * 2)
 
-        sql = """
-            SELECT code, trade_date, open, high, low, close, volume
-            FROM daily_price
-            WHERE trade_date >= :data_start
-              AND trade_date <= :end_date
-            ORDER BY code, trade_date
-        """
         print(f"  [预计算] 加载数据...")
-        df = read_sql(sql, self.engine, {
-            "data_start": data_start,
-            "end_date": end_date,
-        })
+        # 走 datafeed 拉全市场: 先 get_stock_list 拿 universe,再按 code 循环 get_bars
+        try:
+            contracts = self.datafeed.get_stock_list()
+            codes = [c.symbol for c in contracts]
+        except Exception as e:
+            logger.warning(f"precompute_all: datafeed.get_stock_list 失败: {e}")
+            return
+        if not codes:
+            return
+
+        df = self._load_bars_df(codes, data_start, end_date)
         if df.empty:
             return
 
@@ -280,25 +331,43 @@ class V6ReversalSelectionStrategy(EquityStrategy):
         """
         # 用最新一天作为调仓日 (供演示 / 单元测试)
         # 真实使用应通过 EquityStrategy.on_bars(bars) 传入日期上下文
-        sql = "SELECT MAX(trade_date) AS max_dt FROM daily_price"
-        df_max = read_sql(sql, self.engine)
-        if df_max.empty:
+        # ADR-0010: 改走 datafeed.get_trading_calendar 取最新交易日
+        try:
+            cal = self.datafeed.get_trading_calendar(date(2000, 1, 1), date.today())
+            if not cal:
+                return pd.DataFrame()
+            max_dt = max(cal)
+        except Exception as e:
+            logger.warning(f"generate_signals: datafeed.get_trading_calendar 失败: {e}")
             return pd.DataFrame()
-        max_dt = pd.Timestamp(df_max["max_dt"].iloc[0]).date()
 
         # 复用 PortfolioBacktestEngine._build_universe() 思路, 简单构造 universe
-        # 注: 这是占位实现, 真实场景应通过 vt_symbols + bars 派生
-        sql_univ = """
-            SELECT dp.code AS code, sb.name AS name, dp.close AS close,
-                   NULL AS avg_amount_wan,
-                   NULL AS avg_turnover, NULL AS market_cap_yi,
-                   NULL AS return_Nd, NULL AS volatility_Nd
-            FROM daily_price dp
-            JOIN stock_basic sb ON dp.code = sb.code
-            WHERE dp.trade_date = :max_dt
-              AND dp.close > 0
-        """
-        universe_df = read_sql(sql_univ, self.engine, {"max_dt": max_dt})
+        # ADR-0010: 改走 datafeed.get_bars_by_date + datafeed.get_stock_list
+        try:
+            contracts = self.datafeed.get_stock_list()
+            # 取 max_dt 当日 BarData (get_bars_by_date)
+            bars_map = self.datafeed.get_bars_by_date(max_dt)
+        except Exception as e:
+            logger.warning(f"generate_signals: datafeed 取 universe 失败: {e}")
+            return pd.DataFrame()
+
+        # 构造 universe_df (兼容 select() 接口)
+        rows = []
+        for c in contracts:
+            bar = bars_map.get(f"{c.symbol}.{c.exchange}")
+            if not bar or bar.close_price <= 0:
+                continue
+            rows.append({
+                "code": c.symbol,
+                "name": c.name or "",
+                "close": bar.close_price,
+                "avg_amount_wan": None,
+                "avg_turnover": None,
+                "market_cap_yi": None,
+                "return_Nd": None,
+                "volatility_Nd": None,
+            })
+        universe_df = pd.DataFrame(rows)
         if universe_df.empty:
             return pd.DataFrame()
 
@@ -366,23 +435,17 @@ class V6ReversalSelectionStrategy(EquityStrategy):
         """Step B 优化: 全市场向量化计算指标 — 大幅提速
 
         算法:
-          1. 一次 SQL 拉 codes + lookback_days 天的 OHLCV
+          1. 一次 datafeed 拉 codes + lookback_days 天的 OHLCV (ADR-0010)
           2. pivot 成 [date x code] 矩阵 (close, high, low, volume, open)
           3. 用 rolling 窗口 + numpy 一次性算 RSI/BB/MA/max_dd/vol_ratio/ATR
           4. 取矩阵最后一行 → dict per code
           5. 返回 long-format DataFrame (与原 _compute_indicators 输出一致)
         """
-        sql = """
-            SELECT code, trade_date, open, high, low, close, volume
-            FROM daily_price
-            WHERE code IN :codes
-              AND trade_date <= :as_of
-            ORDER BY code, trade_date
-        """
-        df = read_sql(sql, self.engine, {
-            "codes": list(codes),
-            "as_of": as_of_date,
-        })
+        # ADR-0010 (2026-06-27): 改走 datafeed 统一入口 (替代 read_sql)
+        from datetime import datetime as _dt
+        as_of_d = _dt.strptime(as_of_date, "%Y-%m-%d").date() if isinstance(as_of_date, str) else as_of_date
+        data_start = as_of_d - timedelta(days=self.lookback_days)
+        df = self._load_bars_df(list(codes), data_start, as_of_d)
         if df.empty:
             return pd.DataFrame()
 
@@ -465,18 +528,13 @@ class V6ReversalSelectionStrategy(EquityStrategy):
         return result[valid_mask].reset_index(drop=True)
 
     def _compute_indicators_loop(self, codes: list[str], as_of_date: str) -> pd.DataFrame:
-        """原逐股票循环版 (vectorized 失败时的 fallback,保留供调试)"""
-        sql = """
-            SELECT code, trade_date, open, high, low, close, volume
-            FROM daily_price
-            WHERE code IN :codes
-              AND trade_date <= :as_of
-            ORDER BY code, trade_date
+        """原逐股票循环版 (vectorized 失败时的 fallback,保留供调试)
+        ADR-0010: 改走 datafeed
         """
-        df = read_sql(sql, self.engine, {
-            "codes": list(codes),
-            "as_of": as_of_date,
-        })
+        from datetime import datetime as _dt
+        as_of_d = _dt.strptime(as_of_date, "%Y-%m-%d").date() if isinstance(as_of_date, str) else as_of_date
+        data_start = as_of_d - timedelta(days=self.lookback_days)
+        df = self._load_bars_df(list(codes), data_start, as_of_d)
         if df.empty:
             return pd.DataFrame()
 
