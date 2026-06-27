@@ -46,6 +46,9 @@ data/xgb_scaler.pkl
 # 重新生成: 运行 src/data/ 下的 downloader / westock_downloader
 /market_data/
 market_data/imported/
+
+# A股全市场数据/ 老历史遗留大目录(880MB, 工作区已清理, 历史已用 filter-repo 清除)
+/A股全市场数据/
 # 派生层 (本地生成, 不入 git)
 market_data/parquet/
 market_data/dataset/
