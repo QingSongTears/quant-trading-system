@@ -43,6 +43,8 @@ from typing import Any, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from src.research.features.leader_features import LeaderFeatureBuilder
+
 logger = logging.getLogger(__name__)
 
 
@@ -208,40 +210,52 @@ def _add_days(d: date, n: int) -> date:
 
 class AStockDataset(BaseDataset):
     """
-    A 股特化 Dataset (对接 data_mgr, 2026-06-25 真接)
+    A 股特化 Dataset (对接 data_mgr, 2026-06-25 真接 → 2026-06-27 ADR-0008 默认接 LeaderFeatureBuilder)
 
     _fetch_features 默认从 data_mgr.datafeed 拉日 K
     _make_labels 默认计算未来 N 日累计收益
 
-    feature_builder 参数 (可选):
-        - None: 用 OHLCV 5 维 (open/high/low/close/volume)
-        - Callable: 自定义特征工程 (e.g. v_leader_features.FeatureBuilder 74 维)
-          签名: feature_builder(bars_df) -> pd.DataFrame
-          输入: bars_df (index=trade_date, columns=OHLCV)
-          输出: 新增 feature 列的 DataFrame
+    feature_builder 参数 (可选, ADR-0008 D1+D3):
+        - 默认 LeaderFeatureBuilder() → 9 维 (4 OHLCV + 5 技术指标: macd_hist/rsi14/kdj_k/kdj_j/boll_pos)
+          与 v_leader_features.TECH_COLS 严格一致, 训练/推理同源实时算
+        - 显式传 None → OHLCV 5 维降级路径 (单测 / mock 用, 生产禁用)
+        - 显式传 v_leader_features.FeatureBuilder(engine) → 74 维 (生产 v_leader 策略用)
 
     Example:
+        # 默认 9 维 (开箱即用, ADR-0008 D1)
         dataset = AStockDataset(lookback=20, horizon=5)
         X, y = dataset.fit("2020-01-01", "2023-12-31")
 
-        # 74 维特征 (用 v_leader_features):
-        from src.research.features.leader_features import LeaderFeatureBuilder
-        fb = LeaderFeatureBuilder(engine, indicator_version="v1")
+        # 显式 None → 5 维 OHLCV 降级
+        dataset = AStockDataset(lookback=20, horizon=5, feature_builder=None)
+
+        # 74 维特征 (生产 v_leader)
+        from src.strategies.v_leader_features import FeatureBuilder
+        fb = FeatureBuilder(engine, indicator_version="v1")
         dataset = AStockDataset(lookback=20, horizon=5, feature_builder=fb)
-        X, y = dataset.fit(...)
     """
+
+    # ADR-0008 D3: sentinel 区分 "未传" vs "显式 None"
+    # 未传 → 默认 LeaderFeatureBuilder (开箱即用)
+    # 显式 None → 降级 OHLCV (单测 mock 用)
+    _USE_DEFAULT_BUILDER: Any = object()
 
     def __init__(
         self,
         lookback: int = 20,
         horizon: int = 5,
         n_features: int = 5,
-        feature_builder: Optional[Any] = None,
+        feature_builder: Any = _USE_DEFAULT_BUILDER,
     ) -> None:
         super().__init__(lookback, horizon)
         self.n_features: int = n_features
-        # 可选: 自定义特征工程 (e.g. v_leader_features 74 维)
-        self.feature_builder = feature_builder
+        # ADR-0008 D1+D3: 默认 LeaderFeatureBuilder (5 维技术指标, 实时算)
+        # 显式传 None = 降级 OHLCV 5 维 (单测用)
+        # 显式传 builder 实例 = 自定义 (e.g. v_leader 74 维)
+        if feature_builder is self._USE_DEFAULT_BUILDER:
+            self.feature_builder: Optional[Any] = LeaderFeatureBuilder()
+        else:
+            self.feature_builder = feature_builder
         # 缓存 data_mgr 引用 (lazy 加载避免循环依赖)
         self._data_mgr = None
 
@@ -256,7 +270,7 @@ class AStockDataset(BaseDataset):
         self, start: date, end: date, vt_symbols: Optional[List[str]] = None,
     ) -> pd.DataFrame:
         """
-        真接 data_mgr.datafeed 拉日 K (2026-06-25)
+        真接 data_mgr.datafeed 拉日 K (2026-06-25) + LeaderFeatureBuilder 实时算 (2026-06-27)
 
         Returns:
             DataFrame, columns: vt_symbol, trade_date, open, high, low, close, volume, [features...]
@@ -298,40 +312,31 @@ class AStockDataset(BaseDataset):
             df["vt_symbol"] = vt_sym
             df["trade_date"] = pd.to_datetime(df["trade_date"])
 
-            # 默认 5 维特征: OHLCV + rsi14 + macd (兼容旧 mock 维度)
-            # 2026-06-25 重构: 用 IndicatorRegistry 算指标, 训练/推理分布一致
-            try:
-                from src.indicator import IndicatorRegistry
-                close_s = pd.Series(df["close"].values)
-                r_rsi = IndicatorRegistry.get("rsi").compute(close_s, n=14)
-                r_macd = IndicatorRegistry.get("macd").compute(close_s, n=14)
-                if r_rsi.value is not None:
-                    # rsi: scalar per call (last value), 但我们想要全序列 → 重算
-                    df["rsi14"] = pd.Series(close_s).rolling(15).apply(
-                        lambda x: IndicatorRegistry.get("rsi").compute(
-                            pd.Series(x), n=14
-                        ).value if len(x) >= 15 else 50.0, raw=False
-                    ).values
-                else:
-                    df["rsi14"] = 50.0
-                if r_macd.value is not None:
-                    dif_arr = pd.Series(close_s).ewm(span=12, adjust=False).mean() - \
-                              pd.Series(close_s).ewm(span=26, adjust=False).mean()
-                    df["macd"] = dif_arr.values
-                else:
-                    df["macd"] = 0.0
-            except Exception as e:
-                logger.warning(f"算指标({vt_sym}) 失败: {e}, 用默认值")
-                df["rsi14"] = 50.0
-                df["macd"] = 0.0
-
-            # 如果有 feature_builder, 算 74 维特征 (覆盖默认)
+            # ADR-0008 D2: 删除内嵌 RSI/MACD, 统一走 feature_builder.build()
+            # 若 feature_builder=None (显式降级), 跳过特征工程
             if self.feature_builder is not None:
                 try:
-                    features_df = self.feature_builder(df.set_index("trade_date"))
-                    df = pd.concat([df, features_df.reset_index()], axis=1)
+                    bars_indexed = df.set_index("trade_date")
+                    result = self.feature_builder.build(bars_indexed)
+                    # 支持两种返回:
+                    #   - dict (LeaderFeatureBuilder.build → 5 维技术指标)
+                    #   - DataFrame (v_leader_features.FeatureBuilder → 74 维)
+                    if isinstance(result, dict):
+                        # dict → 行 (每行用同一组特征, 与原内嵌版本一致)
+                        for col, val in result.items():
+                            df[col] = float(val)
+                    elif isinstance(result, pd.DataFrame):
+                        # DataFrame → concat (与旧逻辑一致)
+                        df = pd.concat([df, result.reset_index()], axis=1)
+                    else:
+                        logger.warning(
+                            f"feature_builder({vt_sym}) 返未知类型 "
+                            f"{type(result).__name__}, 跳过"
+                        )
                 except Exception as e:
-                    logger.warning(f"feature_builder({vt_sym}) 失败: {e}, 跳过特征")
+                    logger.warning(
+                        f"feature_builder({vt_sym}) 失败: {e}, 跳过特征"
+                    )
 
             rows.append(df)
 

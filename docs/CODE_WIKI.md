@@ -267,11 +267,51 @@
 | 文件 | 职责 |
 |------|------|
 | `alpha_model.py` | Alpha 因子研究与评估 |
-| `dataset.py` | 特征矩阵构建（用于 ML 训练） |
+| `dataset.py` | 特征矩阵构建（用于 ML 训练, ADR-0008 默认接 LeaderFeatureBuilder） |
 | `lab.py` | 研究实验室；编排实验、walk-forward 和样本外测试 |
-| `features/leader_features.py` | 龙头股特征工程（量价领先指标） |
+| `features/leader_features.py` | 龙头股特征工程（量价领先指标, ADR-0008 默认 5 维） |
 
 **工作流:** `lab.py` → `dataset.py`（构建特征）→ `alpha_model.py`（评估 Alpha）→ 训练 XGBoost → 导出模型
+
+#### AStockDataset 默认行为（ADR-0008，2026-06-27）
+
+`AStockDataset` 通过 `feature_builder` 参数控制特征工程行为，三档明确：
+
+| 写法 | 维度 | 用途 |
+|---|---|---|
+| **默认** `AStockDataset(lookback=20, horizon=5)` | **9 维**（4 OHLCV + 5 技术指标） | **生产训练**（开箱即用，训练/推理同源） |
+| **显式 None** `AStockDataset(..., feature_builder=None)` | **5 维** OHLCV 降级 | 单测 / mock（生产禁用） |
+| **显式 v_leader** `feature_builder=v_leader_features.FeatureBuilder(engine)` | **74 维** | 生产 v_leader 策略（继承链） |
+
+**5 维技术指标列名**（与 `v_leader_features.TECH_COLS` 严格一致）：
+
+```
+macd_hist  rsi14  kdj_k  kdj_j  boll_pos
+```
+
+**关键不变量**（ADR-0008 D4：训练/推理同源实时算）：
+- `LeaderFeatureBuilder.build()` 实时算 → 不依赖 `technical_indicators` 表存在
+- 训练 `fit()` 与推理 `predict()` 走同一 `feature_builder` 实例 → 逐 bit 一致
+- `LeaderFeatureBuilder.build_batch()` 强制 `reset_kdj=True` 跨股票重置 KDJ 状态
+
+**典型用法**：
+
+```python
+from src.research import AStockDataset
+from src.research.features import LeaderFeatureBuilder
+
+# 1. 默认 (9 维, 开箱即用)
+ds = AStockDataset(lookback=20, horizon=5)
+X, y = ds.fit("2020-01-01", "2023-12-31")
+
+# 2. 显式 OHLCV 降级 (5 维, 仅测试)
+ds = AStockDataset(lookback=20, horizon=5, feature_builder=None)
+
+# 3. 74 维 v_leader (生产策略)
+from src.strategies.v_leader_features import FeatureBuilder
+fb = FeatureBuilder(engine, indicator_version="v1")
+ds = AStockDataset(lookback=20, horizon=5, feature_builder=fb)
+```
 
 ---
 
