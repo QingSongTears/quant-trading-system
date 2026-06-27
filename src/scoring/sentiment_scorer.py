@@ -39,7 +39,9 @@ class SentimentScorer(BaseScorer):
     """情绪面评分器 v2 — DB驱动安静好股票模型"""
 
     name = "sentiment"
-    label_zh = "情绪面"
+    zh_name = "情绪面"
+    en_name = "Sentiment"
+    label_zh = "情绪面"  # 兼容旧名
     weight = 0.10
     max_raw = 18
 

@@ -48,7 +48,9 @@ class FundFlowScorer(BaseScorer):
     """资金面评分器 v2 — 持续吸筹模型"""
 
     name = "fund_flow"
-    label_zh = "资金面"
+    zh_name = "资金面"
+    en_name = "Fund Flow"
+    label_zh = "资金面"  # 兼容旧名
     weight = 0.20
     max_raw = 18
 

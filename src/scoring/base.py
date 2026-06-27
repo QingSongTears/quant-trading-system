@@ -9,7 +9,7 @@ BaseScorer — 所有评分器的统一基类
   注册表，新增/删除 scorer 时容易漂移。
 
 设计:
-  - 单一 BaseScorer 基类提供 engine 初始化、weight/label_zh/description
+  - 单一 BaseScorer 基类提供 engine 初始化、weight/zh_name/en_name/description
     元信息声明、`__init_subclass__` hook 自动注册到 ScorerRegistry。
   - 子类只需声明类属性 + 重写 `score()`，样板代码全部消除。
   - `score()` 契约: 返回 dict，至少包含
@@ -18,7 +18,7 @@ BaseScorer — 所有评分器的统一基类
 用法:
     class MyScorer(BaseScorer):
         name = "my"
-        label_zh = "我的维度"
+        label_zh = "我的维度"  # noqa: backward-compat alias; prefer zh_name
         weight = 0.10
         max_score = 20
 
@@ -42,7 +42,9 @@ class BaseScorer:
 
     # === 子类必须覆盖 ===
     name: str = "base"
-    label_zh: str = "基类"
+    zh_name: str = "基类"           # 必填 — 中文业务名 (AGENTS.md §3.2)
+    en_name: str = "Base"          # 必填 — 英文别名 (AGENTS.md §3.2)
+    label_zh: str = ""             # 兼容旧名: 实际取 zh_name
     description: str = ""
 
     # === 子类可覆盖 ===

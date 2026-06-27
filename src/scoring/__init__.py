@@ -54,7 +54,7 @@ class ScorerRegistry:
                 raise ValueError(f"Scorer name 冲突: {name!r} 已被 {existing.__name__} 占用")
         cls._registry[name] = {
             "class": scorer_cls,
-            "label": getattr(scorer_cls, "label_zh", name),
+            "label": getattr(scorer_cls, "zh_name", None) or getattr(scorer_cls, "label_zh", name),
             "weight": getattr(scorer_cls, "weight", 0.0),
             "max_raw": getattr(scorer_cls, "max_raw", 21),
         }
