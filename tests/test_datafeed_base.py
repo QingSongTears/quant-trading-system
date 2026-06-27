@@ -100,7 +100,7 @@ def test_vt_symbol_to_exchange():
 
 
 class _MockDatafeed(BaseDatafeed):
-    """满足 ABC 的最小实现"""
+    """满足 ABC 的最小实现 (ADR-0010 新增 get_industry_map / get_news_events)"""
     name = "MOCK"
 
     def __init__(self, fixed_bars=None, fixed_stocks=None):
@@ -113,6 +113,12 @@ class _MockDatafeed(BaseDatafeed):
 
     def get_stock_list(self):
         return self._fixed_stocks
+
+    def get_industry_map(self, codes):
+        return {c: "未知" for c in codes}
+
+    def get_news_events(self, codes, start, end):
+        return []
 
 
 def test_concrete_subclass_can_be_instantiated():
