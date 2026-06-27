@@ -78,6 +78,9 @@ ALLOWED_CLASS_NAMES = {
 VNPY_SHORTHAND_EXEMPTIONS = {
     "RiskEngine": "vnpy-shorthand",      # vnpy RiskManager → RiskEngine (ADR-0007)
     "RiskAlert": "vnpy-event-data",      # 事件载荷 dataclass (借鉴 vnpy.Event 风格)
+    "PnlSnapshot": "vnpy-event-data",      # ADR-0012 #83 — PnL 事件载荷
+    "PositionSnapshot": "vnpy-event-data", # ADR-0012 #83 — 持仓事件载荷
+    "AnomalyEvent": "vnpy-event-data",     # ADR-0012 #83 — 异常事件载荷
 }
 
 # Forbidden filename patterns

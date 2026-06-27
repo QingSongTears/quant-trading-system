@@ -34,6 +34,12 @@ EVENT_TIMER = "eTimer"            # 定时器
 # ── 风控 ────────────────────────────────────
 EVENT_RISK_ALERT = "eRiskAlert"  # 风控告警 (下单前拦截/日内熔断触发, ADR-0007 D3)
 
+# ── 监控 (ADR-0012 #83) ──────────────────────
+EVENT_PNL_UPDATE = "ePnlUpdate"          # PnL 推送 (simulator 每日推送)
+EVENT_POSITION_UPDATE = "ePositionUpdate"  # 持仓推送 (持仓变化时)
+EVENT_ANOMALY = "eAnomaly"               # 异常事件 (数据延迟/API 失败/订单超时)
+EVENT_ALERT = "eAlert"                   # 报警事件 (AlertRule 触发后)
+
 
 __all__ = [
     "EventEngine", "Event",
@@ -43,4 +49,6 @@ __all__ = [
     "EVENT_POSITION", "EVENT_ACCOUNT", "EVENT_CONTRACT",
     "EVENT_LOG", "EVENT_ERROR", "EVENT_TIMER",
     "EVENT_RISK_ALERT",
+    "EVENT_PNL_UPDATE", "EVENT_POSITION_UPDATE",
+    "EVENT_ANOMALY", "EVENT_ALERT",
 ]
