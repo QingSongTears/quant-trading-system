@@ -20,6 +20,7 @@ from .signal_adapter import Signal, SignalAdapter
 
 if TYPE_CHECKING:
     from ...risk.engine import RiskEngine
+    from ...event import EventEngine
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +39,13 @@ class SimulatorEngine:
         self,
         config: TradingConfig | None = None,
         risk_engine: "RiskEngine | None" = None,
+        event_engine: "EventEngine | None" = None,
     ):
         self.config = config or TradingConfig()
         self.signal_adapter = SignalAdapter()
         self.risk_engine = risk_engine
+        # ADR-0012 #83 D4-A: 可选 EventEngine 注入 (向后兼容)
+        self.event_engine = event_engine
 
         # 运行时状态
         self.run_id = ""

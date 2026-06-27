@@ -58,6 +58,74 @@ def _check_risk(engine: "SimulatorEngine", req: dict) -> bool:
     return ok
 
 
+def _emit_pnl_snapshot(
+    engine: "SimulatorEngine",
+    code: str,
+    trade_date: str,
+    total_value: float,
+) -> None:
+    """推 EVENT_PNL_UPDATE — ADR-0012 #83 D4-A
+
+    simulator 每日末尾推送 PnlSnapshot 到 EventEngine.
+    EventEngine 未注入 / 未启动时静默跳过 (向后兼容).
+    """
+    event_engine = getattr(engine, "event_engine", None)
+    if event_engine is None:
+        return
+    try:
+        from src.event import Event, EVENT_PNL_UPDATE
+        from src.monitoring.event_data import PnlSnapshot
+        snapshot = PnlSnapshot(
+            total_value=total_value,
+            cash=engine.capital,
+            position_value=total_value - engine.capital,
+            position_count=len([p for p in engine.positions.values() if p.size > 0]),
+            run_id=engine.run_id,
+        )
+        event_engine.put(Event(EVENT_PNL_UPDATE, snapshot))
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"EVENT_PNL_UPDATE 推送失败 (主流程不受影响): {e}")
+
+
+def _emit_position_snapshot(
+    engine: "SimulatorEngine",
+    pos,
+    trade_date: str,
+) -> None:
+    """推 EVENT_POSITION_UPDATE — ADR-0012 #83 D4-A
+
+    持仓变化时推送 PositionSnapshot 到 EventEngine.
+    """
+    event_engine = getattr(engine, "event_engine", None)
+    if event_engine is None:
+        return
+    try:
+        from src.event import Event, EVENT_POSITION_UPDATE
+        from src.monitoring.event_data import PositionSnapshot
+        holding_days = 0
+        if pos.entry_date:
+            try:
+                from datetime import datetime
+                entry = datetime.strptime(pos.entry_date, "%Y-%m-%d")
+                cur = datetime.strptime(trade_date, "%Y-%m-%d")
+                holding_days = (cur - entry).days
+            except (ValueError, TypeError):
+                holding_days = 0
+        snapshot = PositionSnapshot(
+            vt_symbol=_vt_symbol(pos.code),
+            size=pos.size,
+            cost_basis=pos.cost_basis,
+            current_price=pos.current_price,
+            market_value=pos.market_value,
+            unrealized_pnl=pos.unrealized_pnl,
+            profit_pct=pos.profit_pct,
+            holding_days=holding_days,
+        )
+        event_engine.put(Event(EVENT_POSITION_UPDATE, snapshot))
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"EVENT_POSITION_UPDATE 推送失败 (主流程不受影响): {e}")
+
+
 def simulate_one(
     engine: "SimulatorEngine",
     code: str,
@@ -175,6 +243,13 @@ def simulate_one(
             "position_value": round(pos.market_value, 2) if pos.size > 0 else 0,
             "total": round(total_value, 2),
         })
+
+        # ── ADR-0012 #83 D4-A: 推送监控事件 ──
+        # 每日 PnL 快照 (EVENT_PNL_UPDATE)
+        _emit_pnl_snapshot(engine, code, trade_date, total_value)
+        # 持仓变化时推送 (EVENT_POSITION_UPDATE)
+        if pos.size > 0:
+            _emit_position_snapshot(engine, pos, trade_date)
 
 
 __all__ = ["simulate_one"]
