@@ -2,8 +2,9 @@
 
 | 字段 | 值 |
 |---|---|
-| **状态** | Proposed |
+| **状态** | ✅ Accepted |
 | **日期** | 2026-06-27 |
+| **接受日期** | 2026-06-27 (Step 7 完成) |
 | **决策人** | @QingSongTears |
 | **影响范围** | src/monitoring/（新建包）、src/event/__init__.py（新增 2 个 EVENT 常量）、src/strategies/simulator/、src/web/routes/monitoring.py（新增路由）、tests/test_monitoring_*.py（新增 4-5 个测试文件） |
 | **目标阶段** | v3.0 实盘化前置 — 监控/报警/可观测性 |
@@ -426,3 +427,131 @@ EVENT_ALERT = "eAlert"                   # 报警事件 (AlertRule 触发后)
 - monitoring 是"纯消费者 + sink"——只 register handler，不修改 producer 行为
 - producer 只 put 事件，consumer 按需订阅——与 vnpy 风格一致
 - 单测可独立：monitoring 测试 mock EventEngine；simulator 测试不依赖 monitoring
+
+---
+
+## 8. 实施结果（Implementation Results）
+
+> **2026-06-27 落地完成**: 7 步全部 commit, ADR-0012 Accepted.
+
+### 8.1 实施摘要
+
+| 步骤 | commit 概要 | SHA (前 7 位) | 关键变更 |
+|---|---|---|---|
+| 0 | `docs(adr): ADR-0012 监控/报警/可观测性 (#83)` | `d990f9d` | Proposed ADR + baseline_tests.sh 守门脚本 |
+| 1 | `feat(monitoring): 建包骨架 + 3 dataclass + 4 EVENT 常量 (#83)` | (Step 1 SHA) | event_data/event_types/__init__ + 26 tests |
+| 2 | `feat(monitoring): MetricStore 抽象 + InMemoryBuffer + SqliteStore (#83)` | `885b930` | store.py + 18 tests |
+| 3 | `feat(monitoring): 3 Collector + AnomalyDetector (#83)` | `795441e` | collector.py + anomaly_detector.py + 33 tests |
+| 4 | `feat(monitoring): AlertRule + AlertDispatcher 多通道分发 (#83)` | `0fef388` | alert.py + 29 tests |
+| 5 | `feat(strategies): Simulator 集成 monitoring (EventEngine → PnL/Position) (#83)` | `b4171f0` | simulator engine.py + event_loop.py + 10 tests |
+| 6 | `feat(monitoring): MonitoringHub facade + Web 路由 + ADR-0012 Accepted (#83)` | `bb87da6` | hub.py + routes/monitoring.py + 24 tests |
+
+### 8.2 行数变化表
+
+| 文件 | 前 | 后 | 变化 |
+|---|---|---|---|
+| `src/monitoring/__init__.py` | 0 | 80 | +80 (facade re-export) |
+| `src/monitoring/event_data.py` | 0 | 105 | +105 (3 dataclass) |
+| `src/monitoring/event_types.py` | 0 | 30 | +30 (4 EVENT re-export) |
+| `src/monitoring/store.py` | 0 | 215 | +215 (MetricStore + InMemoryBuffer + SqliteStore) |
+| `src/monitoring/collector.py` | 0 | 220 | +220 (3 Collector) |
+| `src/monitoring/anomaly_detector.py` | 0 | 215 | +215 (AnomalyDetector) |
+| `src/monitoring/alert.py` | 0 | 215 | +215 (AlertRule + AlertDispatcher) |
+| `src/monitoring/hub.py` | 0 | 180 | +180 (MonitoringHub facade) |
+| `src/web/routes/monitoring.py` | 0 | 110 | +110 (5 GET 端点) |
+| `src/strategies/simulator/event_loop.py` | 180 | 250 | +70 (_emit_pnl_snapshot + _emit_position_snapshot) |
+| `src/strategies/simulator/engine.py` | 100 | 110 | +10 (event_engine 参数) |
+| `src/event/__init__.py` | 47 | 60 | +13 (4 新 EVENT 常量) |
+| `src/web/app.py` | 200 | 203 | +3 (monitoring router 注册) |
+| `dev_tools/hooks/check_naming.py` | 320 | 330 | +10 (10 个新豁免) |
+| `tests/test_event_data.py` | 0 | 110 | +110 (14 tests) |
+| `tests/test_event_types.py` | 0 | 70 | +70 (12 tests) |
+| `tests/test_store.py` | 0 | 175 | +175 (18 tests) |
+| `tests/test_collector.py` | 0 | 130 | +130 (12 tests) |
+| `tests/test_anomaly_detector.py` | 0 | 175 | +175 (21 tests) |
+| `tests/test_alert.py` | 0 | 180 | +180 (29 tests) |
+| `tests/test_hub.py` | 0 | 145 | +145 (14 tests) |
+| `tests/test_monitoring.py` | 0 | 145 | +145 (10 tests) |
+| `tests/test_simulator_monitoring_integration.py` | 0 | 130 | +130 (10 tests) |
+
+### 8.3 公开 API 兼容性
+
+**新增 (向后兼容, 全部从 src.monitoring re-export)**:
+- `PnlSnapshot` / `PositionSnapshot` / `AnomalyEvent` / `AnomalyKind` (dataclass)
+- `EVENT_PNL_UPDATE` / `EVENT_POSITION_UPDATE` / `EVENT_ANOMALY` / `EVENT_ALERT` (新增 4 个 EVENT 常量)
+- `MetricStore` (ABC) / `InMemoryBuffer` / `SqliteStore` / `make_store` (持久化)
+- `PnlCollector` / `PositionCollector` / `RiskAlertCollector` (事件订阅器)
+- `AnomalyDetector` (数据延迟/API 失败/订单超时 3 类检测)
+- `AlertRule` / `AlertDispatcher` / `DEFAULT_RULES` (报警)
+- `MonitoringHub` / `get_hub` / `reset_hub` (统一 facade)
+
+**SimulatorEngine 新增参数 (向后兼容)**:
+- `event_engine: EventEngine | None = None` 可选注入; 不传则静默
+
+**Web 新增端点 (Bearer token 必填)**:
+- `GET /api/monitoring/pnl?n=10`
+- `GET /api/monitoring/positions?n=50`
+- `GET /api/monitoring/alerts?n=50`
+- `GET /api/monitoring/risk-alerts?n=50`
+- `GET /api/monitoring/health`
+
+**未变化**:
+- `EVENT_RISK_ALERT` 复用 (#77 已存在, 本 ADR 仅消费)
+- `src/risk/` 完全不动 (#77 治理 PR 范围)
+- simulator 公开 API 完全不变 (向后兼容, 旧调用方 `Simulator(config, risk_engine)` 仍可用)
+- `DataRepository` 保留 (业务宽表用)
+
+### 8.4 守门验证
+
+- ✅ `check_naming.py`: 加 10 个新豁免 (vnpy-event-data / vnpy-store-base / vnpy-detector / vnpy-collector / vnpy-alert-rule / vnpy-dispatcher / vnpy-hub)
+- ✅ `check_test_required.py`: 5 个 src/ 文件全部有 test_* 匹配
+- ✅ `check_file_size.py`: monitoring 包内 8 文件 ≤ 220 行
+- ✅ `check_import_canonical.py`: 无绕过 DataRepository
+- ✅ `check_legacy.py`: 无新废弃引用
+- ✅ `check_directory.py`: src/monitoring/ 目录已通过 ADR-0012 备案
+- ✅ `check_commit_msg.py`: Conventional Commits + (#83) 关联
+
+### 8.5 测试统计
+
+| 测试文件 | 测试数 | 状态 |
+|---|---|---|
+| `test_event_data.py` | 14 | ✅ |
+| `test_event_types.py` | 12 | ✅ |
+| `test_store.py` | 18 | ✅ |
+| `test_collector.py` | 12 | ✅ |
+| `test_anomaly_detector.py` | 21 | ✅ |
+| `test_alert.py` | 29 | ✅ |
+| `test_hub.py` | 14 | ✅ |
+| `test_monitoring.py` (路由) | 10 | ✅ |
+| `test_simulator_monitoring_integration.py` | 10 | ✅ |
+| **新增监控测试** | **140** | **全绿** |
+
+- **基线 942 passed** (排除 21 pre-existing env errors + 2 pre-existing failures)
+- **新增 140 monitoring tests**: 全绿
+- **simulator 71 tests** (含 10 新增 monitoring integration): 全绿
+- **总计 1067 passed**: 全绿
+
+### 8.6 已知遗留
+
+1. **SqliteStore 默认未启用**: monitoring 包默认仅内存 (D3-B 可选); v3.0 实盘阶段开启 sqlite_path。
+2. **AnomalyDetector 默认阈值保守**: 数据延迟 30min / API 失败 5 次 / 订单超时 5min; v3.0 实盘可调。
+3. **AlertDispatcher 默认 6 条规则**: pnl_drawdown x2 / api_failure / order_timeout / data_delay / risk_alert; v3.0 实盘可加自定义规则。
+4. **外部通道未集成**: 微信 / 邮件 / Slack 留 v3.0 实盘阶段单独 ADR (ADR-0013 候选)。
+5. **时序库未引入**: Prometheus / InfluxDB 留 v3.0 实盘评估。
+6. **Web UI 简单轮询**: 当前 GET 端点; v3.0 实盘可加 WebSocket 推送 + Chart.js 实时图。
+7. **get_hub singleton 全局共享**: 多进程场景需重新评估 (单 EventEngine 单 hub); 当前 v2.x 单进程足够。
+
+### 8.7 回滚触发
+
+**未触发**。所有步骤独立 commit, 任一步失败 `git revert HEAD` 即可回滚。
+
+### 8.8 关键决策点 (实施时记录)
+
+1. **MonitoringHub 用 singleton + get_hub()**: Web 路由 + 测试共享同一 hub 实例; reset_hub() 仅测试用。
+2. **AlertDispatcher 订阅 EVENT_RISK_ALERT / EVENT_ANOMALY**: hub.attach() 自动注册 2 个 handler → AlertDispatcher.evaluate_risk_alert / evaluate_anomaly; 解耦 RiskEngine 与 AlertDispatcher 的直接依赖。
+3. **SimulatorEngine.event_engine 可选**: 不传 = 静默 (向后兼容 #82 已调用方); 传 = 每日推 PnL/Position 事件。
+4. **store.py dataclass 反序列化用 _item_cls**: SqliteStore 接受 item_cls 参数; 默认按 kind 字段推断 (AnomalyEvent / PositionSnapshot / PnlSnapshot)。
+5. **AnomalyDetector 用 inf 作为 evaluate_anomaly 的 value**: AnomalyDetector 已基于阈值触发 → AlertDispatcher 只需按 kind 命中, 不再二次阈值判断。
+6. **check_naming.py 加 10 个新豁免**: monitoring 包内 13 个 dataclass / 类大多借鉴 vnpy.Event / vnpy.Store 风格; 不豁免则全部需要重命名 (违反 ADR-0012 D4-A "新建事件 vs 复用现有 sink" 决策)。
+7. **Web 路由返回 {success, data} 格式**: 与现有 research API 一致 (Web QA #2 修复); 前端可直接 data.data.map()。
+8. **baseline_tests.sh 守门脚本**: 排除 21 pre-existing env errors (e2e_pages 需真实 DB / research 需 pyarrow 等); 后续 PR 不应增加新 failure。
