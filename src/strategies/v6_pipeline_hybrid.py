@@ -13,6 +13,8 @@ v2.2 改进 (2026-06-19):
   - scoring_dims 默认开启 fund_flow + chip
   - 表缺失时优雅降级到可用维度
   - 融合权重可调, 适配维度增减
+
+ADR-0010 (2026-06-27): 财务过滤改走 datafeed.get_finance_snapshot
 """
 from __future__ import annotations
 
@@ -24,7 +26,6 @@ from sqlalchemy import text
 
 from src.strategies.v6_reversal_selection import V6ReversalSelectionStrategy
 from src.scoring import ScorerRegistry
-from src.db.sql_utils import read_sql
 
 
 class V6PipelineHybridStrategy(V6ReversalSelectionStrategy):
@@ -143,7 +144,8 @@ class V6PipelineHybridStrategy(V6ReversalSelectionStrategy):
     def _financial_filter(self, candidates: list[dict]) -> list[dict]:
         """
         财务质量过滤: 排除净利润为负或PE极端异常的股票
-        使用 finance_summary 表（替代已删除的 finance_snapshot_v2）
+
+        ADR-0010 (2026-06-27): 改走 datafeed.get_finance_snapshot() (替代 read_sql)
         PE = TotalShareholderEquity / |NPParentCompanyOwnersTTM| 近似估算
         """
         if not candidates:
@@ -152,40 +154,32 @@ class V6PipelineHybridStrategy(V6ReversalSelectionStrategy):
         codes = [c["code"] for c in candidates]
 
         try:
-            sql = """
-                SELECT code,
-                       NPParentCompanyOwnersTTM AS net_profit,
-                       TotalShareholderEquity / NULLIF(ABS(NPParentCompanyOwnersTTM), 0) AS pe_ttm
-                FROM finance_summary
-                WHERE code IN :codes
-            """
-            df = read_sql(sql, self.engine, {"codes": list(codes)})
-
-            if df.empty:
+            fin = self.datafeed.get_finance_snapshot(list(codes))
+            if not fin:
                 return candidates  # 无财务数据：不过滤
 
             # 构建过滤字典
             valid_codes = set()
-            for _, row in df.iterrows():
-                code = str(row["code"]).strip().zfill(6)
-                net_profit = row.get("net_profit")
-                pe = row.get("pe_ttm")
+            for code, fields in fin.items():
+                code_norm = str(code).strip().zfill(6)
+                net_profit = fields.get("net_profit")
+                pe = fields.get("pe_ttm")
 
                 # 过滤条件: net_profit > 0
                 # PE检查仅当值在合理范围(0~1000)内才生效 (部分数据PE存的是市值)
                 if net_profit is not None and net_profit > 0:
                     if pe is None:
-                        valid_codes.add(code)
+                        valid_codes.add(code_norm)
                     elif pe > 0 and pe < 1000:
-                        valid_codes.add(code)  # PE合理: 通过
+                        valid_codes.add(code_norm)  # PE合理: 通过
                     elif pe >= 1000:
-                        valid_codes.add(code)  # PE值异常大(可能是市值): 跳过PE检查, 通过
+                        valid_codes.add(code_norm)  # PE值异常大(可能是市值): 跳过PE检查, 通过
                     # pe <= 0: 不通过
 
             return [c for c in candidates if c["code"] in valid_codes]
 
         except Exception:
-            return candidates  # DB查询失败：不过滤
+            return candidates  # datafeed 查询失败：不过滤
 
     def select(self, rebalance_date, universe_df: pd.DataFrame) -> list[str]:
         """
