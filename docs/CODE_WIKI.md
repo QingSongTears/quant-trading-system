@@ -404,77 +404,148 @@ BaseEngine (src/engine/base.py)
 
 ### 3.15 风控子系统
 
-**目录:** `src/risk/`（v2.1 新增，借鉴 vnpy.trader.engine.RiskManager）
+**目录:** `src/risk/`（v2.1 新增，借鉴 vnpy.trader.engine.RiskManager；v2.2 经 [ADR-0007](../adr/0007-risk-engine.md) 完善）
 
 | 文件 | 职责 |
 |------|------|
-| `engine.py` | `RiskEngine` 主类 + `RiskConfig` 数据类；下单前风控拦截 |
+| `engine.py` | `RiskEngine` 主类 + `RiskConfig` 数据类；下单前风控拦截（含 6 步检查 + 双通道告警） |
+| `event_data.py` | `RiskAlert` dataclass（`EVENT_RISK_ALERT` 的载荷）+ `RiskAlertLevel` 字面量类型 |
+| `sector_map.py` | 行业字典（`get_sector(vt_symbol)` → 行业字符串；默认覆盖 TOP20 持仓股，未知 = "未知"） |
 | `__init__.py` | 导出 `RiskEngine`、`RiskConfig` |
 
 #### 3.15.1 类与配置
 
 | 项 | 名称 | 说明 |
 |---|---|---|
-| 类名 | `RiskEngine` | 风控引擎（zh_name：风控引擎 / en_name：RiskEngine / description：下单前单笔/单日风控检查） |
+| 类名 | `RiskEngine` | 风控引擎（zh_name：风控引擎 / en_name：RiskEngine / description：下单前单笔/单日/集中度风控检查） |
 | 配置 | `RiskConfig`（`@dataclass`） | 全部阈值都是"上限"，触发即拒绝下单 |
+| 事件载荷 | `RiskAlert` | `EVENT_RISK_ALERT` 的 data，字段：`reason` / `level` / `vt_symbol` / `timestamp` |
 
-**`RiskConfig` 字段**（`src/risk/engine.py:33`）：
+**`RiskConfig` 9 字段**（`src/risk/engine.py:40-78`，ADR-0007 修复 2/3 落地后）：
 
-| 字段 | 默认 | 说明 |
-|------|------|------|
-| `max_order_pct` | `0.20` | 单股最大仓位比例（相对账户总资产，预留给将来） |
-| `max_order_volume` | `100_000_000` | 单笔最大股数（A 股单笔上限） |
-| `max_order_amount` | `5_000_000` | 单笔最大金额（500 万，小账户够用） |
-| `max_daily_trades` | `50` | 日内最大交易次数（双向） |
-| `max_daily_drawdown_pct` | `5.0` | 日内净值回撤熔断（%） |
-| `max_daily_loss` | `100_000` | 日内最大亏损金额（绝对值，元） |
-| `max_positions` | `10` | 同时最大持仓数（新开仓受限，已持仓加仓放行） |
+| 分类 | 字段 | 默认 | 说明 |
+|------|------|------|------|
+| **单笔控制** | `max_order_pct` | `0.20` | 单股最大仓位比例（**小数**，相对账户总资产；ADR-0007 修复 2 起真正生效） |
+| | `max_order_volume` | `100_000_000` | 单笔最大股数（A 股单笔上限） |
+| | `max_order_amount` | `5_000_000` | 单笔最大金额（500 万，小账户够用） |
+| **单日控制** | `max_daily_trades` | `50` | 日内最大交易次数（双向；仅 ALLTRADED 计入，ADR-0007 修复 4） |
+| | `max_daily_drawdown` | `0.05` | 日内净值回撤熔断（**小数**，0.05 = 5%；PR2.2 起改小数化） |
+| | `max_daily_loss` | `100_000` | 日内最大亏损金额（绝对值，元） |
+| **全局控制** | `max_positions` | `10` | 同时最大持仓数（新开仓受限，已持仓加仓放行） |
+| **集中度** | `sector_concentration_pct` | `0.40` | 单行业最大占比（**小数**；风控阶段比 selection 阶段 0.30 宽松） |
+| | `single_symbol_concentration_pct` | `0.22` | 单标的占比（**小数**；与 `MAX_SINGLE_POSITION_PCT` 对齐） |
+| **账户兜底** | `initial_balance` | `0.0` | 启动时账户余额（`EVENT_ACCOUNT` 未到账前的兜底） |
+| **可注入** | `sector_map` | `None` | `vt_symbol → 行业` 查表函数（默认 `src.risk.sector_map.get_sector`） |
 
 #### 3.15.2 关键方法签名
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
-| `__init__` | `(event_engine: EventEngine, config: RiskConfig \| None = None)` | 自动注册 `EVENT_ORDER`/`EVENT_TRADE` 订阅 |
-| `on_order(event)` | `None` | 订单回报回调 → `_daily_trades += 1` |
-| `on_trade(event)` | `None` | 成交回报回调 → 更新持仓 + 累计 PnL + 日净值峰值 |
-| `check_order(order_req)` | `tuple[bool, str]` | **下单前**单笔检查（兼容 `dict`/`OrderRequest`/duck-typed） |
+| `__init__` | `(event_engine: EventEngine, config: RiskConfig \| None = None)` | 自动注册 `EVENT_ORDER` / `EVENT_TRADE` / `EVENT_ACCOUNT` 订阅 |
+| `on_order(event)` | `None` | 订单回报回调 → **仅 ALLTRADED** 时 `_daily_trades += 1`（ADR-0007 修复 4） |
+| `on_trade(event)` | `None` | 成交回报回调 → 更新持仓 + 累计 PnL + 日净值峰值 + `_last_prices` |
+| `on_account(event)` | `None` | 账户回报回调 → 首次有效余额锁定后**注销订阅**（省 CPU） |
+| `check_order(order_req)` | `tuple[bool, str]` | **下单前**单笔检查（6 步；兼容 `dict`/`OrderRequest`/duck-typed） |
 | `check_daily_limit()` | `tuple[bool, str]` | 日内熔断检查（交易次数 / 亏损 / 回撤） |
+| `_sector_held_amount(sector)` | `float` | 计算某行业当前持仓金额（基于 `_last_prices` × `volume`） |
+| `_reject_order / _reject_daily` | `tuple[bool, str]` | 拒绝 + 同步 `put EVENT_RISK_ALERT`（warn / error 级别） |
 | `_ensure_daily_reset()` | `None` | 跨日期自动复位日内统计 |
-| `get_stats()` | `dict` | 调试用统计快照 |
+| `get_stats()` | `dict` | 调试用统计快照（含 account_balance / position_count 等） |
 
-#### 3.15.3 `check_order` 检查链路（按顺序）
+#### 3.15.3 `check_order` 检查链路（**6 步**，按顺序）
 
-1. 单笔股数：`vol > max_order_volume` → 拒
-2. 单笔金额：`vol * price > max_order_amount` → 拒
-3. 最大持仓数：新开仓（`held <= 0`）且当前持仓数 ≥ `max_positions` → 拒；已持仓加仓放行
+| # | 检查 | 触发条件 | 拒绝时 level |
+|---|------|----------|--------------|
+| 1 | 单笔股数 | `vol > max_order_volume` | `warn` |
+| 2 | 单笔金额 | `vol * price > max_order_amount` | `warn` |
+| 3 | 最大持仓数 | 新开仓（`held <= 0`）且当前持仓数 ≥ `max_positions` | `warn` |
+| 4 | 单股仓位比例 | `account_balance > 0` 且 `amount/balance > max_order_pct` | `warn` |
+| 5 | 单标的集中度 | `account_balance > 0` 且 `amount/balance > single_symbol_concentration_pct` | `warn` |
+| 6 | 单行业集中度 | `account_balance > 0` 且 `(已持行业金额 + amount)/balance > sector_concentration_pct` | `warn` |
 
-`check_daily_limit` 链路：
+**步骤 4-6 的前置条件**：`account_balance > 0`。`EVENT_ACCOUNT` 未到账时使用 `initial_balance` 兜底，缺省 0 → 步骤 4-6 静默跳过（**不报错**，避免回测场景被误拒）。
 
-1. 日内交易次数 ≥ `max_daily_trades` → 拒
-2. 日内亏损 ≥ `max_daily_loss`（绝对值） → 拒
-3. 日内净值回撤（基于 `daily_peak`） ≥ `max_daily_drawdown_pct` → 拒
+`check_daily_limit` 链路（3 步，触发熔断返回 `False`）：
 
-#### 3.15.4 集成关系
+1. 日内交易次数 ≥ `max_daily_trades` → 拒（`error`）
+2. 日内亏损 ≤ `-max_daily_loss`（绝对值） → 拒（`error`）
+3. 日内净值回撤（基于 `daily_peak`） ≥ `max_daily_drawdown` → 拒（`error`）
+
+#### 3.15.4 事件流（双通道：hard reject + EVENT_RISK_ALERT）
+
+```
+                    ┌──────────────────────────────────┐
+   策略层下单 ──────►│ risk.check_order(order_req)      │
+                    │   ├─ 步骤 1-6 顺序校验            │
+                    │   └─ 任一失败 → 步骤 _reject_order│
+                    │       ├─ return (False, reason)   │  ← hard reject
+                    │       └─ put EVENT_RISK_ALERT     │  ← soft event
+                    │            (RiskAlert, level=warn)│     (UI / 监控消费)
+                    └──────────────────────────────────┘
+                                       │
+                                       ▼
+                    ┌──────────────────────────────────┐
+   OMS 推送 ────────►│ EventEngine.register(EVENT_*)  │
+   (Order/Trade/     │   ├─ on_order: ALLTRADED → 计数  │
+    Account)         │   ├─ on_trade: 更新持仓+峰值+价  │
+                    │   └─ on_account: 锁定余额+注销   │
+                    └──────────────────────────────────┘
+```
+
+**双通道语义**（ADR-0007 D3 + 方案 C）：
+- **hard reject（默认）**：所有 check_* 返回 `(False, msg)` 时**阻断下单**。
+- **EVENT_RISK_ALERT（软告警）**：同步 `put` 一条 `RiskAlert`，载荷字段 `reason` / `level` / `vt_symbol` / `timestamp`，让 UI / 监控 / 推送系统消费。
+- **容错**：`_emit_alert` 用 `try/except` 包住, 推送失败仅 `logger.warning`, 不影响主流程拦截。
+
+#### 3.15.5 集成关系
 
 ```
 MainEngine (src/gateway/main_engine.py)
-  └── add_engine(RiskEngine)              # 通过 BaseEngine 注册表
+  └── add_engine(RiskEngine)              # 通过 BaseEngine 注册表 (v2.3 计划)
         ├── self.event_engine             # 持有 EventEngine 引用
         ├── self._positions               # vt_symbol → 净持仓 (从 EVENT_TRADE 累计)
+        ├── self._last_prices             # vt_symbol → 最近成交价 (集中度计算用)
+        ├── self._account_balance         # 优先 EVENT_ACCOUNT 注入, 兜底 initial_balance
         └── self._daily_{trades,pnl,peak} # 每日 00:00 _ensure_daily_reset 自动复位
 
 调用顺序 (策略层 → 风控 → 网关):
-  AlphaStrategy.set_target(vt_symbol, target)
+  EquityStrategy.set_target(vt_symbol, target)        # ADR-0006 v2.2 操盘入口
     └── 触发 EVENT_TARGET
-          └── AlphaStrategy/EquityStrategy 处理
-                ├── risk.check_order(order_req)        # 单笔拦截
+          └── EquityStrategy 处理
+                ├── risk.check_order(order_req)        # 单笔拦截 (6 步)
+                │     └─ 拒 → put EVENT_RISK_ALERT
                 ├── risk.check_daily_limit()          # 日内熔断
+                │     └─ 熔断 → put EVENT_RISK_ALERT (error)
                 └── main_engine.send_order(...)       # 通过则委托给第一个 Gateway
+                          │
+                          ▼
+                  OMS 推送 EVENT_ORDER / EVENT_TRADE / EVENT_ACCOUNT
+                          │
+                          ▼
+                  RiskEngine.on_order / on_trade / on_account
+                          │
+                          ▼
+                  维护 _positions / _last_prices / _daily_* / _account_balance
 ```
 
-**已知限制（v2.1）：**
-- `RiskEngine` **不继承** `BaseEngine`，因此无法通过 `main_engine.get_engine("risk")` 检索（仅在 `self._event_engine` 持有强引用）。计划 v2.2 改造为 `BaseEngine` 子类，统一 `add_engine()` 接口。
-- 不区分多空方向（用 `volume` 直接累加），A 股 T+1 单边做多语义下等同于净持仓。
+**已知限制（v2.2 现状）：**
+- `RiskEngine` **不继承** `BaseEngine`，因此无法通过 `main_engine.get_engine("risk")` 检索（仅在 `self._event_engine` 持有强引用）。计划 v2.3 改造为 `BaseEngine` 子类，统一 `add_engine()` 接口。
+- 不区分多空方向（用 `volume` 直接累加），A 股 T+1 单边做多语义下等同于净持仓。v3.0 接融券时需加 `direction` 字段。
+- `on_account` 锁定余额后**注销订阅**，账户变动（入金/出金）目前**不感知**——v3.0 实盘时需加 `EVENT_ACCOUNT_REFRESH` 事件或定时重订阅。
+- `sector_map` 硬编码 22 只 TOP20 持仓股，全市场覆盖率 0.4%；v3.0 接申万行业分类（`src/selection/sector_constraint.load_industry_map`）。详细见 [dev-notes/risk-engine-decisions.md §3.1](../dev-notes/risk-engine-decisions.md)。
+- `_last_prices` 选 `EVENT_TRADE` 更新而非 `EVENT_TICK`：1% 误差 < 22% 阈值，CPU/内存 5k×10tick/s → 5k×1trade/day。详见 [dev-notes §1.2](../dev-notes/risk-engine-decisions.md)。
+
+#### 3.15.6 关联 ADR / 实施入口
+
+- [ADR-0007 RiskEngine 完善](../adr/0007-risk-engine.md) — 本节设计依据（5 个不确定项 + 4 个核心修复 + 备选方案 C 双通道）
+- [ADR-0006 策略基类收敛](../adr/0006-strategy-base-classes.md) — 上游调用方 `EquityStrategy`（v2.2 操盘入口）
+- [ADR-0005 vnpy 命名前缀](../adr/0005-data-object-vnpy-naming.md) — 沿用 `vt_symbol` / `vt_orderid` 字段命名
+- 实施入口：
+  - `src/risk/engine.py` — `RiskEngine` + `RiskConfig`（437 行）
+  - `src/risk/event_data.py` — `RiskAlert` dataclass（39 行）
+  - `src/risk/sector_map.py` — `get_sector` 行业字典（86 行）
+- 守门豁免：`dev_tools/hooks/check_naming.py` `RiskEngine: vnpy-shorthand`（命名规范允许 `Engine` 后缀类去掉 vnpy 的 `Manager` 后缀）
+- 实施期边角讨论：[docs/dev-notes/risk-engine-decisions.md](../dev-notes/risk-engine-decisions.md)（草稿层）
 
 **相关常量（非 RiskEngine 字段，来自 `src/constants/risk.py`）：**
 止损/止盈百分比（策略级使用，与 RiskEngine 的下单前拦截**正交**）：
@@ -686,8 +757,8 @@ MainEngine (src/gateway/main_engine.py)
 |----|------|--------------------|------|
 | `BaseEngine` | `src/engine/base.py` | 引擎基类 / BaseEngine | 所有功能引擎的抽象根；状态机 NEW→ACTIVE→STOPPED |
 | `OmsEngine` | `src/engine/oms.py` | 订单管理引擎 / OmsEngine | 全局缓存 + 6 类事件订阅 + A 股 T+1 维护 |
-| `RiskEngine` | `src/risk/engine.py` | 风控引擎 / RiskEngine | 下单前单笔/单日风控拦截（不继承 BaseEngine，v2.2 计划改造） |
-| `RiskConfig` | `src/risk/engine.py` | 风控配置 / RiskConfig | `@dataclass`，7 个阈值字段（详见 §3.15.1） |
+| `RiskEngine` | `src/risk/engine.py` | 风控引擎 / RiskEngine | 下单前单笔/单日/集中度风控拦截（不继承 BaseEngine，v2.3 计划改造） |
+| `RiskConfig` | `src/risk/engine.py` | 风控配置 / RiskConfig | `@dataclass`，9 个阈值字段（详见 §3.15.1，含 2 个集中度字段） |
 
 ### 策略基类（ADR-0006 收敛 4→2）
 
