@@ -20,7 +20,10 @@ from tests.conftest import AuthedTestClient as TestClient
 
 @pytest.fixture(autouse=True)
 def mock_data_repository(monkeypatch):
-    """为所有 Web 测试 mock DataRepository，避免需要真实数据库"""
+    """为所有 Web 测试 mock DataRepository，避免需要真实数据库
+
+    ADR-0010 (2026-06-27): web 改走 data_mgr.business 门面,不再 import DataRepository。
+    """
     mock = MagicMock()
     mock.get_data_coverage = MagicMock(return_value={
         "total_stocks": 0, "total_records": 0,
@@ -34,18 +37,15 @@ def mock_data_repository(monkeypatch):
     mock.get_download_history = MagicMock(return_value=[])
     mock.init_database = MagicMock()
 
-    # 在所有引用 DataRepository 的地方 mock
+    # 在 DataManager.business 层面 mock (ADR-0010 §D3 业务宽表统一入口)
     monkeypatch.setattr(
         "src.models.repository.DataRepository",
         lambda *args, **kwargs: mock
     )
+    # DataManager.business property 返回新的 DataRepository() — mock 其返回 mock
     monkeypatch.setattr(
-        "src.web.routes.main.DataRepository",
-        lambda *args, **kwargs: mock
-    )
-    monkeypatch.setattr(
-        "src.web.routes.api.DataRepository",
-        lambda *args, **kwargs: mock
+        "src.data.manager.DataManager.business",
+        property(lambda self: mock)
     )
 
     return mock
@@ -351,7 +351,7 @@ class TestBoundaryScenarios:
         mock_result.stock_name = "测试股票"
         mock_result.stock_code = "000001"
 
-        # patch DataRepository 返回 mock 结果
+        # patch DataRepository 返回 mock 结果 (ADR-0010: 走 DataManager.business 门面)
         mock_repo = MagicMock()
         mock_repo.get_backtest_result = MagicMock(return_value=mock_result)
         mock_repo.get_recent_backtests = MagicMock(return_value=[mock_result])
@@ -362,8 +362,8 @@ class TestBoundaryScenarios:
         mock_repo.init_database = MagicMock()
 
         monkeypatch.setattr(
-            "src.web.routes.main.DataRepository",
-            lambda *args, **kwargs: mock_repo
+            "src.data.manager.DataManager.business",
+            property(lambda self: mock_repo)
         )
         monkeypatch.setattr(
             "src.models.repository.DataRepository",

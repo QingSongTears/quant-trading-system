@@ -208,6 +208,27 @@ class DataManager:
         return DataRepository()
 
     # ─────────────────────────────────────────
+    #  business — 业务宽表统一入口 (ADR-0010)
+    # ─────────────────────────────────────────
+
+    @property
+    def business(self):
+        """业务宽表访问入口 (ADR-0010 §D3)
+
+        业务宽表 (backtest_result / signal_log / order_log / position /
+        strategy_config / prediction_record) 通过此属性访问,
+        调用方 (web/strategies) 不直接 import DataRepository,避免绕过门面。
+
+        用法:
+            from src.data import data_mgr
+            result = data_mgr.business.get_backtest_result(123)
+            history = data_mgr.business.get_recent_backtests(limit=50)
+        """
+        from ..models.repository import DataRepository
+
+        return DataRepository()
+
+    # ─────────────────────────────────────────
     #  6. simulation — 模拟交易数据访问
     # ─────────────────────────────────────────
 

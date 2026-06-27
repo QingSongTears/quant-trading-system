@@ -18,7 +18,6 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-from ...models.repository import DataRepository
 from ...data import get_data_manager
 from ...data.downloader import DataDownloader
 # 2026-06-27: westock_downloader 桩模块已删,统一用 DataDownloader
@@ -39,8 +38,11 @@ router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 
 def _get_repo():
-    """统一从 data 层获取数据库访问入口。"""
-    return get_data_manager().repository
+    """统一从 data 层获取业务宽表访问入口 (ADR-0010 §D3)
+
+    通过 DataManager.business 门面访问,避免 web 直接 import DataRepository。
+    """
+    return get_data_manager().business
 
 
 # ===== 序列化辅助函数 (处理 np.nan / np.float64) =====
@@ -1273,24 +1275,23 @@ async def stock_quote(code: str = Query(..., min_length=4, max_length=10)):
 
     if not rows:
         try:
-            from sqlalchemy import text
-            repo = _get_repo()
-            with repo.engine.connect() as conn:
-                raw = conn.execute(
-                    text("SELECT trade_date, open, high, low, close, volume "
-                         "FROM daily_price WHERE code=:c ORDER BY trade_date DESC LIMIT 5"),
-                    {"c": code.zfill(6)}
-                ).fetchall()
-            for r0 in raw:
-                rows.append({"date": str(r0[0]), "open": r0[1], "high": r0[2],
-                             "low": r0[3], "close": r0[4], "volume": r0[5]})
-            # 补 name
-            sb = conn.execute(
-                text("SELECT name FROM stock_basic WHERE code=:c"),
-                {"c": code.zfill(6)}
-            ).first()
-            if sb:
-                name = sb[0]
+            # ADR-0010 (2026-06-27): 走 datafeed.get_bars 替代 pd.read_sql 直读 daily_price
+            from src.data import data_mgr
+            from ...data.datafeed.base import code_to_vt_symbol
+            vt = code_to_vt_symbol(code.zfill(6))
+            bars = data_mgr.datafeed.get_bars(vt)
+            for b in bars[-5:]:
+                rows.append({
+                    "date": str(b.datetime.date() if hasattr(b.datetime, "date") else b.datetime),
+                    "open": b.open_price, "high": b.high_price,
+                    "low": b.low_price, "close": b.close_price,
+                    "volume": b.volume,
+                })
+            # 补 name: 走 datafeed.get_stock_list
+            for c in data_mgr.datafeed.get_stock_list():
+                if c.symbol == code.zfill(6):
+                    name = c.name or name
+                    break
         except Exception as e:
             logger.error("stock/quote DB 兜底失败: %s", e)
 
@@ -1355,24 +1356,19 @@ async def stock_kline(
     except Exception as e:
         logger.warning("stock/kline westock 失败, 降级到 DB: %s", e)
 
-    # westock 无数据 → 用本地 DB 兜底
+    # westock 无数据 → 用本地 DB 兜底 (ADR-0010 改走 datafeed)
     if not rows:
         try:
-            from sqlalchemy import text
-            repo = _get_repo()
-            with repo.engine.connect() as conn:
-                # 取 limit*5 条 (周月线需要原始日线聚合, 但日线直接拿即可)
-                raw = conn.execute(
-                    text("SELECT trade_date, open, high, low, close, volume "
-                         "FROM daily_price WHERE code=:c "
-                         "ORDER BY trade_date DESC LIMIT :lim"),
-                    {"c": code.zfill(6), "lim": limit}
-                ).fetchall()
-            for r0 in reversed(raw):  # 旧的在前
+            from src.data import data_mgr
+            from ...data.datafeed.base import code_to_vt_symbol
+            vt = code_to_vt_symbol(code.zfill(6))
+            bars = data_mgr.datafeed.get_bars(vt)
+            # 取最近 limit 条 (bar 是 ASC),反向取尾部
+            for b in bars[-limit:]:
                 rows.append({
-                    "date": str(r0[0]),
-                    "open": r0[1], "high": r0[2], "low": r0[3],
-                    "close": r0[4], "volume": r0[5],
+                    "date": str(b.datetime.date() if hasattr(b.datetime, "date") else b.datetime),
+                    "open": b.open_price, "high": b.high_price, "low": b.low_price,
+                    "close": b.close_price, "volume": b.volume,
                 })
         except Exception as e:
             logger.error("stock/kline DB 兜底失败: %s", e)

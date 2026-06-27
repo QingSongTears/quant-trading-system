@@ -52,13 +52,25 @@ logger = logging.getLogger(__name__)
 
 
 class _DB:
-    """SQL 片段常量 (修 2026-06-25: 去掉 .format(), 改 bindparam 防注入)"""
+    """SQL 片段常量 (修 2026-06-25: 去掉 .format(), 改 bindparam 防注入)
+
+    ADR-0010 (2026-06-27) fix: 原 CAST(:start AS DATE) IS NULL 在 SQLite 上
+    对绑定参数 CAST 不工作(CAST 期望表达式,不是参数),改用 Python 端
+    None 判断 + SQLAlchemy 渲染条件的方式更稳。这里改用字符串比较
+    (trade_date 是 TEXT 'YYYY-MM-DD'),字典序 = 日期序,SQLite 兼容。
+    """
     SELECT_BARS = (
         "SELECT trade_date, open, high, low, close, volume, amount "
         "FROM daily_price "
         "WHERE code = :code "
-        "AND (CAST(:start AS DATE) IS NULL OR trade_date >= :start) "
-        "AND (CAST(:end AS DATE) IS NULL OR trade_date <= :end) "
+        "AND trade_date >= :start "
+        "AND trade_date <= :end "
+        "ORDER BY trade_date ASC"
+    )
+    SELECT_BARS_NO_FILTER = (
+        "SELECT trade_date, open, high, low, close, volume, amount "
+        "FROM daily_price "
+        "WHERE code = :code "
         "ORDER BY trade_date ASC"
     )
     SELECT_STOCK_LIST = (
@@ -207,12 +219,19 @@ class LocalDatafeed(BaseDatafeed):
             with self._engine.connect() as conn:
                 rows = conn.execute(text(sql), {"code": code, "count": int(count)}).fetchall()
             rows = list(reversed(rows))
+        elif start is None and end is None:
+            # 无日期过滤
+            with self._engine.connect() as conn:
+                rows = conn.execute(text(_DB.SELECT_BARS_NO_FILTER), {"code": code}).fetchall()
         else:
-            # None 转 None (SQL 用 CAST(... IS NULL OR ...) 处理)
+            # 日期范围过滤 (ADR-0010 fix: 不再 CAST(:start AS DATE),SQLite 不支持参数 CAST)
+            # trade_date 实际是 TEXT 'YYYY-MM-DD',字符串比较 == 日期比较
+            start_str = start.isoformat() if hasattr(start, "isoformat") else str(start)
+            end_str = end.isoformat() if hasattr(end, "isoformat") else str(end)
             params = {
                 "code": code,
-                "start": start,
-                "end": end,
+                "start": start_str,
+                "end": end_str,
             }
             sql = _DB.SELECT_BARS
             with self._engine.connect() as conn:
