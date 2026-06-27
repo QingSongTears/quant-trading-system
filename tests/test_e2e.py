@@ -1023,8 +1023,11 @@ class TestFullRegression:
     def test_full_test_suite_runnable(self):
         """验证完整测试套件可运行"""
         import subprocess
+        import sys as _sys
+        # 2026-06-27: 用 sys.executable (当前 venv) 替换裸 'python',
+        # 避免子进程走系统 Python 而缺失 sqlalchemy 等依赖
         result = subprocess.run(
-            ["python", "-m", "pytest", str(Path(__file__).parent), "--co", "-q"],
+            [_sys.executable, "-m", "pytest", str(Path(__file__).parent), "--co", "-q"],
             capture_output=True, text=True, timeout=30,
             cwd=str(_PROJECT_ROOT),
         )

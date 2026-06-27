@@ -33,7 +33,7 @@ HTML_PAGES = [
     "/screener",
     "/dashboard",
     "/data-monitor",
-    "/walk_forward",
+    "/walk-forward",
     "/verify",
     "/predict",
     "/predict-dashboard",   # 2026-06-26: 8维预测看板

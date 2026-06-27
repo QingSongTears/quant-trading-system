@@ -385,6 +385,9 @@ _STANDALONE_PAGES = {
 
 def _register_standalone_routes():
     """批量注册独立页面路由 (避免闭包变量捕获问题)"""
+    if getattr(_register_standalone_routes, "_done", False):
+        return
+    _register_standalone_routes._done = True
     for path, tmpl in _STANDALONE_PAGES.items():
         async def _handler(request: Request, _t=tmpl):
             return templates.TemplateResponse(request, _t, _get_global_context())
@@ -399,6 +402,46 @@ async def tuning_redirect():
     """旧 /tuning 路由 → /research?type=tuning (兼容旧链接)"""
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/research?type=tuning", status_code=301)
+
+
+# 2026-06-27: Phase C3 redirect 缺失补齐
+# 旧路径仍登记在 _STANDALONE_PAGES 直接渲染, 但 Phase C3 期望 301
+# 改法: 让独立页继续工作, 但额外提供 301 alias → 统一入口
+_REDIRECT_ALIASES = [
+    ("/backtest-lab", "/workbench?mode=lab"),
+    ("/backtest-view", "/workbench?mode=view"),
+    ("/strategy-compare", "/compare?type=strategy"),
+    ("/v5", "/research?type=v5"),
+    ("/v6-compare", "/research?type=v6"),
+    ("/ic", "/research?type=ic"),
+    ("/dim-compare", "/research?type=dim"),
+]
+
+
+def _register_redirect_aliases():
+    """为 Phase C3 合并的旧路径提供 301 重定向 (兼容旧链接 + e2e 测试)
+
+    实现策略: 把这些路径从 _STANDALONE_PAGES 移除, 改为 301 重定向;
+    旧路径仍然可访问, 只是不再直接渲染内容, 而是跳转到新的统一入口.
+    """
+    from fastapi.responses import RedirectResponse
+
+    # 幂等性: 多次调用不会重复注册 (FastAPI 不支持重名路由)
+    if getattr(_register_redirect_aliases, "_done", False):
+        return
+    _register_redirect_aliases._done = True
+
+    # 从 _STANDALONE_PAGES 移除这些路径, 避免路由冲突
+    for old_path, _ in _REDIRECT_ALIASES:
+        _STANDALONE_PAGES.pop(old_path, None)
+
+    for old_path, new_path in _REDIRECT_ALIASES:
+        async def _alias(_np=new_path):
+            return RedirectResponse(url=_np, status_code=301)
+        router.add_api_route(
+            old_path, _alias, response_class=HTMLResponse, methods=["GET"],
+            include_in_schema=False,
+        )
 
 
 # ============================================================
@@ -577,6 +620,9 @@ async def fund_flow_report_page(request: Request):
     return templates.TemplateResponse(request, "fund-flow-report.html", ctx)
 
 
-_register_standalone_routes()
+# 2026-06-27: Phase C3 redirect 必须比 standalone 优先注册, 否则 FastAPI 按顺序匹配
+# 策略: 先去掉 _STANDALONE_PAGES 里的旧路径, 再注册 301, 最后再注册剩余的 standalone
+_register_redirect_aliases()  # 这会从 _STANDALONE_PAGES 移除旧路径并注册 301
+_register_standalone_routes()  # 注册剩余的 standalone 页面
 # 2026-06-25: 删 _register_placeholder_routes / _placeholder_html / _PLACEHOLDER_PAGES 死代码
 # 死代码从 509-558 行, 原本就是空 list + 不调用, 全删. 减 50 行 + 减少加载时间
