@@ -33,7 +33,9 @@ class InstitutionalScorer(BaseScorer):
     """机构持仓评分器 v3 — dragon_tiger 数据驱动"""
 
     name = "institutional"
-    label_zh = "机构持仓"
+    zh_name = "机构持仓"
+    en_name = "Institutional"
+    label_zh = "机构持仓"  # 兼容旧名
     weight = 0.10
     max_raw = 18
 

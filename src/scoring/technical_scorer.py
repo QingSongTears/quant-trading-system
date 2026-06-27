@@ -53,7 +53,9 @@ class TechnicalScorer(BaseScorer):
     """技术面评分器 v3 — 极端反转模型"""
 
     name = "technical"
-    label_zh = "技术面"
+    zh_name = "技术面"
+    en_name = "Technical"
+    label_zh = "技术面"  # 兼容旧名
     weight = 0.20
     max_raw = 21
 

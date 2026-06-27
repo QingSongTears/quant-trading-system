@@ -46,7 +46,9 @@ class FundamentalScorer(BaseScorer):
     """基本面评分器 v2 — 成长合理价模型"""
 
     name = "fundamental"
-    label_zh = "基本面"
+    zh_name = "基本面"
+    en_name = "Fundamental"
+    label_zh = "基本面"  # 兼容旧名
     weight = 0.15
     max_raw = 21
 

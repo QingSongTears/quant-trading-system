@@ -40,7 +40,9 @@ class ChipScorer(BaseScorer):
     """筹码面评分器 — 主力控盘模型"""
 
     name = "chip"
-    label_zh = "筹码面"
+    zh_name = "筹码面"
+    en_name = "Chip"
+    label_zh = "筹码面"  # 兼容旧名
     weight = 0.10
     max_raw = 15
 

@@ -35,7 +35,9 @@ class NewsEventScorer(BaseScorer):
     """消息面评分器"""
 
     name = "news_event"
-    label_zh = "消息面"
+    zh_name = "消息面"
+    en_name = "News Event"
+    label_zh = "消息面"  # 兼容旧名
     weight = 0.15
     max_raw = 21
 
