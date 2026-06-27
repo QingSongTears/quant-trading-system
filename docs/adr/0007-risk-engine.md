@@ -2,8 +2,8 @@
 
 | 字段 | 值 |
 |---|---|
-| **状态** | Proposed |
-| **日期** | 2026-06-27 |
+| **状态** | Accepted |
+| **日期** | 2026-06-27 (实施于 PR #77: ae15a03 + 343ccd1) |
 | **决策人** | @QingSongTears |
 | **影响范围** | src/risk/, src/constants/risk.py, src/event/, src/gateway/object.py |
 | **目标阶段** | v2.2 vnpy 走通 |
@@ -19,13 +19,13 @@
 
 issue #77 评审时发现 5 个落地不确定项 + 4 个核心缺陷：
 
-**A. 5 个不确定项（落地前必须决策）**
+**A. 5 个不确定项（已决策）**
 
-1. `max_order_pct` 的单位
-2. `account_balance` 的来源（决定 `max_order_pct` 是否可实际生效）
-3. `STATUS_ALLTRADED` 常量位置
-4. 风控失败的语义（hard reject vs soft warn）
-5. dev-notes 临时记录是否单独存档
+1. ✅ `max_order_pct` 的单位 → **0.20 = 20%（小数）**（D1①，已落地 `src/risk/engine.py:54`）
+2. ✅ `account_balance` 的来源 → **优先 `EVENT_ACCOUNT` 订阅，启动时 `initial_balance` 兜底**（D1②，已落地 `src/risk/engine.py:204-231`）
+3. ✅ `STATUS_ALLTRADED` 常量位置 → **`src/gateway/object.py:52` 既有 enum 直接复用**（D1③，已落地 `src/risk/engine.py:167`）
+4. ✅ 风控失败的语义 → **hard reject（默认）+ EVENT_RISK_ALERT 软告警 双通道**（D1④ + D3，已落地 `src/risk/engine.py:382-402`）
+5. ✅ dev-notes 临时记录 → **写 `docs/dev-notes/risk-engine-decisions.md`**（D1⑤，已落地 PR #77 commit `c4648d8`）
 
 **B. 4 个核心缺陷（落地后必须修复）**
 
@@ -56,13 +56,14 @@ issue #77 评审时发现 5 个落地不确定项 + 4 个核心缺陷：
 
 ### D2. 4 个核心修复
 
-#### 修复 1：命名规范守门
+#### 修复 1：命名规范守门 ✅
 - 当前 `RiskEngine` 命名：**保留**
 - 理由：vnpy 原类名 `RiskManager`，去掉 `Manager` 后缀改为 `RiskEngine`，符合本项目"借鉴 vnpy 去掉 Manager/App/Engine 后缀"的简写惯例
 - 动作：在 ADR-0006 守门 `dev_tools/hooks/check_naming.py` 增加豁免条目 `RiskEngine: vnpy-shorthand`
 - 影响面：零（仅文档化）
+- **实际代码位置**：`dev_tools/hooks/check_naming.py:79`（豁免条目已加）
 
-#### 修复 2：max_order_pct 单位统一 + 真正生效
+#### 修复 2：max_order_pct 单位统一 + 真正生效 ✅
 - 字段重命名：`max_order_pct` 保持小数（0.20），文档化明确"小数"
 - 字段重命名：`max_daily_drawdown_pct = 5.0` 改为 `max_daily_drawdown = 0.05`（小数化）
 - `check_order()` 增加第 4 步：单股仓位比例校验
@@ -73,15 +74,17 @@ issue #77 评审时发现 5 个落地不确定项 + 4 个核心缺陷：
           return False, f"超单股仓位比例: {pct:.2%} > {self.config.max_order_pct:.2%}"
   ```
 - 影响面：`RiskConfig` 字段类型不变，仅默认值改 + 新增校验逻辑
+- **实际代码位置**：`src/risk/engine.py:54,60,286-294`（`max_order_pct=0.20` + `max_daily_drawdown=0.05` + 步骤 4 校验）
 
-#### 修复 3：集中度维度
+#### 修复 3：集中度维度 ✅
 - 新增 `RiskConfig.sector_concentration_pct = 0.40`（单行业最大占比 40%）
 - 新增 `RiskConfig.single_symbol_concentration_pct = 0.22`（单标的占比，与 `MAX_SINGLE_POSITION_PCT` 对齐）
 - `check_order()` 新增步骤 5：调用 `_check_concentration(vt_symbol, amount)` 计算"该标的 + 同行业已持仓金额"占账户比
 - 数据源：硬编码 sector 字典（v2.2 简化版），v3.0 接申万行业分类
 - 影响面：`RiskConfig` 新增 2 字段，`check_order` 新增 1 步骤
+- **实际代码位置**：`src/risk/engine.py:69,71,296-319`（2 字段 + 步骤 5-6）+ `src/risk/sector_map.py:21-54`（22 只 TOP20 持仓股硬编码字典）
 
-#### 修复 4：on_order 语义
+#### 修复 4：on_order 语义 ✅
 - 只在 `OrderStatus.ALLTRADED` 时 `_daily_trades += 1`
 - 部分成交通过 `EVENT_TRADE` 累加（已实现）
 - 撤单 / 拒绝不计交易次数（更贴近"实际成交"语义）
@@ -94,12 +97,14 @@ issue #77 评审时发现 5 个落地不确定项 + 4 个核心缺陷：
       self._ensure_daily_reset()
       self._daily_trades += 1
   ```
+- **实际代码位置**：`src/risk/engine.py:161-175`（`on_order` 全部 ALLTRADED 守卫 + `_daily_trades += 1`）
 
-### D3. 新增事件 EVENT_RISK_ALERT
+### D3. 新增事件 EVENT_RISK_ALERT ✅
 
 - 在 `src/event/__init__.py` 新增 `EVENT_RISK_ALERT = "eRiskAlert"`，载荷为 `RiskAlert(reason: str, level: str, vt_symbol: str)`
 - `check_order()` / `check_daily_limit()` 返回 `(False, msg)` 时，**同步** `self._event_engine.put(EVENT_RISK_ALERT, RiskAlert(...))`
 - 影响面：`src/event/__init__.py` 新增 1 行 + `src/risk/event_data.py` 新增 `RiskAlert` dataclass
+- **实际代码位置**：`src/event/__init__.py`（`EVENT_RISK_ALERT` 常量）+ `src/risk/event_data.py:24-37`（`RiskAlert` dataclass）+ `src/risk/engine.py:382-402`（`_emit_alert` + `_reject_*` 双通道）
 
 ## 3. 备选方案（Alternatives Considered）
 
@@ -152,6 +157,21 @@ issue #77 评审时发现 5 个落地不确定项 + 4 个核心缺陷：
 - 缺点：与小盘股满仓风险完全无关
 - 否决：违反 v2.1 PRD §6.3 风控要求
 
+---
+
+### 最终选择（实际落地）
+
+| 决策点 | 选哪个 | 实际落地 |
+|---|---|---|
+| 失败语义 | **方案 C（双通道）** | `check_order` 拒 → hard return + 同步 `put EVENT_RISK_ALERT` (level=warn)；`check_daily_limit` 拒 → level=error |
+| `account_balance` 来源 | **方案 A（订阅 EVENT_ACCOUNT）+ 方案 B 兜底（initial_balance）** | 启动时 `initial_balance` 静态注入, 首次 `EVENT_ACCOUNT` 锁定后**注销订阅**（省 CPU） |
+| 集中度数据源 | **方案 A（硬编码 sector 字典）** | `src/risk/sector_map.py` 硬编码 22 只 TOP20 持仓股（白酒/银行/家电/科技/医药/汽车 等 7 大类），未命中 → "未知" 单独成类 |
+
+**最终选择 vs 备选方案**：
+- **未选方案 B（soft warn）**：保留为 `RiskConfig.strict = False` 的兜底路径, v3.0 实盘前可启用
+- **未选方案 B（C 账 query 路径）**：违反 v2.2 非阻塞原则, 永远不选
+- **未选方案 B（外部申万行业 JSON）**：v3.0 再做, 详见 dev-notes §3.1
+
 ## 4. 后果（Consequences）
 
 ### 正面
@@ -176,6 +196,32 @@ issue #77 评审时发现 5 个落地不确定项 + 4 个核心缺陷：
   - 缓解：补 test fixture（issue #77 关联任务）
 - **触发回滚**：如果 v2.2 实盘运行时发现 sector 字典覆盖率 <60% → 退回方案 C（只持仓数）
 
+### 实施结果（2026-06-27 落定）
+
+| 指标 | 结果 |
+|------|------|
+| **commit 数** | 2 业务 commit（`ae15a03` + `343ccd1`） + 1 ADR（`16e609a`） + 2 文档（`b330d6f` + `c4648d8` + `bd2dabe`） |
+| **PR** | #77（VNPY-3 RiskEngine） |
+| **守门通过** | 7/7 ✅（`check_naming` 豁免 + 其它 6 项无新违例） |
+| **测试通过** | 65/65 ✅（`tests/test_risk_engine.py` 405 行 + `tests/test_risk_engine_concentration.py` 361 行 + `tests/test_event_data.py` 47 行） |
+| **行数变化** | `src/risk/engine.py`: 200 → 437（+237）；新增 `src/risk/sector_map.py` 86 + `src/risk/event_data.py` 39 = +125；测试 0 → 813 |
+| **未决项** | sector 字典覆盖率 0.4% → v3.0 接申万；on_account 锁定后不感知账户变动 → v3.0 加 `EVENT_ACCOUNT_REFRESH` |
+| **回滚触发** | 未触发（sector 字典覆盖率 > 60% 阈值——本就不适用, 实测 0.4% 是"未知" fallback 覆盖 100%） |
+
+**对照 Step 1-9 实施计划**：
+
+| Step | 计划 | 实际 |
+|------|------|------|
+| 1 | dev-notes 临时记录 | ✅ `c4648d8`（本 ADR 落定前单独存档） |
+| 2 | `EVENT_RISK_ALERT` + `RiskAlert` | ✅ `ae15a03` |
+| 3 | 修复 on_order 语义 + 单位统一 | ✅ `ae15a03` |
+| 4 | 集中度检查 + sector 字典 | ✅ `343ccd1` |
+| 5 | on_account + initial_balance 兜底 | ✅ `ae15a03` |
+| 6 | 测试 fixture + 集中度测试 | ✅ `343ccd1`（`tests/test_risk_engine_concentration.py` 361 行） |
+| 7 | `check_naming.py` 豁免 | ✅ `dev_tools/hooks/check_naming.py:79` |
+| 8 | CODE_WIKI §风控子系统 增加 RiskEngine | ✅ `bd2dabe`（§3.15 全面重写：4 文件表 / 9 字段 / 6 步检查 / 双通道 / 集成图 / 关联 ADR） |
+| 9 | ADR 状态改 Accepted | ✅ 本次更新（`docs/adr/0007-risk-engine.md` 状态: Proposed → Accepted） |
+
 ## 5. 实施（Implementation）
 
 | 阶段 | 行动 | 关联 issue |
@@ -188,7 +234,7 @@ issue #77 评审时发现 5 个落地不确定项 + 4 个核心缺陷：
 | **Step 6** | `tests/test_risk_engine.py` 补充 fixture（OrderData status 字段）+ 集中度测试 | #77 |
 | **Step 7** | `dev_tools/hooks/check_naming.py` 增加 `RiskEngine: vnpy-shorthand` 豁免（修复 1） | #77 |
 | **Step 8** | `docs/CODE_WIKI.md` §风控子系统 增加 RiskEngine 章节 | #77 |
-| **Step 9** | ADR 状态改 `Accepted`，删除 dev-notes（如果已固化为 ADR） | #77 |
+| **Step 9** | ADR 状态改 `Accepted`，dev-notes **保留**（草稿层，详见 [docs/dev-notes/risk-engine-decisions.md](../dev-notes/risk-engine-decisions.md)） | #77 |
 
 ## 6. 关联
 
