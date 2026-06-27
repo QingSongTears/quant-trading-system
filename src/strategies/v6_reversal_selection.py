@@ -22,13 +22,14 @@ import pandas as pd
 from sqlalchemy import text
 
 from ..backtest.base_selection_strategy import BaseSelectionStrategy
+from ..strategy.equity_strategy import EquityStrategy
 from ..config import get_config
 from ..db.engine import get_engine
 from ..db.sql_utils import read_sql
 from ..models.repository import DataRepository
 
 
-class V6ReversalSelectionStrategy(BaseSelectionStrategy):
+class V6ReversalSelectionStrategy(EquityStrategy):
     """
     V6 超卖反转选股策略 — 新架构版
 
@@ -50,6 +51,12 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
         "+ 连续阳线 + 量价过滤 + ATR波动率评价"
     )
     source: str = "v3_reversal 实证优化 → v6: ATR自适应头寸+连续阳线+量价过滤"
+
+    # ── EquityStrategy 必需接口 ──
+
+    def on_init(self) -> None:
+        """初始化回调 (vnpy 模板要求)"""
+        pass
 
     # 选股参数
     n_stocks: int = 8
@@ -84,13 +91,24 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
     ATR_PENALTY_PER_PCT: float = 2.0
 
     def __init__(self, **kwargs):
-        # 应用自定义参数（支持大小写）
-        for k, v in kwargs.items():
-            # 先试原样，再试大写
+        # 分离 EquityStrategy 必需参数
+        strategy_engine = kwargs.pop("strategy_engine", None)
+        strategy_name = kwargs.pop("strategy_name", self.name)
+        vt_symbols = kwargs.pop("vt_symbols", [])
+        setting = kwargs.pop("setting", {})
+        # 剩余 kwargs 中的参数也合并进 setting (支持大小写)
+        for k, v in list(kwargs.items()):
             for attr_name in (k, k.upper()):
                 if hasattr(self.__class__, attr_name):
-                    setattr(self, attr_name, v)
+                    setting[attr_name] = v
                     break
+
+        super().__init__(
+            strategy_engine=strategy_engine,
+            strategy_name=strategy_name,
+            vt_symbols=vt_symbols,
+            setting=setting,
+        )
 
         # 初始化数据库连接
         self.engine = get_engine()
@@ -181,7 +199,7 @@ class V6ReversalSelectionStrategy(BaseSelectionStrategy):
 
         print(f"  [预计算] 完成: {len(self._indicator_cache)} 个日期已缓存")
 
-    def filter_universe(self, universe_df: pd.DataFrame) -> pd.DataFrame:
+    def _filter_universe(self, universe_df: pd.DataFrame) -> pd.DataFrame:
         """
         覆盖父类过滤逻辑 — 不依赖 market_cap_yi (CSV数据无换手率, NaN)
         使用 avg_amount_wan 做流动性过滤
