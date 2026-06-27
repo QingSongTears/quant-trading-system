@@ -1,0 +1,20 @@
+- name: sector_cap_pct
+  type: float
+  low: 0.10
+  high: 0.40
+  step: 0.05
+
+- name: sector_max_count
+  type: int
+  low: 2
+  high: 6
+
+- name: rebalance_days
+  type: int
+  low: 15
+  high: 25
+  step: 5
+
+- name: weight_mode
+  type: categorical
+  options: [equal, volatility, atr]

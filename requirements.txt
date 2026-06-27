@@ -1350,3 +1350,7 @@ xyzservices==2026.3.0 \
     --hash=sha256:503183d4b322bfebc3c50cdd21192aa3e81e36c5efbf9133d54ae82143e0576b \
     --hash=sha256:d226866a5d8e9fef337034d8da37a8298f0a1d9d1489b4018e69579eb321fea4
     # via bokeh
+
+optuna>=4.0
+scikit-optimize>=0.10
+scikit-learn>=1.0
