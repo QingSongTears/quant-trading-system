@@ -1,6 +1,6 @@
 # 量化交易系统 - Code Wiki 文档
 
-> 版本: v2.0 | 更新日期: 2026-06-25
+> 版本: v2.1 | 更新日期: 2026-06-27
 
 ---
 
@@ -22,7 +22,9 @@
   - [3.11 策略库](#311-策略库)
   - [3.12 操盘层](#312-操盘层)
   - [3.13 Web 应用](#313-web-应用)
-  - [3.14 常量与工具](#314-常量与工具)
+  - [3.14 引擎基类](#314-引擎基类)
+  - [3.15 风控子系统](#315-风控子系统)
+  - [3.16 常量与工具](#316-常量与工具)
 - [4. 数据文件详解](#4-数据文件详解)
   - [4.1 market_data/ 原始数据](#41-market_data-原始数据)
   - [4.2 data/ 应用数据](#42-data-应用数据)
@@ -78,8 +80,10 @@
 │                      回测引擎层                                   │
 │   backtest/engine.py  backtest/portfolio_engine.py               │
 ├─────────────────────────────────────────────────────────────────┤
-│            事件 / 网关 / OMS / 指标层                             │
-│   event/  gateway/  engine/  indicator/                          │
+│            事件 / 网关 / OMS / 风控 / 指标层                      │
+│   event/  gateway/  engine/  risk/  indicator/                   │
+│   (MainEngine 在 gateway/, OmsEngine 在 engine/,                 │
+│    RiskEngine 在 risk/ — 均继承 engine/base.py:BaseEngine)        │
 ├─────────────────────────────────────────────────────────────────┤
 │                      数据层                                       │
 │   data/manager.py  data/datafeed/  data/downloader.py            │
@@ -190,7 +194,22 @@
 |------|------|
 | `engine.py` | 发布-订阅事件总线；支持异步处理器和优先级排序 |
 
-**事件类型:** `BAR_ARRIVED`（K 线到达）、`ORDER_FILLED`（订单成交）、`SIGNAL_GENERATED`（信号生成）、`POSITION_CHANGED`（持仓变更）、`RISK_ALERT`（风险预警）。
+**事件类型:** 字符串常量定义在 `src/event/__init__.py`，分组如下：
+
+| 事件常量 | 含义 |
+|---------|------|
+| `EVENT_TICK` (`eTick`) | 行情推送（实时） |
+| `EVENT_BAR` (`eBar`) | K 线推送（实时/历史） |
+| `EVENT_QUOTE` (`eQuote`) | 五档行情 |
+| `EVENT_SIGNAL` (`eSignal`) | 选股信号（V6 / V 龙头） |
+| `EVENT_TARGET` (`eTarget`) | 目标持仓（`set_target` 触发） |
+| `EVENT_ORDER` (`eOrder`) | 委托回报 |
+| `EVENT_TRADE` (`eTrade`) | 成交回报 |
+| `EVENT_CANCEL` (`eCancel`) | 撤单回报 |
+| `EVENT_POSITION` (`ePosition`) | 持仓变化 |
+| `EVENT_ACCOUNT` (`eAccount`) | 资金变化（被 RiskEngine 关联） |
+| `EVENT_CONTRACT` (`eContract`) | 合约信息 |
+| `EVENT_LOG` (`eLog`) / `EVENT_ERROR` (`eError`) / `EVENT_TIMER` (`eTimer`) | 系统事件 |
 
 ---
 
@@ -200,11 +219,12 @@
 
 | 文件 | 职责 |
 |------|------|
-| `base_gateway.py` | 抽象订单网关接口 |
-| `main_engine.py` | 主网关编排器；将订单路由到对应网关 |
-| `object.py` | 订单/成交数据对象（OrderRequest、OrderResponse、Trade） |
+| `base_gateway.py` | 抽象订单网关接口（`send_order`/`cancel_order`/`connect`） |
+| `main_engine.py` | 主网关编排器（`MainEngine`）；持有 `EventEngine` 单例 + 管理 `gateways/engines/strategies` 三个注册表 |
+| `object.py` | 订单/成交数据对象（`OrderRequest`/`OrderData`/`TradeData`/`PositionData`/`AccountData`/`ContractData` 等） |
 
 **设计目的:** 解耦策略逻辑与交易执行，使同一策略可在模拟盘和实盘间无缝切换。
+**注:** `MainEngine` 虽然住在 `gateway/` 目录，但同时充当功能引擎注册中心（`add_engine(OmsEngine)` / `add_engine(RiskEngine)`），它和 `src/engine/base.py:BaseEngine` 是 v2.1 借鉴 vnpy 4.4 引入的双层引擎架构的一部分。
 
 ---
 
@@ -317,6 +337,19 @@
 - **后备层（🟡）**: 三因子均衡、极致小市值、盾+矛全天候、技术投票
 - **归档层（📦）**: v2~v7 系列、bull_8d 系列
 
+> **ADR-0006 策略基类收敛 4→2**（2026-06-27 落地）
+>
+> 历史共有 4 个并行基类：
+>
+> | 基类 | 位置 | 状态 |
+> |---|---|---|
+> | `BaseSelectionStrategy` | `src/backtest/base_selection_strategy.py` | ✅ 永久保留（9 个生产策略的真正基类） |
+> | `EquityStrategy` | `src/strategy/equity_strategy.py` | ✅ 永久保留（vnpy 模板 + A 股选股，操盘层入口） |
+> | `AlphaStrategy` | `src/strategy/alpha_strategy.py` | ⚠️ `DeprecationWarning`，v3.0 删除（当前 0 业务继承） |
+> | `BaseStrategy` | `src/backtest/base_strategy.py` | 🗑️ 已降级重命名为 `BacktestingPyAdapter`（仅 5 个单股回测策略使用） |
+>
+> 新策略应继承 `BaseSelectionStrategy`（选股）或 `EquityStrategy`（vnpy 操盘）。详见 `docs/adr/0006-strategy-base-classes.md`。
+
 ---
 
 ### 3.12 操盘层
@@ -347,7 +380,121 @@
 
 ---
 
-### 3.14 常量与工具
+### 3.14 引擎基类
+
+**目录:** `src/engine/`
+
+| 文件 | 职责 |
+|------|------|
+| `base.py` | `BaseEngine` 抽象根类；`start/stop/close` 状态机（NEW → ACTIVE → STOPPED），统一 `is_active` 标志 + `src.log` 集成 |
+| `oms.py` | `OmsEngine`（**lazy import**）：全局缓存 ticks/orders/trades/positions/accounts/contracts；订阅 6 类事件；A 股 T+1 字段维护（`td_volume = volume - yd_volume`） |
+
+**继承关系（v2.1 借鉴 vnpy 4.4 BaseEngine）：**
+
+```
+BaseEngine (src/engine/base.py)
+  ├── EventEngine   (src/event/engine.py)
+  ├── OmsEngine     (src/engine/oms.py)
+  └── [RiskEngine 当前未继承 BaseEngine, 见 §3.15 — 计划 v2.2 改造]
+```
+
+> **注：**`src.engine` 包对 `OmsEngine` 采用 `__getattr__` lazy import，避免 `src.engine ↔ src.event` 循环依赖。用户 `from src.engine import OmsEngine` 写法仍可用。
+
+---
+
+### 3.15 风控子系统
+
+**目录:** `src/risk/`（v2.1 新增，借鉴 vnpy.trader.engine.RiskManager）
+
+| 文件 | 职责 |
+|------|------|
+| `engine.py` | `RiskEngine` 主类 + `RiskConfig` 数据类；下单前风控拦截 |
+| `__init__.py` | 导出 `RiskEngine`、`RiskConfig` |
+
+#### 3.15.1 类与配置
+
+| 项 | 名称 | 说明 |
+|---|---|---|
+| 类名 | `RiskEngine` | 风控引擎（zh_name：风控引擎 / en_name：RiskEngine / description：下单前单笔/单日风控检查） |
+| 配置 | `RiskConfig`（`@dataclass`） | 全部阈值都是"上限"，触发即拒绝下单 |
+
+**`RiskConfig` 字段**（`src/risk/engine.py:33`）：
+
+| 字段 | 默认 | 说明 |
+|------|------|------|
+| `max_order_pct` | `0.20` | 单股最大仓位比例（相对账户总资产，预留给将来） |
+| `max_order_volume` | `100_000_000` | 单笔最大股数（A 股单笔上限） |
+| `max_order_amount` | `5_000_000` | 单笔最大金额（500 万，小账户够用） |
+| `max_daily_trades` | `50` | 日内最大交易次数（双向） |
+| `max_daily_drawdown_pct` | `5.0` | 日内净值回撤熔断（%） |
+| `max_daily_loss` | `100_000` | 日内最大亏损金额（绝对值，元） |
+| `max_positions` | `10` | 同时最大持仓数（新开仓受限，已持仓加仓放行） |
+
+#### 3.15.2 关键方法签名
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `__init__` | `(event_engine: EventEngine, config: RiskConfig \| None = None)` | 自动注册 `EVENT_ORDER`/`EVENT_TRADE` 订阅 |
+| `on_order(event)` | `None` | 订单回报回调 → `_daily_trades += 1` |
+| `on_trade(event)` | `None` | 成交回报回调 → 更新持仓 + 累计 PnL + 日净值峰值 |
+| `check_order(order_req)` | `tuple[bool, str]` | **下单前**单笔检查（兼容 `dict`/`OrderRequest`/duck-typed） |
+| `check_daily_limit()` | `tuple[bool, str]` | 日内熔断检查（交易次数 / 亏损 / 回撤） |
+| `_ensure_daily_reset()` | `None` | 跨日期自动复位日内统计 |
+| `get_stats()` | `dict` | 调试用统计快照 |
+
+#### 3.15.3 `check_order` 检查链路（按顺序）
+
+1. 单笔股数：`vol > max_order_volume` → 拒
+2. 单笔金额：`vol * price > max_order_amount` → 拒
+3. 最大持仓数：新开仓（`held <= 0`）且当前持仓数 ≥ `max_positions` → 拒；已持仓加仓放行
+
+`check_daily_limit` 链路：
+
+1. 日内交易次数 ≥ `max_daily_trades` → 拒
+2. 日内亏损 ≥ `max_daily_loss`（绝对值） → 拒
+3. 日内净值回撤（基于 `daily_peak`） ≥ `max_daily_drawdown_pct` → 拒
+
+#### 3.15.4 集成关系
+
+```
+MainEngine (src/gateway/main_engine.py)
+  └── add_engine(RiskEngine)              # 通过 BaseEngine 注册表
+        ├── self.event_engine             # 持有 EventEngine 引用
+        ├── self._positions               # vt_symbol → 净持仓 (从 EVENT_TRADE 累计)
+        └── self._daily_{trades,pnl,peak} # 每日 00:00 _ensure_daily_reset 自动复位
+
+调用顺序 (策略层 → 风控 → 网关):
+  AlphaStrategy.set_target(vt_symbol, target)
+    └── 触发 EVENT_TARGET
+          └── AlphaStrategy/EquityStrategy 处理
+                ├── risk.check_order(order_req)        # 单笔拦截
+                ├── risk.check_daily_limit()          # 日内熔断
+                └── main_engine.send_order(...)       # 通过则委托给第一个 Gateway
+```
+
+**已知限制（v2.1）：**
+- `RiskEngine` **不继承** `BaseEngine`，因此无法通过 `main_engine.get_engine("risk")` 检索（仅在 `self._event_engine` 持有强引用）。计划 v2.2 改造为 `BaseEngine` 子类，统一 `add_engine()` 接口。
+- 不区分多空方向（用 `volume` 直接累加），A 股 T+1 单边做多语义下等同于净持仓。
+
+**相关常量（非 RiskEngine 字段，来自 `src/constants/risk.py`）：**
+止损/止盈百分比（策略级使用，与 RiskEngine 的下单前拦截**正交**）：
+
+| 常量 | 值 | 说明 |
+|------|---|------|
+| `STOP_LOSS_DEFAULT` | `0.05` | 默认 5% 止损 |
+| `STOP_LOSS_AGGRESSIVE` | `0.07` | 激进型 7% |
+| `STOP_LOSS_CONSERVATIVE` | `0.03` | 保守型 3% |
+| `TRAILING_STOP_PCT` | `0.12` | 移动止盈触发 12% |
+| `TRAILING_DD_PCT` | `0.03` | 触发后回撤 3% 卖出 |
+| `TIME_STOP_DAYS_DEFAULT` | `20` | 默认持有 20 天 |
+| `MAX_DRAWDOWN_EXIT_PCT` | `0.25` | 组合回撤 25% 全清仓 |
+| `MAX_SINGLE_POSITION_PCT` | `0.22` | 单只持仓 ≤ 22% |
+
+> **单位约定（PR1.2 起）：**百分比统一用**小数**（`0.05` = 5%），避免与历史整数百分比版本混淆 100 倍。
+
+---
+
+### 3.16 常量与工具
 
 **目录:** `src/constants/` 和 `src/utils/`
 
@@ -529,8 +676,29 @@
 | 类 | 位置 | 用途 |
 |----|------|------|
 | `BaseGateway` | `src/gateway/base_gateway.py` | 订单网关抽象 |
-| `MainEngine` | `src/gateway/main_engine.py` | 网关编排器 |
-| `EventEngine` | `src/event/engine.py` | 发布-订阅事件总线 |
+| `MainEngine` | `src/gateway/main_engine.py` | 网关编排器 + 引擎注册中心 |
+| `EventEngine` | `src/event/engine.py` | 发布-订阅事件总线（同步派发） |
+| `Event` | `src/event/engine.py` | 事件对象（`type`/`data`/`timestamp`） |
+
+### 引擎基类 / OMS / 风控（v2.1）
+
+| 类 | 位置 | zh_name / en_name | 用途 |
+|----|------|--------------------|------|
+| `BaseEngine` | `src/engine/base.py` | 引擎基类 / BaseEngine | 所有功能引擎的抽象根；状态机 NEW→ACTIVE→STOPPED |
+| `OmsEngine` | `src/engine/oms.py` | 订单管理引擎 / OmsEngine | 全局缓存 + 6 类事件订阅 + A 股 T+1 维护 |
+| `RiskEngine` | `src/risk/engine.py` | 风控引擎 / RiskEngine | 下单前单笔/单日风控拦截（不继承 BaseEngine，v2.2 计划改造） |
+| `RiskConfig` | `src/risk/engine.py` | 风控配置 / RiskConfig | `@dataclass`，7 个阈值字段（详见 §3.15.1） |
+
+### 策略基类（ADR-0006 收敛 4→2）
+
+| 类 | 位置 | 状态 | 用途 |
+|----|------|------|------|
+| `BaseSelectionStrategy` | `src/backtest/base_selection_strategy.py` | ✅ 永久 | 9 个生产选股策略的基类（纯 pandas） |
+| `EquityStrategy` | `src/strategy/equity_strategy.py` | ✅ 永久 | vnpy 模板 + A 股选股，操盘层入口（V6 已走通） |
+| `AlphaStrategy` | `src/strategy/alpha_strategy.py` | ⚠️ Deprecated | v2.1.1 起 `DeprecationWarning`；v3.0 删除。仍持有 `set_target/buy/sell/cover` API |
+| `BacktestingPyAdapter` | `src/backtest/base_strategy.py`（原 `BaseStrategy`） | 🗑️ 降级 | 5 个单股回测策略的 backtesting.py 薄包装 |
+
+> **`set_target(vt_symbol, target)`** 在 `src/strategy/alpha_strategy.py:192`，由 `AlphaStrategy`（及子类 `EquityStrategy`）持有，被 `RiskEngine.check_order` 间接拦截——风险点是 v2.2 需要把拦截点正式接到 `set_target` 路径。
 
 ---
 
@@ -878,25 +1046,26 @@ pytest tests/e2e/ -v            # E2E 测试
 ```
 quant-trading-system/
 ├── src/                        # 主应用源码
-│   ├── backtest/              # 回测引擎
+│   ├── backtest/              # 回测引擎 + 策略基类（BaseSelectionStrategy / BacktestingPyAdapter）
 │   ├── constants/             # 常量定义（费用、市场、风险、信号）
 │   ├── data/                  # 数据管理与数据源
 │   ├── db/                    # 数据库层
-│   ├── engine/                # 核心引擎（OMS、基础引擎）
-│   ├── event/                 # 事件系统
-│   ├── gateway/               # 订单网关
+│   ├── engine/                # 引擎基类（BaseEngine）+ OmsEngine（lazy import）
+│   ├── event/                 # 事件系统（EventEngine + 14 个 EVENT_* 常量）
+│   ├── gateway/               # 订单网关 + MainEngine（含 gateways/engines/strategies 注册表）
 │   ├── indicator/             # 技术指标计算
 │   ├── metrics/               # 绩效指标
 │   ├── models/                # 量化模型
 │   ├── research/              # 研究与 Alpha
-│   ├── scoring/               # 多维评分系统
+│   ├── risk/                  # 风控子系统（v2.1 新增：RiskEngine + RiskConfig）
+│   ├── scoring/               # 多维评分系统（7 个 scorer + ScorerRegistry）
 │   ├── selection/             # 选股管线
-│   ├── strategies/                # 策略实现
-│   ├── strategy/                # 策略模式
+│   ├── strategies/            # 策略实现 + trading 子包（操盘层）
+│   ├── strategy/              # 策略基类（ADR-0006: EquityStrategy 永久 / AlphaStrategy 废弃）
 │   ├── utils/                 # 工具函数
 │   └── web/                   # Web 应用（Flask）
 ├── tests/                     # 测试套件
-├── scripts/                   # 工具与批处理脚本
+├── scripts/                   # 工具与批处理脚本（active/_deprecated/_deprecated/tests 三桶分类）
 ├── config/                    # 配置文件
 ├── data/                      # 应用数据（模型、缓存、报告）
 ├── market_data/               # 原始市场数据（CSV + Parquet）
@@ -908,7 +1077,7 @@ quant-trading-system/
 │   ├── parquet/daily/         # Parquet 列式存储（~10,200 个股票文件）
 │   └── 汇总 CSV               # benchmark, finance, fund_flow, holder_num 等
 ├── output/                    # 生成的 HTML 报告和审计结果
-├── docs/                      # 文档
+├── docs/                      # 文档（adr/ + CODE_WIKI.md + ...）
 ├── run.py                     # 应用入口
 ├── pyproject.toml             # 项目配置
 └── requirements.txt           # Python 依赖
@@ -916,4 +1085,4 @@ quant-trading-system/
 
 ---
 
-*本文档基于代码仓库自动生成，最后更新: 2026-06-25*
+*本文档基于代码仓库自动生成，最后更新: 2026-06-27*

@@ -165,18 +165,41 @@ class V6ReversalStrategy(BaseSelectionStrategy):
 
 ## 5. 强制流程（Process）
 
+### 5.0 开发前后必做（pull / push）— 任何 AI / 任何人都要遵守
+
+> ⚠️ **2026-06-27 新增**：本规则优先级等同 §5.1~5.4，违反视为流程违规。
+
+```
+1. 开发前必做：
+     git checkout develop
+     git pull origin develop        # 同步上游最新
+     git status                     # 确认工作区干净
+
+2. 开发中：
+     - 修改文件 / 新建文件
+     - pre-commit run --all-files   # 7 项守门全绿
+     - git add -A
+     - git commit -m "<type>(<scope>): <subject> (#N)"
+
+3. 开发后必做（**当次会话结束前**，不留到下次）：
+     git push origin develop
+```
+
+**为什么不单独开 feature 分支**：本项目 owner 已确认"在 dev (= develop) 分支直接开发"。
+**为什么必须 push**：避免本地累积 commit、避免多会话冲突、保证 GitHub auto-close issue 能触发。
+
 ### 5.1 新增模块流程
 
 ```
 1. 读 AGENTS.md（本文件）
 2. 查 docs/adr/ 是否有相关决策
 3. 如果是"破坏性 / 跨模块 / ≥3 文件影响" → 先写 ADR
-4. git checkout -b feat/issue-N-description
+4. git checkout develop && git pull origin develop   （按 §5.0）
 5. 写代码 + 写测试（tests/ 必有对应 test_*.py）
 6. pre-commit run --all-files  （必须全绿）
 7. git commit -m "feat(scope): subject (#N)"
-8. git push → 开 PR → 等 CI 全绿 → merge
-9. 合并后 GitHub auto-close issue
+8. git push origin develop      （按 §5.0）
+9. GitHub auto-close issue
 ```
 
 ### 5.2 修改已有模块流程
