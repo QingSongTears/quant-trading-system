@@ -39,6 +39,9 @@
         <div class="card p-4 sticky-lg-top" style="top: 80px; z-index: 10;">
             <h5 class="section-title mb-3"><i class="bi bi-sliders"></i> 回测配置</h5>
 
+            {# Web QA #6 (2026-06-27): 把配置 inputs 包进 <form> 元素 (工具页面) #}
+            <form id="backtest-form" class="tool panel" onsubmit="event.preventDefault();">
+
             <!-- 模型选择 -->
             <div class="mb-3">
                 <label class="form-label fw-semibold small text-secondary">🎯 选择模型</label>
@@ -102,6 +105,8 @@
                     <i class="bi bi-lightning-fill"></i> 一键对比全部模型
                 </button>
             </div>
+
+            </form>{# /backtest-form #}
 
             <!-- 状态提示 -->
             <div id="config-status" class="mt-3 small text-muted text-center"></div>
@@ -317,6 +322,9 @@
         transition: background 0.15s;
     }
     .compare-legend span:hover { background: #f1f5f9; }
+
+    /* Web QA #6: form.tool.panel 高亮 (回测配置面板) */
+    form.tool.panel { display: block; }
 </style>
 {% raw %}
 <script>
