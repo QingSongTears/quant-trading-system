@@ -2,7 +2,7 @@
 RiskEngine — 下单前风控检查骨架 (VNPY-3, ADR-0007, 2026-06-27)
 
 借鉴 vnpy.trader.engine.RiskManager, 实现单笔/单日风控:
-  - check_order: 单笔股数 / 金额 / 持仓数 / 仓位比例
+  - check_order: 单笔股数 / 金额 / 持仓数 / 仓位比例 / **单标的集中度 / 单行业集中度**
   - check_daily_limit: 交易次数 / 亏损 / 日回撤熔断
   - 事件驱动: 订阅 EVENT_ORDER / EVENT_TRADE 更新状态
   - EVENT_ACCOUNT 异步注入余额 (启动时用 initial_balance 兜底)
@@ -11,6 +11,8 @@ RiskEngine — 下单前风控检查骨架 (VNPY-3, ADR-0007, 2026-06-27)
 单位约定 (PR2.2 起, 见 src/constants/risk.py):
   - 百分比统一用**小数** (0.05 = 5%, 与 STOP_LOSS_DEFAULT 一致)
   - max_order_pct=0.20, max_daily_drawdown=0.05
+  - sector_concentration_pct=0.40 (ADR-0007: 风控阶段更宽容)
+  - single_symbol_concentration_pct=0.22 (对齐 MAX_SINGLE_POSITION_PCT)
 
 用法:
     from src.risk import RiskEngine, RiskConfig
@@ -27,7 +29,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import date
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from ..event import Event, EventEngine
@@ -40,7 +42,7 @@ class RiskConfig:
     """风控配置
 
     所有阈值都是"上限", 触发即拒绝下单:
-      - 单笔: 单股仓位比例 / 股数 / 金额
+      - 单笔: 单股仓位比例 / 股数 / 金额 / **单标的占比 / 单行业占比**
       - 单日: 交易次数 / 亏损金额 / 日内净值回撤
       - 全局: 最大持仓数 (新开仓受限, 已持仓加仓放行)
 
@@ -61,8 +63,19 @@ class RiskConfig:
     # ── 全局控制 ──
     max_positions: int = 10              # 同时最大持仓数 (新开仓数)
 
+    # ── 集中度 (ADR-0007 修复 3) ──
+    # 注意: selection 阶段用 0.30 (更严, 防选股时过度集中)
+    #       风控阶段用 0.40 (更宽容, 允许策略层加仓至单行业 40%)
+    sector_concentration_pct: float = 0.40   # 单行业最大占比 (小数)
+    # 与 src/constants/risk.py:44 MAX_SINGLE_POSITION_PCT 对齐
+    single_symbol_concentration_pct: float = 0.22  # 单标的占比 (小数)
+
     # ── 账户兜底 (ADR-0007 D1②) ──
     initial_balance: float = 0.0         # 启动时账户余额 (EVENT_ACCOUNT 未到账前兜底)
+
+    # ── 可注入 ──
+    # sector_map: vt_symbol -> sector 字符串 (默认 src.risk.sector_map.get_sector)
+    sector_map: Callable[[str], str] | None = None  # type: ignore[assignment]
 
 
 class RiskEngine:
@@ -77,6 +90,8 @@ class RiskEngine:
       - 持仓从成交事件流累计维护
       - 账户余额: 优先 EVENT_ACCOUNT 异步注入, 首次注入后注销回调省 CPU
                   未到账时用 config.initial_balance 兜底
+      - 集中度: 单标的 + 单行业 (基于最后成交价 _last_prices 估算)
+      - 双通道告警: check_order/daily_limit 拒绝时 put EVENT_RISK_ALERT
     """
 
     def __init__(
@@ -90,6 +105,13 @@ class RiskEngine:
         self.config = config or RiskConfig()
         self._event_engine = event_engine
 
+        # ── 集中度查表 (可注入) ──
+        if self.config.sector_map is None:
+            from .sector_map import get_sector as _default_sector_map
+            self._sector_map: Callable[[str], str] = _default_sector_map
+        else:
+            self._sector_map = self.config.sector_map
+
         # ── 日统计 (每日 00:00 复位) ──
         self._daily_trades: int = 0
         self._daily_pnl: float = 0.0
@@ -99,6 +121,10 @@ class RiskEngine:
         # ── 实时持仓 (从成交事件流累计) ──
         # vt_symbol -> 净持仓 (正=多头)
         self._positions: dict[str, int] = {}
+
+        # ── 最近成交价 (集中度计算用, ADR-0007 修复 3) ──
+        # vt_symbol -> last_price, EVENT_TRADE 更新, 无则 fallback 到当前订单价
+        self._last_prices: dict[str, float] = {}
 
         # ── 账户余额 (ADR-0007 D1②) ──
         # 优先 EVENT_ACCOUNT 注入, 兜底用 config.initial_balance
@@ -123,6 +149,8 @@ class RiskEngine:
             f"RiskEngine 初始化完成: "
             f"max_vol={self.config.max_order_volume}, "
             f"max_daily_trades={self.config.max_daily_trades}, "
+            f"sector_cap={self.config.sector_concentration_pct:.0%}, "
+            f"single_cap={self.config.single_symbol_concentration_pct:.0%}, "
             f"initial_balance={self.config.initial_balance:,.0f}"
         )
 
@@ -147,7 +175,7 @@ class RiskEngine:
         self._daily_trades += 1
 
     def on_trade(self, event: "Event") -> None:
-        """成交回报回调 — 更新持仓 / 累计 PnL / 净值峰值"""
+        """成交回报回调 — 更新持仓 / 累计 PnL / 净值峰值 / 最近成交价"""
         self._ensure_daily_reset()
         trade = event.data
         if trade is None:
@@ -155,12 +183,17 @@ class RiskEngine:
 
         vt_symbol = getattr(trade, "vt_symbol", "")
         volume = getattr(trade, "volume", 0)
+        price = getattr(trade, "price", 0.0)
         pnl = getattr(trade, "pnl", 0.0)
 
         if vt_symbol and volume:
             # 简化: 不区分多空方向, 用 volume 直接累加
             # A 股 T+1 单边, 实际是单向做多, 等于净持仓
             self._positions[vt_symbol] = self._positions.get(vt_symbol, 0) + int(volume)
+
+        if vt_symbol and price > 0:
+            # 集中度计算用最近成交价 (无行情推送时的合理 fallback)
+            self._last_prices[vt_symbol] = float(price)
 
         if pnl:
             self._daily_pnl += pnl
@@ -211,6 +244,8 @@ class RiskEngine:
 
         Returns:
             (通过: bool, 原因: str) — msg 为空表示通过
+
+        拒绝时同步 put EVENT_RISK_ALERT (level="warn") (ADR-0007 D3)
         """
         # 兼容 dict 和 对象两种调用方式
         if isinstance(order_req, dict):
@@ -225,23 +260,26 @@ class RiskEngine:
 
         # 1. 单笔股数上限 (A 股 100 万股是单笔上限, 设为更严的阈值)
         if vol > self.config.max_order_volume:
-            return False, (
-                f"超单笔最大股数: {vol} > {self.config.max_order_volume}"
+            return self._reject_order(
+                vt_symbol,
+                f"超单笔最大股数: {vol} > {self.config.max_order_volume}",
             )
 
         # 2. 单笔金额上限
         if amount > self.config.max_order_amount:
-            return False, (
-                f"超单笔最大金额: {amount:,.0f} > {self.config.max_order_amount:,.0f}"
+            return self._reject_order(
+                vt_symbol,
+                f"超单笔最大金额: {amount:,.0f} > {self.config.max_order_amount:,.0f}",
             )
 
         # 3. 最大持仓数 (新开仓受限, 已持仓加仓放行)
         current_positions = sum(1 for v in self._positions.values() if v > 0)
         held = self._positions.get(vt_symbol, 0)
         if held <= 0 and current_positions >= self.config.max_positions:
-            return False, (
+            return self._reject_order(
+                vt_symbol,
                 f"超最大持仓数: {current_positions} >= "
-                f"{self.config.max_positions}, 新开仓被拒"
+                f"{self.config.max_positions}, 新开仓被拒",
             )
 
         # 4. 单股仓位比例校验 (ADR-0007 修复 2)
@@ -249,9 +287,35 @@ class RiskEngine:
         if self._account_balance > 0:
             pct = amount / self._account_balance
             if pct > self.config.max_order_pct:
-                return False, (
+                return self._reject_order(
+                    vt_symbol,
                     f"超单股仓位比例: {pct:.2%} > "
-                    f"{self.config.max_order_pct:.2%}"
+                    f"{self.config.max_order_pct:.2%}",
+                )
+
+        # 5. 单标的集中度校验 (ADR-0007 修复 3) — amount/balance > cap 则拒
+        if self._account_balance > 0:
+            single_cap = self.config.single_symbol_concentration_pct
+            single_pct = amount / self._account_balance
+            if single_pct > single_cap:
+                return self._reject_order(
+                    vt_symbol,
+                    f"超单标的集中度: {single_pct:.2%} > {single_cap:.2%}",
+                )
+
+        # 6. 单行业集中度校验 (ADR-0007 修复 3)
+        #    同行业已持仓 + 本笔金额 / 余额 > cap 则拒
+        if self._account_balance > 0:
+            cap = self.config.sector_concentration_pct
+            sector = self._sector_map(vt_symbol)
+            held_amount = self._sector_held_amount(sector)
+            total_pct = (held_amount + amount) / self._account_balance
+            if total_pct > cap:
+                return self._reject_order(
+                    vt_symbol,
+                    f"超单行业集中度({sector}): "
+                    f"已持 {held_amount:,.0f} + 本笔 {amount:,.0f} = "
+                    f"{total_pct:.2%} > {cap:.2%}",
                 )
 
         return True, ""
@@ -262,33 +326,80 @@ class RiskEngine:
 
         Returns:
             (通过: bool, 原因: str)
+
+        熔断时同步 put EVENT_RISK_ALERT (level="error") (ADR-0007 D3)
         """
         self._ensure_daily_reset()
 
         # 1. 交易次数
         if self._daily_trades >= self.config.max_daily_trades:
-            return False, (
+            return self._reject_daily(
                 f"日内交易次数达上限: {self._daily_trades} "
-                f">= {self.config.max_daily_trades}"
+                f">= {self.config.max_daily_trades}",
             )
 
         # 2. 亏损金额熔断
         if self._daily_pnl <= -self.config.max_daily_loss:
-            return False, (
+            return self._reject_daily(
                 f"日内亏损达熔断线: {self._daily_pnl:,.0f} "
-                f"<= -{self.config.max_daily_loss:,.0f}"
+                f"<= -{self.config.max_daily_loss:,.0f}",
             )
 
         # 3. 日内回撤熔断 (基于日净值峰值, 小数化: 0.05 = 5%)
         if self._daily_peak > 0:
             drawdown = (self._daily_peak - self._daily_pnl) / self._daily_peak
             if drawdown >= self.config.max_daily_drawdown:
-                return False, (
+                return self._reject_daily(
                     f"日内回撤达熔断线: {drawdown:.2%} "
-                    f">= {self.config.max_daily_drawdown:.2%}"
+                    f">= {self.config.max_daily_drawdown:.2%}",
                 )
 
         return True, ""
+
+    # ─────────────────────────────────────────
+    #  内部辅助
+    # ─────────────────────────────────────────
+
+    def _sector_held_amount(self, sector: str) -> float:
+        """计算指定行业的当前持仓金额
+
+        优先级:
+          - 该行业下所有持仓的 _last_prices[vt_symbol] * volume
+          - 若该 vt_symbol 无最近成交价, fallback 到 0 (保守: 忽略未知价持仓)
+
+        未知行业 ("未知") 单独成一类, 不会与已有行业混算
+        """
+        total = 0.0
+        for sym, vol in self._positions.items():
+            if vol <= 0:
+                continue
+            if self._sector_map(sym) != sector:
+                continue
+            price = self._last_prices.get(sym, 0.0)
+            total += price * vol
+        return total
+
+    def _reject_order(self, vt_symbol: str, reason: str) -> tuple[bool, str]:
+        """单笔拒绝 → put EVENT_RISK_ALERT (warn) + 返回 (False, reason)"""
+        self._emit_alert(reason=reason, level="warn", vt_symbol=vt_symbol)
+        return False, reason
+
+    def _reject_daily(self, reason: str) -> tuple[bool, str]:
+        """日熔断拒绝 → put EVENT_RISK_ALERT (error) + 返回 (False, reason)"""
+        self._emit_alert(reason=reason, level="error", vt_symbol="")
+        return False, reason
+
+    def _emit_alert(self, reason: str, level: str, vt_symbol: str) -> None:
+        """put EVENT_RISK_ALERT — 容错, 失败不影响主流程 (ADR-0007 D3)"""
+        try:
+            from ..event import EVENT_RISK_ALERT
+            from .event_data import RiskAlert
+            self._event_engine.put(
+                EVENT_RISK_ALERT,
+                RiskAlert(reason=reason, level=level, vt_symbol=vt_symbol),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"EVENT_RISK_ALERT 推送失败 (主流程不受影响): {e}")
 
     # ─────────────────────────────────────────
     #  内部 / 调试
@@ -312,6 +423,8 @@ class RiskEngine:
             "daily_peak": self._daily_peak,
             "max_daily_trades": self.config.max_daily_trades,
             "max_daily_drawdown": self.config.max_daily_drawdown,
+            "sector_concentration_pct": self.config.sector_concentration_pct,
+            "single_symbol_concentration_pct": self.config.single_symbol_concentration_pct,
             "position_count": sum(1 for v in self._positions.values() if v > 0),
             "account_balance": self._account_balance,
             "today": self._today.isoformat(),
