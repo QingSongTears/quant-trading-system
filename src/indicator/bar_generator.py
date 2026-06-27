@@ -8,13 +8,14 @@ BarGenerator — K 线合成器 (借鉴 vnpy.trader.utility.BarGenerator, 2026-0
   - 支持小时窗口 (1h/4h 等)
   - 可嵌套 (1m→5m→30m, 1m→15m→1h)
   - A 股适配: 日 K 周末/节假日无数据, 5m/15m 仅交易时段 09:30-11:30 13:00-15:00
+  - (P3.3, 2026-06-27) 事件订阅: 可注册到 EventEngine, 自动响应 EVENT_TICK / EVENT_BAR
 
 设计简化 (vs vnpy):
   - vnpy 支持 tick-level 1m 合成 (需 last_price/bid/ask 实时刷新)
   - 本项目主要用于回测, 1m 数据从 LocalDatafeed 直接拉, BarGenerator 专注"低 → 高" 合成
 
 典型用法:
-    # 1m → 5m 合成
+    # ── 1. 手动 push 模式 (回测) ──
     def on_5m_bar(bar: BarData):
         print(bar.close_price)
 
@@ -22,7 +23,16 @@ BarGenerator — K 线合成器 (借鉴 vnpy.trader.utility.BarGenerator, 2026-0
     for bar_1m in data_mgr.datafeed.get_bars("000001.SZ", "1m"):
         bg_5m.update_bar(bar_1m)
 
-    # 嵌套: 1m → 5m → 30m
+    # ── 2. 事件订阅模式 (实时, P3.3) ──
+    from src.event import EventEngine
+    engine = EventEngine()
+    engine.start()
+
+    bg_5m = BarGenerator(on_bar=on_5m_bar, window=5, interval="5m")
+    bg_5m.subscribe(engine, vt_symbol="000001.SZ")
+    # 现在 engine.put(Event(EVENT_BAR, bar)) 会自动触发 on_bar
+
+    # ── 3. 嵌套 (跨级) ──
     bg_30m = BarGenerator(on_bar=on_30m_bar, window=6, interval="30m")
     bg_5m = BarGenerator(
         on_bar=on_5m_bar,
@@ -35,9 +45,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Callable, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional
 
 from ..gateway import BarData, TickData
+
+if TYPE_CHECKING:
+    from ..event import Event, EventEngine
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +113,11 @@ class BarGenerator:
         # 当前高周期 K 线已累计多少根低周期
         self._window_count: int = 0
 
+        # ── 事件订阅状态 (P3.3, 2026-06-27) ──
+        self._event_engine: Optional["EventEngine"] = None
+        self._vt_symbol_filter: Optional[str] = None
+        self._interval_filter: Optional[str] = None
+
     # ─────────────────────────────────────────
     #  主入口
     # ─────────────────────────────────────────
@@ -150,6 +168,108 @@ class BarGenerator:
         # 窗口满 → 生成 window_bar
         if self._window_count >= self.window:
             self._finish_window()
+
+    # ─────────────────────────────────────────
+    #  事件订阅 (P3.3, 2026-06-27)
+    # ─────────────────────────────────────────
+
+    def subscribe(
+        self,
+        event_engine: "EventEngine",
+        vt_symbol: Optional[str] = None,
+        interval: Optional[str] = None,
+    ) -> None:
+        """订阅 EventEngine, 自动响应 EVENT_TICK / EVENT_BAR
+
+        Args:
+            event_engine: EventEngine 实例
+            vt_symbol: 可选过滤 (e.g. "000001.SZ"), None = 不过滤, 所有 vt_symbol 都响应
+            interval: 可选过滤 (e.g. "1m"), None = 不过滤, 仅 EVENT_BAR 生效
+                     (tick 没有 interval 字段, 无需过滤)
+
+        多次 subscribe 以前一次为准 (后调用的覆盖前面的, 旧 engine 不会被注销,
+        调用方需自己保证不重复订阅)。
+
+        用法:
+            engine = EventEngine(); engine.start()
+            bg = BarGenerator(on_bar=on_bar, window=5, interval="5m")
+            bg.subscribe(engine, vt_symbol="000001.SZ")
+            # 现在 engine.put(Event(EVENT_BAR, bar)) 会触发 bg.on_bar
+        """
+        # 延迟导入: 防循环依赖 (event_engine → ... → indicator)
+        from ..event import EVENT_BAR, EVENT_TICK
+
+        self._event_engine = event_engine
+        self._vt_symbol_filter = vt_symbol
+        self._interval_filter = interval
+
+        event_engine.register(EVENT_TICK, self._on_event_tick)
+        event_engine.register(EVENT_BAR, self._on_event_bar)
+        logger.info(
+            f"BarGenerator.subscribe: engine={event_engine.engine_name}, "
+            f"vt_symbol={vt_symbol!r}, interval={interval!r}, "
+            f"bg.interval={self.interval}"
+        )
+
+    def unsubscribe(self, event_engine: "EventEngine") -> None:
+        """注销回调 (防内存泄漏)
+
+        若未 subscribe 过, 此方法为 no-op。
+
+        Args:
+            event_engine: 必须与 subscribe 时同一个 engine 实例
+        """
+        # 延迟导入
+        from ..event import EVENT_BAR, EVENT_TICK
+
+        if self._event_engine is None:
+            logger.debug("BarGenerator.unsubscribe: 未订阅, no-op")
+            return
+
+        # 注销回调, 防内存泄漏
+        event_engine.unregister(EVENT_TICK, self._on_event_tick)
+        event_engine.unregister(EVENT_BAR, self._on_event_bar)
+
+        # 清状态
+        self._event_engine = None
+        self._vt_symbol_filter = None
+        self._interval_filter = None
+        logger.info("BarGenerator.unsubscribe: 已注销 EVENT_TICK / EVENT_BAR 回调")
+
+    def _on_event_tick(self, event: "Event") -> None:
+        """EVENT_TICK 回调 — 过滤后调 update_tick
+
+        event.data 为 None → 静默忽略 (不抛异常)
+        vt_symbol 不匹配 → 静默忽略
+        """
+        tick = event.data
+        if tick is None:
+            return
+        if self._vt_symbol_filter is not None:
+            vt = getattr(tick, "vt_symbol", "")
+            if vt != self._vt_symbol_filter:
+                return
+        self.update_tick(tick)
+
+    def _on_event_bar(self, event: "Event") -> None:
+        """EVENT_BAR 回调 — 过滤后调 update_bar
+
+        event.data 为 None → 静默忽略
+        vt_symbol 不匹配 → 静默忽略
+        interval 不匹配 → 静默忽略
+        """
+        bar = event.data
+        if bar is None:
+            return
+        if self._vt_symbol_filter is not None:
+            vt = getattr(bar, "vt_symbol", "")
+            if vt != self._vt_symbol_filter:
+                return
+        if self._interval_filter is not None:
+            bar_interval = getattr(bar, "interval", "")
+            if bar_interval != self._interval_filter:
+                return
+        self.update_bar(bar)
 
     # ─────────────────────────────────────────
     #  内部辅助
