@@ -1,0 +1,100 @@
+# .pre-commit-config.yaml — 预提交检查配置
+#
+# 本文件让 pre-commit 框架（https://pre-commit.com）能跑本项目的 AI 守门。
+# 既支持本地 pre-commit run（开发期），也支持 GitHub Action pre-commit/action（CI 期）。
+#
+# 本地安装（一次性）：
+#   pip install pre-commit
+#   pre-commit install
+#
+# 本地手动跑：
+#   pre-commit run --all-files
+#
+# GitHub CI（自动）：见 .github/workflows/ci.yml 的 pre_commit job
+
+repos:
+  - repo: local
+    hooks:
+      # ─── AI 守门 #1: 命名规范 ───────────────────────
+      - id: check-naming
+        name: 🛡️  check_naming (类名/zh_name/en_name)
+        entry: python dev_tools/hooks/check_naming.py
+        language: system
+        pass_filenames: false
+        types: [python]
+        stages: [pre-commit]
+
+      # ─── AI 守门 #2: 目录结构 ───────────────────────
+      - id: check-directory
+        name: 🛡️  check_directory (新目录需 ADR)
+        entry: python dev_tools/hooks/check_directory.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # ─── AI 守门 #3: 黑名单 ────────────────────────
+      - id: check-legacy
+        name: 🛡️  check_legacy (禁止废弃模块)
+        entry: python dev_tools/hooks/check_legacy.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # ─── AI 守门 #4: 测试强制 ──────────────────────
+      - id: check-test-required
+        name: 🛡️  check_test_required (新 src/ 必有测试)
+        entry: python dev_tools/hooks/check_test_required.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # ─── AI 守门 #5: 导入规范 ──────────────────────
+      - id: check-import-canonical
+        name: 🛡️  check_import_canonical (分层 + 绕过门面)
+        entry: python dev_tools/hooks/check_import_canonical.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # ─── AI 守门 #6: 文件行数 ──────────────────────
+      - id: check-file-size
+        name: 🛡️  check_file_size (单文件 ≤ 500 行)
+        entry: python dev_tools/hooks/check_file_size.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # ─── AI 守门 #7: commit msg ─────────────────────
+      - id: check-commit-msg
+        name: 🛡️  check_commit_msg (Conventional + issue)
+        entry: python dev_tools/hooks/check_commit_msg.py
+        language: system
+        pass_filenames: false
+        stages: [commit-msg]
+
+  # ─── 通用工具检查（开箱即用） ──────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        name: trim trailing whitespace
+      - id: end-of-file-fixer
+        name: ensure newline at EOF
+      - id: check-merge-conflict
+        name: check for merge conflict markers
+      - id: check-added-large-files
+        name: prevent committing large files (>500KB)
+        args: [--maxkb=500]
+      - id: check-yaml
+        name: check yaml syntax
+      - id: check-json
+        name: check json syntax
+
+  # ─── Python 风格检查 ──────────────────────────────
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+        name: flake8 (lint)
+        args: [--config=.flake8]
+        additional_dependencies: [flake8]

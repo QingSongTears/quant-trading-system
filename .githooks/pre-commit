@@ -1,0 +1,24 @@
+#!/bin/sh
+# .githooks/pre-commit - shell wrapper for pre-commit
+# Calls .githooks/pre-commit.py to run AI guards
+#
+# Why sh wrapper: Git on Windows doesn't execute Python shebang
+# directly from .githooks/. Need explicit shell call.
+#
+# Why `python` (not python3): python3 on Windows is the broken
+# Microsoft Store stub. `python` is the real interpreter.
+
+if command -v python >/dev/null 2>&1; then
+    PYTHON=python
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON=python3
+else
+    echo "[FAIL] No python found in PATH" >&2
+    exit 1
+fi
+
+# Change to project root (this hook is in .githooks/)
+cd "$(dirname "$0")/.." || exit 1
+
+# Run Python implementation
+exec "$PYTHON" "$(dirname "$0")/pre-commit.py"
