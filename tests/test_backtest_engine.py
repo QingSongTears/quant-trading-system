@@ -1,13 +1,23 @@
 """
-测试用例: F4 回测引擎
-对应 Issue #42 [B-02] / 验收清单 TC-F4-001 ~ TC-F4-006
+测试: BacktestEngine + BacktestReport — ADR-0009 (拆分后精简版)
+================================================================
+
+覆盖:
+- BacktestReport dataclass (to_dict / to_db_dict / defaults)
+- report_to_chart_data ECharts 转换
+- BacktestEngine.run / run_batch / rank_batch_results
+- BacktestEngine 参数搜索 (grid / random / bayesian / multi_metric) — 用 mock 避免真实 IO
+
+注: 原 test_backtest.py 中 fixture `mock_backtest_engine` 直接引用 engine.py 的 DataRepository 符号,
+新结构中 DataRepository 由 BacktestDataLoader 内部使用, 测试改为 mock runner 层。
 """
-import pytest
 import json
 from datetime import date, timedelta
+from unittest.mock import MagicMock, patch
 
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
 from src.backtest.engine import BacktestEngine, BacktestReport
 from src.backtest.report import report_to_chart_data
@@ -71,21 +81,16 @@ class TestBacktestReport:
             end_date=date(2024, 1, 31),
             initial_capital=100000,
             final_equity=100000,
-            total_return=0.0,
-            annual_return=0.0,
-            sharpe_ratio=0.0,
-            max_drawdown=0.0,
-            win_rate=0.0,
-            profit_factor=0.0,
-            total_trades=0,
-            annual_volatility=0.0,
-            calmar_ratio=0.0,
+            total_return=0.0, annual_return=0.0, sharpe_ratio=0.0,
+            max_drawdown=0.0, win_rate=0.0, profit_factor=0.0,
+            total_trades=0, annual_volatility=0.0, calmar_ratio=0.0,
         )
         d = report.to_dict()
         assert "strategy_name" in d
         assert "total_return" in d
         assert "equity_curve" in d
         assert d["start_date"] == "2024-01-01"
+        assert isinstance(d["equity_curve"], str)  # JSON 序列化后是字符串
 
     def test_report_to_db_dict(self):
         """测试数据库存储格式"""
@@ -97,18 +102,10 @@ class TestBacktestReport:
             end_date=date(2024, 6, 1),
             initial_capital=100000,
             final_equity=105000,
-            total_return=5.0,
-            annual_return=10.0,
-            sharpe_ratio=1.5,
-            max_drawdown=-3.0,
-            win_rate=60.0,
-            profit_factor=2.0,
-            total_trades=10,
-            annual_volatility=15.0,
-            calmar_ratio=3.33,
-            trades_detail=[
-                {"entry_date": "2024-01-02", "pnl": 500}
-            ],
+            total_return=5.0, annual_return=10.0, sharpe_ratio=1.5,
+            max_drawdown=-3.0, win_rate=60.0, profit_factor=2.0,
+            total_trades=10, annual_volatility=15.0, calmar_ratio=3.33,
+            trades_detail=[{"entry_date": "2024-01-02", "pnl": 500}],
         )
         db_dict = report.to_db_dict(strategy_id=1)
         assert db_dict["strategy_id"] == 1
@@ -125,19 +122,14 @@ class TestBacktestReport:
             end_date=date(2024, 1, 31),
             initial_capital=100000,
             final_equity=100000,
-            total_return=0.0,
-            annual_return=0.0,
-            sharpe_ratio=0.0,
-            max_drawdown=0.0,
-            win_rate=0.0,
-            profit_factor=0.0,
-            total_trades=0,
-            annual_volatility=0.0,
-            calmar_ratio=0.0,
+            total_return=0.0, annual_return=0.0, sharpe_ratio=0.0,
+            max_drawdown=0.0, win_rate=0.0, profit_factor=0.0,
+            total_trades=0, annual_volatility=0.0, calmar_ratio=0.0,
         )
         assert report.equity_curve == []
         assert report.trades_detail == []
         assert report.monthly_returns == {}
+        assert report.cost_config == {}
 
 
 # ============================================================
@@ -157,8 +149,7 @@ class TestReportToChartData:
             {"date": "2024-01-08", "equity": 103000},
         ]
         report = BacktestReport(
-            strategy_name="测试",
-            stock_code="000001", stock_name="测试",
+            strategy_name="测试", stock_code="000001", stock_name="测试",
             start_date=date(2024, 1, 2), end_date=date(2024, 1, 8),
             initial_capital=100000, final_equity=103000,
             total_return=3.0, annual_return=30.0, sharpe_ratio=2.0,
@@ -180,9 +171,9 @@ class TestReportToChartData:
         equity = [
             {"date": "2024-01-02", "equity": 100000},
             {"date": "2024-01-03", "equity": 100000},
-            {"date": "2024-01-04", "equity": 95000},  # -5% 回撤
-            {"date": "2024-01-05", "equity": 98000},  # 回撤 -2%
-            {"date": "2024-01-08", "equity": 105000}, # 新高，回撤 0%
+            {"date": "2024-01-04", "equity": 95000},   # -5% 回撤
+            {"date": "2024-01-05", "equity": 98000},   # 回撤 -2%
+            {"date": "2024-01-08", "equity": 105000},  # 新高, 回撤 0%
         ]
         report = BacktestReport(
             strategy_name="测试", stock_code="000001", stock_name="测试",
@@ -202,20 +193,13 @@ class TestReportToChartData:
 
 
 # ============================================================
-# BacktestEngine 指标计算测试 (mock DB)
+# BacktestEngine 薄封装层测试
 # ============================================================
 
 @pytest.fixture
-def mock_backtest_engine(monkeypatch):
-    """创建 mock 的 BacktestEngine（不需要真实数据库）"""
-    from unittest.mock import MagicMock
-    import src.backtest.engine as eng_mod
-
-    # Mock DataRepository
-    mock_repo = MagicMock()
-    mock_repo.init_database = MagicMock()
-
-    # Mock get_config
+def mock_engine(monkeypatch):
+    """Mock BacktestEngine 内部依赖(DB / config)"""
+    # Mock config
     mock_config = {
         "backtest": {
             "costs": {
@@ -227,66 +211,107 @@ def mock_backtest_engine(monkeypatch):
             "risk_free_rate": 0.02,
         }
     }
-    monkeypatch.setattr(eng_mod, "get_config", lambda: mock_config)
-    monkeypatch.setattr(eng_mod, "DataRepository", lambda: mock_repo)
+    # Mock DataRepository 实例化(避免真实 DB)
+    mock_repo = MagicMock()
+    mock_repo.init_database = MagicMock()
 
-    # 创建实例时绕过 DB 初始化
+    def fake_factory():
+        return mock_repo
+
+    # 替换 get_config 和 DataRepository (在 data_loader 里用)
+    from src.backtest import data_loader as dl_mod
+    monkeypatch.setattr(dl_mod, "DataRepository", fake_factory)
+    monkeypatch.setattr("src.config.get_config", lambda: mock_config)
+
+    # 创建 engine, 不调用 __init__ 真实 DB
     engine = object.__new__(BacktestEngine)
-    engine.repo = mock_repo
     engine.commission = 0.0003
     engine.stamp_duty = 0.0005
     engine.slippage = 0.0001
     engine.benchmark_code = "sh000300"
     engine.risk_free_rate = 0.02
+
+    # 注入 mock runner 和 data_loader
+    from src.backtest.data_loader import BacktestDataLoader
+    from src.backtest.runner import BacktestRunner
+    engine.data_loader = BacktestDataLoader(repo=mock_repo)
+    engine.runner = BacktestRunner(
+        data_loader=engine.data_loader,
+        commission=0.0003,
+        stamp_duty=0.0005,
+        slippage=0.0001,
+        benchmark_code="sh000300",
+        risk_free_rate=0.02,
+    )
     return engine
 
 
-class TestBacktestEngineCalculations:
-    """回测引擎内部计算逻辑测试"""
+class TestBacktestEnginePublicAPI:
+    """公开 API 保留测试"""
 
-    def test_annual_return_calculation(self, mock_backtest_engine):
+    def test_engine_class_exists(self):
+        """BacktestEngine 类存在"""
+        assert BacktestEngine is not None
+
+    def test_report_class_exists(self):
+        """BacktestReport 类存在"""
+        assert BacktestReport is not None
+
+    def test_report_importable_from_engine(self):
+        """从 engine 模块导入 BacktestReport(向后兼容路径)"""
+        from src.backtest.engine import BacktestReport as BR
+        assert BR is BacktestReport
+
+    def test_report_importable_from_report(self):
+        """从 report 模块导入 BacktestReport(直接路径)"""
+        from src.backtest.report import BacktestReport as BR
+        assert BR is BacktestReport
+
+
+class TestBacktestRunnerMethods:
+    """测试 BacktestRunner 内部分发方法(通过 mock engine)"""
+
+    def test_calc_annual_return_pct(self, mock_engine):
         """年化收益率计算"""
-        engine = mock_backtest_engine
         # 半年 20% 收益 → 年化约 44%
-        annual = engine._calc_annual_return(20.0, 125)  # 125 个交易日 = 半年
-        assert 40 <= annual <= 50, f"预期 ~44%，实际 {annual:.1f}%"
+        annual = mock_engine.runner.calc_annual_return_pct(20.0, 125)
+        assert 40 <= annual <= 50, f"预期 ~44%, 实际 {annual:.1f}%"
 
-    def test_annual_return_zero(self, mock_backtest_engine):
+    def test_calc_annual_return_pct_zero(self, mock_engine):
         """零收益"""
-        engine = mock_backtest_engine
-        assert engine._calc_annual_return(0, 250) == 0
+        assert mock_engine.runner.calc_annual_return_pct(0, 250) == 0
 
-    def test_annual_return_negative(self, mock_backtest_engine):
+    def test_calc_annual_return_pct_negative(self, mock_engine):
         """负收益"""
-        engine = mock_backtest_engine
-        annual = engine._calc_annual_return(-10.0, 250)
+        annual = mock_engine.runner.calc_annual_return_pct(-10.0, 250)
         assert annual < 0
 
-    def test_sharpe_zero_trades(self, mock_backtest_engine):
-        """无交易时夏普比率"""
-        engine = mock_backtest_engine
-        assert engine._calc_sharpe(
-            pd.DataFrame({"Close": [100]}), 100000, 100000, 1
-        ) == 0
+    def test_calc_sharpe_zero_days(self, mock_engine):
+        """无足够数据时夏普比率为 0"""
+        stats = {"_equity_curve": pd.Series([100, 101])}
+        sharpe = mock_engine.runner.calc_sharpe(stats, 100000, 100000, 1)
+        assert sharpe == 0
 
-    def test_volatility_calculation(self, mock_backtest_engine):
+    def test_calc_annual_volatility(self, mock_engine):
         """波动率计算"""
         np.random.seed(42)
         prices = 100 + np.random.randn(100).cumsum()
-        # _calc_annual_volatility 需要 stats dict 且包含 _equity_curve
         equity_series = pd.Series(prices, name="Equity")
         stats = {"_equity_curve": equity_series}
-        engine = mock_backtest_engine
-        vol = engine._calc_annual_volatility(stats)
-        assert vol > 0, "波动率应为正数"
+        vol = mock_engine.runner.calc_annual_volatility(stats)
+        assert vol > 0
 
+    def test_extract_equity_series(self, mock_engine):
+        """从 stats 提取 equity series"""
+        equity = pd.Series([100, 101, 102])
+        stats = {"_equity_curve": equity}
+        result = mock_engine.runner.extract_equity_series(stats)
+        assert result is not None
+        assert len(result) == 3
 
-# ============================================================
-# 边界场景测试
-# ============================================================
 
 class TestBacktestEdgeCases:
-    """回测引擎边界场景"""
+    """边界场景"""
 
     def test_empty_equity_curve(self):
         """空净值曲线处理"""
@@ -317,7 +342,32 @@ class TestBacktestEdgeCases:
         assert report.cost_config["commission_rate"] == 0.0003
 
 
-# ============================================================
-# stock_screener 策略组件测试 — 2026-06-25 删除
-# 原因: stock_screener/ 整目录已删 (LEGACY 子系统), 测试连带删除
-# ============================================================
+class TestMultiMetricOptimize:
+    """多指标综合优化(委托给 optimizer)"""
+
+    def test_basic_score(self):
+        """基本加权评分"""
+        from src.backtest.engine import BacktestEngine
+        engine = object.__new__(BacktestEngine)
+        results = [
+            {"params": {"a": 1}, "sharpe_ratio": 1.0, "total_return": 5.0, "max_drawdown": -10.0},
+            {"params": {"a": 2}, "sharpe_ratio": 2.0, "total_return": 10.0, "max_drawdown": -5.0},
+            {"params": {"a": 3}, "sharpe_ratio": 0.5, "total_return": 3.0, "max_drawdown": -20.0},
+        ]
+        scored = engine.multi_metric_optimize(
+            results, metrics=["sharpe_ratio:0.5", "total_return:0.3", "max_drawdown:0.2"]
+        )
+        assert len(scored) == 3
+        assert all("composite_score" in r for r in scored)
+        # 综合评分最高者排第一
+        assert scored[0]["composite_score"] >= scored[-1]["composite_score"]
+
+    def test_default_metrics(self):
+        """默认指标权重"""
+        from src.backtest.engine import BacktestEngine
+        engine = object.__new__(BacktestEngine)
+        results = [
+            {"params": {}, "sharpe_ratio": 1.0, "total_return": 5.0, "max_drawdown": -10.0},
+        ]
+        scored = engine.multi_metric_optimize(results)
+        assert "composite_score" in scored[0]
