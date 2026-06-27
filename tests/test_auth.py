@@ -229,11 +229,20 @@ class TestSafeImportStrategy:
 class TestNoWhitelistRegression:
     """防止未来回退到无白名单的 importlib.import_module"""
 
-    def test_api_py_uses_safe_import(self):
-        """src/web/routes/api.py 应全部用 safe_import_strategy,没有裸 importlib"""
-        path = _PROJECT_ROOT / "src" / "web" / "routes" / "api.py"
-        src = path.read_text(encoding="utf-8")
-        # 文件中不应该有 'import importlib'
-        assert "import importlib" not in src
-        # 应该有 safe_import_strategy 的调用
-        assert src.count("safe_import_strategy(") >= 4
+    def test_backtest_routes_uses_safe_import(self):
+        """src/web/routes/{backtest,data}_routes.py 应全部用 safe_import_strategy,没有裸 importlib
+
+        2026-06-27 (#85): 原 src/web/routes/api.py 拆为多个子路由, safe_import_strategy
+        的回归保护迁移到子路由文件。4 个原始调用点拆分到:
+          - backtest_routes.py: 3 个 (run / portfolio/run / batch/run)
+          - data_routes.py:     1 个 (paramsearch/run)
+        """
+        total = 0
+        for relpath in ("backtest_routes.py", "data_routes.py"):
+            path = _PROJECT_ROOT / "src" / "web" / "routes" / relpath
+            src = path.read_text(encoding="utf-8")
+            # 文件中不应该有 'import importlib'
+            assert "import importlib" not in src, f"{relpath} 出现裸 importlib"
+            total += src.count("safe_import_strategy(")
+        # 合计 4 个 safe_import_strategy 调用点
+        assert total >= 4, f"safe_import_strategy 调用点数 ({total}) 少于 4"
