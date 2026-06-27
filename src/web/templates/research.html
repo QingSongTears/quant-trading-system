@@ -1,14 +1,12 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>研究面板 · 量化调优与归因</title>
-{# Web QA #1 (2026-06-27): 独立模板不继承 base.html, 必须显式注入 api-key meta + common.js, 否则 window.QT undefined, v5/v6/tuning chart 全部 fail #}
-{# Web QA #2 (2026-06-27): API 实际返 {success, data: [...]}, 旧前端用 data.results / data.strategies → 'Cannot read properties of undefined (reading map)'. 现统一改 data.data + 防御 data.data || [] #}
-<meta name="api-key" content="{{ api_key }}">
-<script src="/static/js/common.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% set page_title = "研究面板 · 量化调优与归因" %}
+{% set need_chartjs = true %}
+{# Web QA #5 (2026-06-27): research.html 改用 _standalone_head.html 统一所有 32 个独立模板的 head.
+   原 inline 注入 api-key meta + common.js 是 Web QA #1 的临时修复, 现在统一用 partials.
+   Web QA #2 (2026-06-27): API 实际返 {success, data: [...]}, 旧前端用 data.results / data.strategies → 'Cannot read properties of undefined (reading map)'. 现统一改 data.data + 防御 data.data || [] #}
+{% include "partials/_standalone_head.html" %}
 <style>
 :root { --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a; --text:#e0e0e0; --dim:#888; --accent:#4fc3f7; --green:#4caf50; --red:#ef5350; --yellow:#ffa726; }
 * { margin:0; padding:0; box-sizing:border-box; }
