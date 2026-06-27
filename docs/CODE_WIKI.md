@@ -222,19 +222,56 @@ report = engine.run(
 
 | 文件 | 职责 |
 |------|------|
-| `manager.py` | 统一数据访问入口；协调缓存、校验、数据源选择 |
-| `datafeed/base.py` | 抽象数据源接口（`get_bars()`、`get_fund_flow()` 等） |
+| `manager.py` | 统一数据访问入口（DataManager 单例） |
+| `datafeed/base.py` | 抽象数据源接口（ADR-0010: 含 get_bars / get_stock_list / get_industry_map / get_news_events / get_finance_snapshot / get_trading_calendar） |
 | `datafeed/parquet.py` | 基于 Parquet 的高性能列式读取 |
-| `datafeed/local.py` | 基于 CSV 的本地数据读取（离线开发用） |
+| `datafeed/local.py` | 基于 SQLite 的本地数据读取（离线开发 / 回测 hot path 主用） |
 | `downloader.py` | 从 AKShare/Baostock API 下载数据 |
 | `westock.py` | WeStock Data 实时行情适配器 |
-| `westock_downloader.py` | WeStock 专用数据下载器 |
 | `validator.py` | 数据质量校验（缺失值、异常值检测） |
 | `simulation_repo.py` | 模拟回测场景下的内存数据仓库 |
 | `xgb_loader.py` | XGBoost 模型加载 |
 | `xgb_scaler.py` | ML 模型特征缩放 |
 
-**设计模式:** 策略模式 — `datafeed/base.py` 定义接口；`parquet.py` 和 `local.py` 提供可互换实现。
+**DataManager 统一门面 (2026-06-24 / 2026-06-27 ADR-0010):**
+
+```python
+from src.data import data_mgr
+
+# 基础数据 (行情 / 元数据) — 走 datafeed 抽象,第三方数据源可替换
+bars = data_mgr.datafeed.get_bars("000001.SZ", interval="1d", start=date(2024,1,1))
+stocks = data_mgr.datafeed.get_stock_list()
+ind_map = data_mgr.datafeed.get_industry_map(["000001", "600519"])
+events = data_mgr.datafeed.get_news_events(["000001"], date(2024,1,1), date(2024,12,31))
+finance = data_mgr.datafeed.get_finance_snapshot(["000001"])
+calendar = data_mgr.datafeed.get_trading_calendar(date(2024,1,1), date(2024,12,31))
+
+# 业务宽表 (backtest_result / signal_log 等) — 走 business 门面
+result = data_mgr.business.get_backtest_result(123)
+recent = data_mgr.business.get_recent_backtests(limit=50)
+
+# 通用 SQL (尚未抽象到 datafeed / business 的表) — 走 query / execute
+rows = data_mgr.query("SELECT * FROM some_table WHERE code=:code", {"code": "000001"})
+n = data_mgr.execute("UPDATE signal_log SET status=:s WHERE id=:id", {"s": "filled", "id": 1})
+```
+
+**设计模式:** 策略模式 + 门面模式 — `datafeed/base.py` 定义接口；`parquet.py` 和 `local.py` 提供可互换实现；`manager.py` 提供 7 类懒加载属性 (`downloader` / `westock` / `model` / `datafeed` / `business` / `simulation` / `query/execute`)。
+
+**ADR-0010 (2026-06-27) 关键决策:**
+- **基础数据走 datafeed**（行情 / 元数据 / 因子 / 日历）— 第三方数据源可替换 (v3.0 BaoStock/Tushare)
+- **业务宽表走 DataRepository**（backtest_result / signal_log / order_log / position）— ORM 边界保留
+- **业务模块 (strategies / scoring / selection / web) 禁止直接 import DataRepository / pd.read_sql / sql_utils.read_sql** — `check_legacy.py` 黑名单守门
+
+**Datafeed 抽象方法 (ABC):**
+
+| 方法 | 签名 | 返回 | 数据源 |
+|------|------|------|--------|
+| `get_bars` | `(vt_symbol, interval, start, end, count)` | `List[BarData]` | daily_price / parquet |
+| `get_stock_list` | `()` | `List[ContractData]` | stock_basic / parquet |
+| `get_industry_map` | `(codes)` | `Dict[code, industry]` | stock_basic.industry |
+| `get_news_events` | `(codes, start, end)` | `List[NewsEvent]` | research_report |
+| `get_finance_snapshot` | `(codes)` | `Dict[code, {net_profit, pe_ttm}]` | finance_summary |
+| `get_trading_calendar` | `(start, end)` | `List[date]` | 000001.SH 1d 推断 (默认) |
 
 ---
 

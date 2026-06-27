@@ -7,6 +7,8 @@ check_legacy.py — AI 守门 #3: 黑名单
   - 引用已归档策略名（v5_hybrid / v7_bull_wave 等）
   - 从 .bak / .legacy / .deprecated 文件 import
   - 引用 src/strategies/stock_screener/ 死目录
+  - ADR-0010 (2026-06-27): 业务模块直接 import DataRepository / sql_utils.read_sql
+    (绕过 datafeed 统一入口,业务宽表应走 data_mgr.business 门面)
 
 白名单（这些地方引用是 OK 的）：
   - dev_tools/hooks/ 守门脚本本身
@@ -33,6 +35,16 @@ elif sys.platform == "win32":
 
 ROOT = Path(__file__).resolve().parents[2]
 
+# ADR-0010 (2026-06-27): 黑名单目录
+# 这些目录的 .py 文件禁止直接 import DataRepository / pd.read_sql / sql_utils.read_sql
+# 业务宽表应走 data_mgr.business 门面,基础数据应走 data_mgr.datafeed
+DATAFEED_BLACKLIST_DIRS = (
+    "src/strategies/",
+    "src/scoring/",
+    "src/selection/",
+    "src/web/routes/",
+)
+
 # 黑名单（路径片段 / 模块名 / 策略名）
 LEGACY_PATTERNS = [
     # 路径（用 . 匹配 Python import 风格；用 / 匹配字符串路径）
@@ -53,6 +65,26 @@ LEGACY_PATTERNS = [
     # vnpy 模板（已 deprecated 准备 v3.0 删除）
     re.compile(r"from\s+src\.strategy\.alpha_strategy\s+import"),
     re.compile(r"import\s+src\.strategy\.alpha_strategy"),
+]
+
+# ADR-0010 (2026-06-27): 黑名单 import 模式
+# 仅在 DATAFEED_BLACKLIST_DIRS 下的 .py 文件中检查
+DATAFEED_BLACKLIST_PATTERNS = [
+    # 直接 import DataRepository
+    (
+        re.compile(r"from\s+\S*models\.repository\s+import\s+.*DataRepository"),
+        "禁止业务模块直接 import DataRepository,请走 data_mgr.business 门面 (ADR-0010)",
+    ),
+    # 直接 pd.read_sql 调用
+    (
+        re.compile(r"pd\.read_sql\s*\("),
+        "禁止业务模块 pd.read_sql 直读,请走 datafeed 统一入口 (ADR-0010)",
+    ),
+    # 直接 import read_sql from sql_utils (兼容 ..db.sql_utils / src.db.sql_utils)
+    (
+        re.compile(r"from\s+\S*db\.sql_utils\s+import\s+.*read_sql"),
+        "禁止业务模块直接 import read_sql,请走 datafeed 统一入口 (ADR-0010)",
+    ),
 ]
 
 # 允许出现黑名单的文件（守门自己 + 文档）
@@ -143,6 +175,24 @@ def check_file(filepath: Path) -> List[str]:
             errors.append(
                 f"  - {rel}:{line_no} 引用已废弃: {line_content[:100]}"
             )
+
+    # ADR-0010: 检查黑名单目录的 datafeed 黑名单 import 模式
+    rel_normalized = rel.replace("\\", "/")
+    in_blacklist_dir = any(
+        rel_normalized.startswith(d) for d in DATAFEED_BLACKLIST_DIRS
+    )
+    if in_blacklist_dir and filepath.suffix == ".py":
+        for pattern, msg in DATAFEED_BLACKLIST_PATTERNS:
+            for match in pattern.finditer(content):
+                line_no = content[: match.start()].count("\n") + 1
+                line_start = content.rfind("\n", 0, match.start()) + 1
+                line_end = content.find("\n", match.end())
+                if line_end == -1:
+                    line_end = len(content)
+                line_content = content[line_start:line_end].strip()
+                errors.append(
+                    f"  - {rel}:{line_no} {msg}\n    行: {line_content[:100]}"
+                )
 
     return errors
 
