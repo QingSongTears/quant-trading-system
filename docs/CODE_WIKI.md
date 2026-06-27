@@ -235,11 +235,53 @@
 | 文件 | 职责 |
 |------|------|
 | `atomic.py` | 原子指标原语（SMA、EMA、RSI、MACD、布林带、ATR 等） |
-| `bar_generator.py` | K 线时间周期聚合（如 5 分钟 → 日线、Tick → 分钟线） |
+| `bar_generator.py` | K 线时间周期聚合（如 5 分钟 → 日线、Tick → 分钟线）+ 事件订阅模式 |
 | `operators.py` | 指标组合算子（交叉、背离、阈值判断） |
 | `protocol.py` | 指标协议/接口定义 |
 
 **设计思路:** 指标可组合 — 原子指标通过算子组合成复杂信号。
+
+#### 3.6.1 `BarGenerator` 三种用法（P3.3，2026-06-27）
+
+`src/indicator/bar_generator.py` 是借鉴 vnpy 4.4 `trader.utility.BarGenerator` 的 K 线合成器，
+提供三种用法：
+
+| 模式 | 入口 | 适用场景 | 何时触发 |
+|---|---|---|---|
+| **手动 push**（回测） | `bg.update_bar(bar)` / `bg.update_tick(tick)` | 回测 / 一次性喂历史 K 线 | 调用方控制节奏 |
+| **事件订阅**（实时，P3.3） | `bg.subscribe(engine, vt_symbol=..., interval=...)` | 模拟盘 / 实盘推送 | EventEngine `put(EVENT_BAR/EVENT_TICK)` 时自动触发 |
+| **嵌套**（跨级） | `BarGenerator(on_window_bar=other_bg.update_bar, ...)` | 多级周期合成（1m→5m→30m） | 内部 `_finish_window` 完成时自动调用 |
+
+事件订阅模式关键 API：
+
+```python
+from src.event import EventEngine
+from src.indicator import BarGenerator
+
+engine = EventEngine()
+engine.start()
+
+bg = BarGenerator(on_bar=on_5m_bar, window=5, interval="5m")
+
+# 订阅 — 自动响应 EVENT_BAR / EVENT_TICK
+bg.subscribe(engine, vt_symbol="000001.SZ", interval="1m")
+
+# 之后 engine.put(Event(EVENT_BAR, bar_1m)) 自动喂入 bg
+# vt_symbol / interval 不匹配时静默忽略, 不抛异常
+# event.data=None 静默忽略
+
+# 退出时注销 (防内存泄漏)
+bg.unsubscribe(engine)
+```
+
+设计要点：
+- **lazy import**：`EventEngine` 在 `subscribe()` 内延迟导入，避免循环依赖（与 `RiskEngine` 一致）
+- **可选过滤**：`vt_symbol=None` 表示不过滤，所有 vt_symbol 都响应；`interval=None` 不过滤（仅对 EVENT_BAR 生效，tick 无 interval 字段）
+- **容错**：`event.data=None` 或过滤不匹配时静默 return，不抛异常
+- **不破坏现有 API**：`update_bar` / `update_tick` / 嵌套 仍可用，三种模式可同时并存
+
+详见 `src/indicator/bar_generator.py` 的 `subscribe` / `unsubscribe` / `_on_event_tick` / `_on_event_bar` 实现，
+单测见 `tests/test_bar_generator.py`（25 个用例，含 6 个订阅相关）。
 
 ---
 

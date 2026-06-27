@@ -11,11 +11,18 @@ BarGenerator 单测 — src/indicator/bar_generator.py (2026-06-24)
   - update_tick() (合成 1m bar)
   - bars_from_lower 批量工具
   - 错误路径 (window<1, 未知 interval)
+
+新增 (P3.3, 2026-06-27):
+  - subscribe() 把 bg 接到 EventEngine, 自动响应 EVENT_TICK / EVENT_BAR
+  - unsubscribe() 注销回调 (防内存泄漏)
+  - vt_symbol / interval 过滤
+  - event.data=None 静默忽略
 """
 import sys
 from dataclasses import replace
 from datetime import datetime, time
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -24,6 +31,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
 from src.gateway import BarData, TickData
+from src.event import EVENT_BAR, EVENT_TICK, Event, EventEngine
 from src.indicator import BarGenerator, INTERVAL_TO_MINUTES, bars_from_lower
 
 
@@ -286,3 +294,151 @@ def test_bars_from_lower_high_low():
     result = bars_from_lower(bars_1m, window=5, interval="5m")
     assert result[0].high_price == 12.0
     assert result[0].low_price == 7.0
+
+
+# ── 事件订阅 (P3.3, 2026-06-27) ──────────────────────────
+
+
+def test_subscribe_to_event_engine():
+    """subscribe 后, engine.put(EVENT_BAR) 触发 on_bar"""
+    calls = []
+    bg = BarGenerator(on_bar=calls.append, window=1, interval="1m")
+
+    engine = EventEngine(interval=1)
+    engine.start()
+    bg.subscribe(engine)
+
+    bar = _bar("000001", "SZ", datetime(2024, 1, 1, 9, 30), o=10.0, c=10.5)
+    engine.put(Event(EVENT_BAR, bar))
+
+    assert len(calls) == 1
+    assert calls[0].close_price == 10.5
+
+    bg.unsubscribe(engine)
+    engine.stop()
+
+
+def test_subscribe_with_vt_symbol_filter():
+    """subscribe(vt_symbol="000001.SZ") 只响应匹配的 vt_symbol"""
+    calls = []
+    bg = BarGenerator(on_bar=calls.append, window=1, interval="1m")
+
+    engine = EventEngine(interval=1)
+    engine.start()
+    bg.subscribe(engine, vt_symbol="000001.SZ")
+
+    # 不匹配 — 应忽略
+    bar_other = _bar("000002", "SZ", datetime(2024, 1, 1, 9, 30), c=20.0)
+    engine.put(Event(EVENT_BAR, bar_other))
+
+    # 匹配 — 应触发
+    bar_match = _bar("000001", "SZ", datetime(2024, 1, 1, 9, 31), c=10.5)
+    engine.put(Event(EVENT_BAR, bar_match))
+
+    assert len(calls) == 1
+    assert calls[0].close_price == 10.5
+
+    bg.unsubscribe(engine)
+    engine.stop()
+
+
+def test_unsubscribe_removes_callback():
+    """unsubscribe 后, unregister 已被调用且 put 不再触发"""
+    engine = EventEngine(interval=1)
+    engine.start()
+
+    calls = []
+    bg = BarGenerator(on_bar=calls.append, window=1, interval="1m")
+    bg.subscribe(engine)
+
+    # 验证 register 调用次数
+    assert len(engine._handlers[EVENT_BAR]) == 1
+    assert len(engine._handlers[EVENT_TICK]) == 1
+
+    bg.unsubscribe(engine)
+
+    # 注销后 _handlers 中应无 bg 的回调
+    assert len(engine._handlers.get(EVENT_BAR, [])) == 0
+    assert len(engine._handlers.get(EVENT_TICK, [])) == 0
+
+    # 注销后 put 不触发
+    bar = _bar("000001", "SZ", datetime(2024, 1, 1, 9, 30), c=10.5)
+    engine.put(Event(EVENT_BAR, bar))
+    assert calls == []
+
+    # 未订阅时 unsubscribe 为 no-op, 不报错
+    bg.unsubscribe(engine)
+
+    engine.stop()
+
+
+def test_event_bar_with_mismatched_interval_ignored():
+    """subscribe(interval="1m") 只响应 1m bar, 5m/1d 等被忽略"""
+    calls = []
+    bg = BarGenerator(on_bar=calls.append, window=1, interval="1m")
+
+    engine = EventEngine(interval=1)
+    engine.start()
+    bg.subscribe(engine, interval="1m")
+
+    # 5m bar — 不匹配 interval 过滤
+    bar_5m = _bar("000001", "SZ", datetime(2024, 1, 1, 9, 30),
+                 c=11.0, interval="5m")
+    engine.put(Event(EVENT_BAR, bar_5m))
+
+    # 1d bar — 不匹配
+    bar_1d = _bar("000001", "SZ", datetime(2024, 1, 1, 9, 30),
+                  c=12.0, interval="1d")
+    engine.put(Event(EVENT_BAR, bar_1d))
+
+    # 1m bar — 匹配
+    bar_1m = _bar("000001", "SZ", datetime(2024, 1, 1, 9, 30),
+                  c=10.5, interval="1m")
+    engine.put(Event(EVENT_BAR, bar_1m))
+
+    assert len(calls) == 1
+    assert calls[0].close_price == 10.5
+    assert calls[0].interval == "1m"
+
+    bg.unsubscribe(engine)
+    engine.stop()
+
+
+def test_event_data_none_ignored():
+    """event.data=None 静默忽略 (不抛异常, 不触发 on_bar)"""
+    calls = []
+    bg = BarGenerator(on_bar=calls.append, window=1, interval="1m")
+
+    engine = EventEngine(interval=1)
+    engine.start()
+    bg.subscribe(engine)
+
+    # data=None — 应静默忽略
+    engine.put(Event(EVENT_BAR, None))
+    engine.put(Event(EVENT_TICK, None))
+
+    # 正常 data — 应触发
+    bar = _bar("000001", "SZ", datetime(2024, 1, 1, 9, 30), c=10.5)
+    engine.put(Event(EVENT_BAR, bar))
+
+    assert len(calls) == 1
+    assert calls[0].close_price == 10.5
+
+    bg.unsubscribe(engine)
+    engine.stop()
+
+
+def test_subscribe_via_mock_engine_does_not_require_real_start():
+    """subscribe 仅调 register, 无需 engine 启动; 用 MagicMock 验证 register 调用"""
+    bg = BarGenerator(on_bar=lambda b: None, window=5, interval="5m")
+
+    mock_engine = MagicMock()
+    mock_engine.engine_name = "MockEngine"
+
+    bg.subscribe(mock_engine, vt_symbol="000001.SZ", interval="1m")
+
+    # 验证 register 调用了 EVENT_TICK 和 EVENT_BAR
+    assert mock_engine.register.call_count == 2
+    register_types = [c.args[0] for c in mock_engine.register.call_args_list]
+    assert EVENT_TICK in register_types
+    assert EVENT_BAR in register_types
