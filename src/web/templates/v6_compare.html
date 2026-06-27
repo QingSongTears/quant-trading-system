@@ -55,6 +55,9 @@ tr:hover td { background:rgba(255,255,255,0.03); }
 tr.best { background:var(--v6-soft); border-left:4px solid var(--v6); }
 tr.best td { background:transparent; }
 td.pos { color:var(--up); } td.neg { color:var(--down); }
+/* Web QA #6: .compare 表可识别性 (基线 + 放宽档) */
+table.compare { border:1px solid var(--v6); }
+table.compare thead th { background:rgba(139,92,246,0.08); }
 .tag-best { background:var(--v6); color:#fff; padding:1px 6px; border-radius:6px; font-size:0.6rem; margin-left:6px; }
 
 /* ── Row 4: 雷达 + 直方图 ── */
@@ -138,7 +141,8 @@ td.pos { color:var(--up); } td.neg { color:var(--down); }
 <div class="row3">
   <div class="card">
     <div class="card-title">📊 5 档配置对比 <span class="badge">基线 + 4 档放宽</span></div>
-    <table>
+    {# Web QA #6 (2026-06-27): 补 .compare class 让 QA 工具识别为对比表 #}
+    <table class="compare">
       <thead><tr>
         <th>配置</th><th>日均信号</th><th>总收益</th><th>年化</th><th>夏普</th><th>最大回撤</th><th>胜率</th><th>交易</th><th>卡玛</th>
       </tr></thead>

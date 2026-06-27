@@ -102,6 +102,10 @@ header a:hover { color:var(--accent); }
 @keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:0.8} }
 .loading { animation:pulse 1.5s ease-in-out infinite; }
 
+/* 原始 JSON (Web QA #6) */
+.diagnose-raw { background:rgba(0,0,0,0.35); border:1px solid var(--border); border-radius:8px; padding:12px 14px; max-height:280px; overflow:auto; font-family:'Fira Code',monospace; font-size:0.78rem; line-height:1.55; color:var(--text); }
+.diagnose-raw code { white-space:pre; color:inherit; }
+
 /* 工具条 */
 .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
 .toolbar select { padding:8px 12px; border-radius:6px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:0.82rem; }
@@ -211,6 +215,12 @@ header a:hover { color:var(--accent); }
     <div class="card">
       <div class="card-title">📝 诊断结论</div>
       <div class="conclusion-text" id="conclusion">选择股票后查看诊断结论</div>
+    </div>
+
+    <!-- 第五行：原始 JSON 结果 (Web QA #6: 补 pre/code 块供调试/复制) -->
+    <div class="card diagnose-result">
+      <div class="card-title">🔍 原始数据 (JSON)</div>
+      <pre class="diagnose-raw"><code id="rawResult">{ "提示": "完成诊断后此处显示原始 JSON 数据" }</code></pre>
     </div>
 
   </div>
@@ -885,6 +895,18 @@ function generateConclusion(signals, scoreVal, rsiVal, lastClose, prevClose) {
   }
 
   document.getElementById('conclusion').innerHTML = parts.join(' ');
+  // 同步显示原始 JSON 数据 (Web QA #6)
+  const rawEl = document.getElementById('rawResult');
+  if (rawEl) {
+    rawEl.textContent = JSON.stringify({
+      stock: currentCode,
+      last_close: lastClose,
+      prev_close: prevClose,
+      score: Number(scoreVal.toFixed(2)),
+      rsi: Number(rsiVal.toFixed(2)),
+      signals: signals.map(s => ({ id: s.id, name: s.name, signal: s.sig }))
+    }, null, 2);
+  }
 }
 
 // ===== 初始化 =====

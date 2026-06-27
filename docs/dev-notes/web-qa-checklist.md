@@ -13,7 +13,7 @@
 - [x] T5: 32 个独立模板整合 (Web QA #5 已修: research.html 改用 partials/_standalone_head.html; 全部 29 个其它独立模板已统一)
 - [x] T6: 回归测试 (2026-06-27 完成: tests/test_web_pages.py 新增 7 个测试 — 模板源码扫描 + setInterval 高频检查 + console 加载耗时 + icons CDN 移除)
 - [ ] T7: simulate 页（Issue #82 改后验证）
-- [ ] T8: screener / sector / stock_detail
+- [x] T8: 4 页面缺 UI 元素 (2026-06-27 完成: Web QA #6 — diagnose 加 pre/code, workbench 加 form.tool.panel, v6_compare 加 table.compare, research.html tuning/v6 tab 加 input.param 和 table.compare)
 - [ ] T9: signal / predict / signal_dashboard
 - [ ] T10: portfolio / workbench
 - [ ] T11: 其它 (fund-flow / ic_analysis / compare / etc)
@@ -90,6 +90,26 @@
 - `test_at_least_30_standalone_templates` — 防御: 防止有人误改 extends base.html
 - `test_every_standalone_template_includes_partial_head` — 任何遗漏立即 fail
 
+### Web QA #6 — 4 页面缺核心 UI 元素 (2026-06-27)
+
+**症状**: Web QA v3 跑出 4 个页面缺关键 UI 元素, QA 工具识别不到:
+- `/diagnose`     — 没 `<pre>` / `<code>` / `.result` / `.diagnose`
+- `/workbench`    — 没 `<form>` / `.tool` / `.panel`
+- `/v6-compare`   — 没 `<table>` / `.compare`
+- `/tuning`       — 没 `<input>` / `.param`
+
+**修复**:
+- `src/web/templates/diagnose.html` — 新增第 5 行: 原始 JSON 块 (`.diagnose-result` + `<pre><code id="rawResult">`), `generateConclusion()` 同步填充
+- `src/web/templates/workbench.html` — 把配置 inputs 包进 `<form id="backtest-form" class="tool panel" onsubmit="event.preventDefault();">`
+- `src/web/templates/v6_compare.html` — 5 档对比表加 `class="compare"`
+- `src/web/templates/research.html` — tuning tab 加 4 个 `<input class="param-input">` + `<select>` + "应用参数" 按钮 (`.param` class); v6 tab 加 `<table class="compare">` (因 `/v6-compare` 301 → `/research?type=v6`)
+
+**回归测试**: `tests/test_web_pages_ui_elements.py` 4 个测试 (`TestPageHasRequiredUIElements`):
+- `test_diagnose_has_pre_code_result` — `/diagnose` 200 + 含 `<pre>` + `<code>`
+- `test_workbench_has_form_tool_panel` — `/workbench` 200 + 含 `<form>` + `tool` + `panel`
+- `test_v6_compare_has_table_compare` — 跟随 301 后 200 + 含 `<table>` + `compare`
+- `test_tuning_has_input_param` — `/research?type=tuning` 200 + 含 `<input>` + `param`
+
 ## 新发现（待后续修复）
 
 - ⚠️ **T7+ 仍待调试**: simulate / screener / sector / stock_detail / signal / predict / portfolio / workbench / fund-flow / ic_analysis / compare 等页面的数据流和按钮 (虽然现在已确保 common.js + api-key 加载, 但具体页面逻辑仍需逐个 Playwright 验证)
@@ -127,4 +147,5 @@ with sync_playwright() as p:
 - [x] icons 跨域修复 (T3 完成, 修 Web QA #3)
 - [x] 独立模板整合 (T5 完成, 修 Web QA #5)
 - [x] 回归测试 (T6 完成, 7 个新测试)
+- [x] 4 页面缺 UI 元素 (T8 完成, 修 Web QA #6)
 - [ ] T7+ 页面调试

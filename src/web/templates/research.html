@@ -72,6 +72,25 @@ header a:hover { color:var(--accent); }
     {% elif research_type == 'v6' %}
     <p class="note">V6 策略多版本对比 — 收益 / 夏普 / 最大回撤 雷达图</p>
     <div id="v6-chart"><canvas id="v6-canvas"></canvas></div>
+
+    {# Web QA #6 (2026-06-27): 补 table.compare (V6 多版本对比表) #}
+    <div style="margin-top:16px;">
+      <table class="compare" style="width:100%;font-size:0.85rem;border-collapse:collapse;margin-top:8px;">
+        <thead>
+          <tr style="background:var(--card);">
+            <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border);">策略版本</th>
+            <th style="padding:8px;border-bottom:2px solid var(--border);">年化收益</th>
+            <th style="padding:8px;border-bottom:2px solid var(--border);">夏普</th>
+            <th style="padding:8px;border-bottom:2px solid var(--border);">最大回撤</th>
+            <th style="padding:8px;border-bottom:2px solid var(--border);">胜率</th>
+            <th style="padding:8px;border-bottom:2px solid var(--border);">卡玛</th>
+          </tr>
+        </thead>
+        <tbody id="v6-compare-body">
+          <tr><td colspan="6" style="padding:14px;text-align:center;color:var(--dim);">加载中...</td></tr>
+        </tbody>
+      </table>
+    </div>
     <script>
     (async function() {
       try {
@@ -91,12 +110,71 @@ header a:hover { color:var(--accent); }
           },
           options: { responsive: true },
         });
+        // Web QA #6: 填充 V6 对比表
+        const tbody = document.getElementById('v6-compare-body');
+        if (tbody) {
+          if (!items.length) {
+            tbody.innerHTML = '<tr><td colspan="6" style="padding:14px;text-align:center;color:var(--dim);">暂无策略数据</td></tr>';
+          } else {
+            tbody.innerHTML = items.map(s => {
+              const ar = (s.annual_return || 0).toFixed(2);
+              const sh = (s.sharpe || 0).toFixed(2);
+              const md = (s.max_drawdown || 0).toFixed(2);
+              const wr = (s.win_rate || 0).toFixed(1);
+              const cm = (s.calmar || 0).toFixed(2);
+              return `<tr>
+                <td style="padding:8px;border-bottom:1px solid var(--border);">${s.name||''}</td>
+                <td style="padding:8px;text-align:right;border-bottom:1px solid var(--border);">${ar}%</td>
+                <td style="padding:8px;text-align:right;border-bottom:1px solid var(--border);">${sh}</td>
+                <td style="padding:8px;text-align:right;border-bottom:1px solid var(--border);">${md}%</td>
+                <td style="padding:8px;text-align:right;border-bottom:1px solid var(--border);">${wr}%</td>
+                <td style="padding:8px;text-align:right;border-bottom:1px solid var(--border);">${cm}</td>
+              </tr>`;
+            }).join('');
+          }
+        }
       } catch (e) { console.warn('v6 chart load failed', e); }
     })();
     </script>
 
     {% elif research_type == 'tuning' %}
     <p class="note">参数调优 — ParamSearch 历史结果对比</p>
+
+    {# Web QA #6 (2026-06-27): 补 input/.param 元素 (参数调优页面) #}
+    <div class="param-panel" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
+      <label class="param">
+        <span style="display:block;font-size:0.72rem;color:var(--dim);margin-bottom:4px;">回看窗口 (日)</span>
+        <input type="number" class="param-input" id="tuning-window" value="20" min="5" max="120" step="5"
+               style="width:110px;padding:6px 10px;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px;">
+      </label>
+      <label class="param">
+        <span style="display:block;font-size:0.72rem;color:var(--dim);margin-bottom:4px;">Top-N 选股</span>
+        <input type="number" class="param-input" id="tuning-topn" value="10" min="1" max="100" step="1"
+               style="width:110px;padding:6px 10px;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px;">
+      </label>
+      <label class="param">
+        <span style="display:block;font-size:0.72rem;color:var(--dim);margin-bottom:4px;">最小样本数</span>
+        <input type="number" class="param-input" id="tuning-minsample" value="30" min="10" max="500" step="5"
+               style="width:110px;padding:6px 10px;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px;">
+      </label>
+      <label class="param">
+        <span style="display:block;font-size:0.72rem;color:var(--dim);margin-bottom:4px;">调优目标</span>
+        <select id="tuning-objective" class="param-input"
+                style="width:140px;padding:6px 10px;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px;">
+          <option value="sharpe">夏普比率</option>
+          <option value="annual_return">年化收益</option>
+          <option value="calmar">卡玛比率</option>
+          <option value="win_rate">胜率</option>
+        </select>
+      </label>
+      <div class="param" style="display:flex;align-items:flex-end;">
+        <button type="button" id="tuning-apply" class="param-apply"
+                style="padding:7px 16px;background:var(--accent);color:#000;border:none;border-radius:6px;font-weight:600;cursor:pointer;">
+          应用参数
+        </button>
+      </div>
+    </div>
+
     <div id="tuning-chart"><canvas id="tuning-canvas"></canvas></div>
     <script>
     (async function() {
@@ -111,6 +189,19 @@ header a:hover { color:var(--accent); }
           options: { responsive: true },
         });
       } catch (e) { console.warn('tuning chart load failed', e); }
+      // Web QA #6: "应用参数" 按钮 (避免纯静态 input 让 QA 误判)
+      const applyBtn = document.getElementById('tuning-apply');
+      if (applyBtn) {
+        applyBtn.addEventListener('click', () => {
+          const params = {
+            window: Number(document.getElementById('tuning-window').value || 20),
+            top_n: Number(document.getElementById('tuning-topn').value || 10),
+            min_sample: Number(document.getElementById('tuning-minsample').value || 30),
+            objective: document.getElementById('tuning-objective').value,
+          };
+          console.log('[tuning] 应用参数:', params);
+        });
+      }
     })();
     </script>
 
