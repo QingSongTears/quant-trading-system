@@ -222,7 +222,7 @@ let currentCode = '';
 let currentPeriod = 'day';
 let klineData = null;
 let charts = { gauge: null, radar: null, kline: null };
-let dimNames = ['technical','fundamental','fund_flow','institutional','lh_institutional','sentiment','news_event','chip'];
+let dimNames = ['tech','fundam','fund','institutional','lh_institutional','sentiment','news_event','chip'];
 let dimLabels = ['技术面','基本面','资金面','机构面','龙虎榜','情绪面','新闻面','筹码面'];
 const COLORS = ['#4fc3f7','#66bb6a','#ffa726','#ab47bc','#ef5350','#26c6da','#ec407a','#7c4dff'];
 
@@ -399,16 +399,16 @@ async function loadScores(code) {
     if (d.error) throw new Error(d.error);
 
     // predict 接口返回 dim_scores: {tech, fundam, fund, institutional, sentiment, news_event, chip, lh_institutional}
-    // 前端 dimLabels 顺序: 技术/资金/情绪/板块/估值/新闻/筹码/机构
+    // dimNames 顺序与 dimLabels 严格对齐: tech/fundam/fund/institutional/lh_institutional/sentiment/news_event/chip
     const dimMap = {
-      '技术':  d.dim_scores?.tech ?? 0,
-      '资金':  d.dim_scores?.fund ?? 0,
-      '情绪':  d.dim_scores?.sentiment ?? 0,
-      '板块':  0,  // 当前 predict 没单独板块维
-      '估值':  d.dim_scores?.fundam ?? 0,
-      '新闻':  d.dim_scores?.news_event ?? 0,
-      '筹码':  d.dim_scores?.chip ?? 0,
-      '机构':  d.dim_scores?.lh_institutional ?? d.dim_scores?.institutional ?? 0,
+      'tech':            d.dim_scores?.tech ?? 0,
+      'fundam':          d.dim_scores?.fundam ?? 0,
+      'fund':            d.dim_scores?.fund ?? 0,
+      'institutional':   d.dim_scores?.institutional ?? 0,
+      'lh_institutional':d.dim_scores?.lh_institutional ?? d.dim_scores?.institutional ?? 0,
+      'sentiment':       d.dim_scores?.sentiment ?? 0,
+      'news_event':      d.dim_scores?.news_event ?? 0,
+      'chip':            d.dim_scores?.chip ?? 0,
     };
     const latestValues = dimNames.map(name => dimMap[name] ?? 0);
 
@@ -562,7 +562,7 @@ function renderKlineChart(dates, closes, opens, highs, lows, volumes, mas) {
 
   const ctx = document.getElementById('klineChart').getContext('2d');
   charts.kline = new Chart(ctx, {
-    type: 'scatter',
+    type: 'line',
     data: {
       labels: dates,
       datasets: datasets.filter(d => d.type !== 'bar').concat(datasets.filter(d => d.type === 'bar')),

@@ -1358,6 +1358,10 @@ async def stock_kline(
     try:
         r = get_kline(wcode, period, limit, fq)
         rows = _parse_md_table(r.get("raw", "")) if "raw" in r else r.get("data", [])
+        # 2026-06-27 修复: westock 返回新的在前, 前端按 ASC(旧→新) 渲染, 需 reverse
+        if rows and isinstance(rows[0], dict) and "date" in rows[0]:
+            # westock 顺序通常为 desc, 反转成 asc(与 DB 兜底段一致)
+            rows = list(reversed(rows))
     except Exception as e:
         logger.warning("stock/kline westock 失败, 降级到 DB: %s", e)
 
@@ -1812,14 +1816,28 @@ async def predict_for_stock(code: str):
         dim_scores: dict[str, float] = {}
         as_of_date = ""
         # 单独 try/except 每个 scorer, 避免一个失败导致全部回退到 0
-        # 签名兼容: chip/fundamental 接受 (code); 其他接受 (code, as_of_date)
+        # 2026-06-27 修复: TechnicalScorer/FundFlowScorer/SentimentScorer 接受 (code, as_of_date),
+        #                ChipScorer 在 __init__ 里就崩(表不存在), 把整个 get 过程也包到 try 内
+        from datetime import date as _today_date
+        today_str = _today_date.today().isoformat()
         for name in scorer_names:
             try:
-                scorer = ScorerRegistry.get(name)
+                # 2026-06-27 修复: ScorerRegistry.get 也包 try, 处理 __init__ 抛异常的 scorer
                 try:
-                    r = scorer.score(code)
+                    scorer = ScorerRegistry.get(name)
+                except Exception as e_init:
+                    logger.warning("scorer %s 注册/初始化失败: %s", name, e_init)
+                    dim_scores[DIM_MAP[name]] = 0.0
+                    continue
+                # 优先 (code, as_of_date) 签名
+                try:
+                    r = scorer.score(code, today_str)
                 except TypeError:
-                    r = scorer.score(code, None)
+                    # 不接受 as_of_date 的 (chip / fundamental) 走 (code,)
+                    try:
+                        r = scorer.score(code)
+                    except TypeError:
+                        r = scorer.score(code, None)
                 dim_scores[DIM_MAP[name]] = float(r.get("weighted") or 0)
                 if not as_of_date and r.get("as_of_date"):
                     as_of_date = str(r["as_of_date"])[:10]
