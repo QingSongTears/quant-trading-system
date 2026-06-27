@@ -27,7 +27,6 @@
             <option value="signal">信号策略 (signal)</option>
             <option value="portfolio">组合策略 (portfolio)</option>
             <option value="voting">投票策略 (voting)</option>
-            <option value="stock_screener">选股器 (stock_screener)</option>
         </select>
     </div>
     <div class="col-md-3 text-end">
@@ -73,13 +72,9 @@
             </div>
             <div class="card-footer bg-transparent d-flex justify-content-between align-items-center">
                 <small class="text-muted" style="font-family:monospace;font-size:0.7rem;">{{ s.class_path }}</small>
-                {% if s.strategy_type != 'stock_screener' %}
                 <a href="/workbench?strategy={{ s.name | urlencode }}" class="btn btn-sm btn-outline-primary">
                     <i class="bi bi-play-fill"></i> 立即回测
                 </a>
-                {% else %}
-                <span class="badge bg-warning text-dark" style="font-size:0.7rem;">私有引擎</span>
-                {% endif %}
             </div>
         </div>
     </div>

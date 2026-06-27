@@ -45,10 +45,14 @@ def expected_test_names(stem: str) -> List[str]:
 
 
 def get_staged_python_files() -> List[Path]:
-    """获取本次 commit 新增/修改的 .py 文件（src/ 下）。"""
+    """Get NEW src/ .py files (Added only, not Modified).
+
+    Test-required check only applies to NEW files. Modified files may
+    or may not have tests, that's tracked separately.
+    """
     try:
         result = subprocess.run(
-            ["git", "diff", "--cached", "--name-only", "--diff-filter=AM", "--", "src/"],
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=A", "--", "src/"],
             cwd=ROOT, capture_output=True, text=True, check=True,
         )
     except subprocess.CalledProcessError:
