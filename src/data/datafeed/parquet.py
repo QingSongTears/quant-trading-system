@@ -381,6 +381,48 @@ class ParquetDatafeed(BaseDatafeed):
             logger.warning(f"ParquetDatafeed.get_news_events 失败: {e}")
             return []
 
+    def get_finance_snapshot(
+        self,
+        codes: List[str],
+    ) -> Dict[str, Dict[str, float]]:
+        """取财务快照 (从 finance_summary.parquet, 若存在)
+
+        Parquet 默认导出不含 finance_summary,直接返回空 dict。
+        调用方需自己 build 该 parquet 才能拿到数据。
+        """
+        if not codes:
+            return {}
+        fs_path = self.parquet_dir.parent / "finance_summary.parquet"
+        if not fs_path.exists():
+            logger.debug("ParquetDatafeed.get_finance_snapshot: finance_summary.parquet 不存在,返回空")
+            return {}
+
+        try:
+            df = (
+                pl.scan_parquet(str(fs_path))
+                .filter(pl.col("code").is_in(list(codes)))
+                .collect()
+            )
+            result: Dict[str, Dict[str, float]] = {}
+            for row in df.iter_rows(named=True):
+                code = str(row.get("code", ""))
+                np_v = row.get("NPParentCompanyOwnersTTM")
+                tse = row.get("TotalShareholderEquity")
+                pe_ttm = None
+                try:
+                    if np_v is not None and tse is not None and abs(float(np_v)) > 0:
+                        pe_ttm = float(tse) / abs(float(np_v))
+                except Exception:
+                    pe_ttm = None
+                result[code] = {
+                    "net_profit": float(np_v) if np_v is not None else None,
+                    "pe_ttm": pe_ttm,
+                }
+            return result
+        except Exception as e:
+            logger.warning(f"ParquetDatafeed.get_finance_snapshot 失败: {e}")
+            return {}
+
     # ── 内部方法 ──────────────────────────────────────
 
     def _scan_file(self, path: Path) -> pl.LazyFrame:

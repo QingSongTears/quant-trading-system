@@ -211,6 +211,21 @@ class BaseDatafeed(metaclass=ABCMeta):
             List[NewsEvent]
         """
 
+    @abstractmethod
+    def get_finance_snapshot(self, codes: List[str]) -> Dict[str, Dict[str, float]]:
+        """
+        取财务快照 (ADR-0010 基础数据抽象)
+
+        用于 PE/ROE/net_profit 等财务指标过滤。
+        与"业务宽表"区分:finance_summary 是只读快照,不算业务状态。
+
+        Args:
+            codes: 股票代码列表 (6 位不带 .SH/.SZ,空 → 空 dict)
+
+        Returns:
+            {code: {net_profit, pe_ttm, roe, ...}}, 缺失字段为 None
+        """
+
     # ── 默认实现 ─────────────────────────────────
 
     def get_bars_by_date(

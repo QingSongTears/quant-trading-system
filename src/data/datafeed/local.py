@@ -426,3 +426,38 @@ class LocalDatafeed(BaseDatafeed):
                 source="research_report",
             ))
         return events
+
+    def get_finance_snapshot(
+        self,
+        codes: List[str],
+    ) -> Dict[str, Dict[str, float]]:
+        """取财务快照 (从 finance_summary 表)
+
+        返回字段: net_profit / pe_ttm (TotalShareholderEquity / |NP| 近似)
+        """
+        if not codes:
+            return {}
+        if not self.inited:
+            self.init()
+
+        sql = (
+            "SELECT code, NPParentCompanyOwnersTTM AS net_profit, "
+            "       TotalShareholderEquity / NULLIF(ABS(NPParentCompanyOwnersTTM), 0) AS pe_ttm "
+            "FROM finance_summary WHERE code IN :codes"
+        )
+        try:
+            with self._engine.connect() as conn:
+                stmt = text(sql).bindparams(bindparam("codes", expanding=True))
+                rows = conn.execute(stmt, {"codes": list(codes)}).fetchall()
+        except Exception as e:
+            logger.warning(f"LocalDatafeed.get_finance_snapshot 失败: {e}")
+            return {}
+
+        result: Dict[str, Dict[str, float]] = {}
+        for r in rows:
+            code = str(r[0])
+            result[code] = {
+                "net_profit": float(r[1]) if r[1] is not None else None,
+                "pe_ttm": float(r[2]) if r[2] is not None else None,
+            }
+        return result
