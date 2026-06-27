@@ -289,6 +289,138 @@ class PortfolioBacktestEngine:
 
         return factors
 
+    def _apply_sector_constraint(
+        self,
+        selected_codes: list[str],
+        universe_df: pd.DataFrame,
+        strategy: BaseSelectionStrategy,
+    ) -> list[str]:
+        """T3.2: 行业暴露约束 (在 _simulate_portfolio 调仓时调用)
+
+        流程:
+            1. 从 universe_df 取选中股票的行业映射 (若有 industry 列)
+            2. 缺失时从 stock_basic.industry 批量加载
+            3. 应用 SectorConstraint (max_pct + max_count)
+            4. 候选不足时, 尝试从同行业被拒股票中按原评分补全
+
+        Args:
+            selected_codes: 策略选出的代码列表
+            universe_df: 完整 universe (filter_universe 后, 含 code/name)
+            strategy: 策略实例 (含 sector_cap_pct/sector_max_count)
+
+        Returns:
+            通过约束的最终代码列表
+        """
+        if not selected_codes:
+            return selected_codes
+
+        # 单行业阈值
+        n_target = max(
+            int(strategy.n_stocks * (strategy.sector_cap_pct or 1.0)), 1
+        )
+        if strategy.sector_max_count is not None:
+            n_target = min(n_target, strategy.sector_max_count)
+
+        # 1. 加载 industry 映射
+        from ..selection.sector_constraint import load_industry_map
+        code_set = set(selected_codes)
+        ind_map: dict[str, str] = {}
+
+        # 是否有可用的 industry 信息 (非"未知")
+        has_real_industry = False
+
+        # 优先从 universe_df 拿
+        if "industry" in universe_df.columns:
+            for _, row in universe_df.iterrows():
+                code_str = str(row["code"])
+                if code_str in code_set:
+                    ind_val = str(row.get("industry", "未知") or "未知")
+                    ind_map[code_str] = ind_val
+                    if ind_val != "未知":
+                        has_real_industry = True
+        # 缺失的从 DB 加载
+        missing = code_set - set(ind_map.keys())
+        if missing:
+            try:
+                # 兼容测试 mock 的 engine (无 self.repo 时新建)
+                engine = getattr(self, "repo", None)
+                engine = engine.engine if engine and hasattr(engine, "engine") else engine
+                if engine is None:
+                    from ..models.repository import DataRepository
+                    engine = DataRepository()
+                db_map = load_industry_map(engine, list(missing))
+                ind_map.update(db_map)
+                if any(v != "未知" for v in db_map.values()):
+                    has_real_industry = True
+            except Exception as e:
+                logger.warning(f"_apply_sector_constraint: DB 加载 industry 失败: {e}")
+
+        # 兜底: 未知
+        for c in selected_codes:
+            ind_map.setdefault(c, "未知")
+
+        # 如果完全无 industry 信息 (全"未知"), 退化为保留 selected 原样
+        if not has_real_industry:
+            return selected_codes[:strategy.n_stocks]
+
+        # 2. 按行业累计, 超限则剔除
+        counts: dict[str, int] = {}
+        kept: list[str] = []
+        rejected: list[str] = []
+        for c in selected_codes:
+            ind = ind_map.get(c, "未知")
+            if counts.get(ind, 0) >= n_target:
+                rejected.append(c)
+                continue
+            kept.append(c)
+            counts[ind] = counts.get(ind, 0) + 1
+
+        # 3. 候选不足时 (selected 被行业约束拒了), 尝试从 universe 跨行业补全
+        # 触发条件: kept 少于 n_stocks → 真的需要补; 但只能从 universe 中加新股票
+        # 优先顺序: 原 selected 中被拒的 → 走原顺序尝试用其他行业的 universe 候选替换
+        if len(kept) < strategy.n_stocks:
+            # 行业补齐 (从 DB)
+            pool = universe_df.copy()
+            if "industry" not in pool.columns:
+                pool_codes = pool["code"].astype(str).tolist()
+                try:
+                    engine = getattr(self, "repo", None)
+                    engine = engine.engine if engine and hasattr(engine, "engine") else engine
+                    if engine is None:
+                        from ..models.repository import DataRepository
+                        engine = DataRepository()
+                    db_map = load_industry_map(engine, pool_codes)
+                except Exception:
+                    db_map = {}
+                pool["industry"] = pool["code"].astype(str).map(db_map).fillna("未知")
+            else:
+                pool["industry"] = pool["industry"].fillna("未知")
+            pool["code"] = pool["code"].astype(str)
+            pool = pool.drop_duplicates(subset=["code"], keep="first")
+
+            # 排序: 已在 kept 优先 + 原 select 顺序
+            pool["__in_kept"] = pool["code"].isin(set(kept)).astype(int)
+            pool["__order"] = pool["code"].map(
+                {c: i for i, c in enumerate(selected_codes)}
+            ).fillna(999)
+            pool = pool.sort_values(
+                ["__in_kept", "__order"], ascending=[False, True]
+            )
+
+            for _, row in pool.iterrows():
+                if len(kept) >= strategy.n_stocks:
+                    break
+                c = row["code"]
+                if c in kept:
+                    continue
+                ind = row.get("industry", "未知") or "未知"
+                if counts.get(ind, 0) >= n_target:
+                    continue
+                kept.append(c)
+                counts[ind] = counts.get(ind, 0) + 1
+
+        return kept
+
     def _simulate_portfolio(self,
                            strategy: BaseSelectionStrategy,
                            all_data: pd.DataFrame,
@@ -335,6 +467,13 @@ class PortfolioBacktestEngine:
                 if not universe.empty:
                     filtered = strategy.filter_universe(universe)
                     new_selected = strategy.select(dt, filtered)
+                    # T3.2: 行业暴露约束 (单行业≤sector_cap_pct)
+                    # 加载 industry 字段 (从 stock_basic.industry)
+                    if new_selected and (strategy.sector_cap_pct is not None
+                                          or strategy.sector_max_count is not None):
+                        new_selected = self._apply_sector_constraint(
+                            new_selected, filtered, strategy
+                        )
                 else:
                     new_selected = holdings_today  # 数据缺失: 沿用
 

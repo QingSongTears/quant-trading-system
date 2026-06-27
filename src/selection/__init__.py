@@ -17,5 +17,18 @@
 """
 from __future__ import annotations
 from .pipeline import SelectionPipeline, FilterConfig
+from .sector_constraint import (
+    SectorConstraint,
+    SectorSelectionResult,
+    apply_sector_cap,
+    load_industry_map,
+)
 
-__all__ = ["SelectionPipeline", "FilterConfig"]
+__all__ = [
+    "SelectionPipeline",
+    "FilterConfig",
+    "SectorConstraint",
+    "SectorSelectionResult",
+    "apply_sector_cap",
+    "load_industry_map",
+]
