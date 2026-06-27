@@ -120,6 +120,9 @@ class _MockDatafeed(BaseDatafeed):
     def get_news_events(self, codes, start, end):
         return []
 
+    def get_finance_snapshot(self, codes):
+        return {}
+
 
 def test_concrete_subclass_can_be_instantiated():
     df = _MockDatafeed()
