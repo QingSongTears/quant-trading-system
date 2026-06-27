@@ -2,17 +2,41 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop, 'feat/**', 'fix/**', 'refactor/**', 'chore/**']
     tags: ['v*']
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
 
+# 取消同分支上一次未完成的 run
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # ─── AI 守门（必须先过） ──────────────────────────
+  ai_hooks:
+    name: 🛡️ AI 守门（命名/目录/黑名单/测试/导入/行数/commit-msg）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run AI 守门（7 项）
+        run: |
+          echo "═══════════════════════════════════════"
+          echo "🛡️  AI 守门 — 7 项自动检查"
+          echo "═══════════════════════════════════════"
+          python dev_tools/hooks/run_all.py --verbose
+        # 失败则阻断整个 pipeline
+        continue-on-error: false
+
   # ─── Lint ────────────────────────────────────────────
   lint:
     name: Lint (flake8)
     runs-on: ubuntu-latest
+    needs: ai_hooks
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,14 +48,13 @@ jobs:
       - name: Run flake8
         # 收紧:不再 continue-on-error
         # 规则在 .flake8 配置;新增 F401(未用 import) / F811(重复定义)
-        # 暂时只跑 E/W,避免一次性触发大量历史 violation
         run: flake8 src/ tests/ scripts/ --statistics
 
   # ─── Test ────────────────────────────────────────────
   test:
     name: Test (pytest + coverage)
     runs-on: ubuntu-latest
-    needs: lint
+    needs: ai_hooks
     strategy:
       fail-fast: false
       matrix:
@@ -51,7 +74,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           mkdir -p database
-          # 起步门禁 30%,后续 PR 持续提升
+          # 起步门禁 30%,v2.1 起每个 minor 提升 15%
           # 历史 0 覆盖率,直接设 80% 会立即红;先低门槛建立习惯
           python -m pytest tests/ \
             --cov=src \
@@ -71,6 +94,7 @@ jobs:
   audit:
     name: Dependency Audit (pip-audit)
     runs-on: ubuntu-latest
+    needs: ai_hooks
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -88,7 +112,7 @@ jobs:
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
-    needs: lint
+    needs: [ai_hooks, lint]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
