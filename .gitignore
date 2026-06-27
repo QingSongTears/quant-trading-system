@@ -41,6 +41,10 @@ data/quant.db
 data/all_7d_scores.json
 data/xgb_*.json
 data/xgb_scaler.pkl
+
+# market_data/ 全部本地管理（762MB CSV 衍生数据，2026-06-28 移除 Git LFS 后整目录不入 git）
+# 重新生成: 运行 src/data/ 下的 downloader / westock_downloader
+/market_data/
 market_data/imported/
 # 派生层 (本地生成, 不入 git)
 market_data/parquet/
@@ -52,6 +56,7 @@ market_data/dataset/
 backups/
 *.bak
 *.tmp
+.git.bak-*/
 
 # 截图/审计产物 (本地生成, 不入 git)
 # 统一存到 screenshots/ 目录下, 按用途分子目录
