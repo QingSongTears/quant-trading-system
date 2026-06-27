@@ -189,12 +189,16 @@ def create_app() -> FastAPI:
 
     # 注册路由
     from .routes import (
-        main, research, monitoring,
+        core_pages, standalone_pages, ardot_pages,
+        research, monitoring,
         data_routes, backtest_routes, simulate_routes,
         stock_routes, system_routes, predict_routes,
     )
     from .auth import verify_api_key
-    app.include_router(main.router)
+    # 页面路由 (拆 3 个, 替代原 main.py #86)
+    app.include_router(core_pages.router)
+    app.include_router(standalone_pages.router)
+    app.include_router(ardot_pages.router)
     # /api/* 全部需要 Bearer token (原 api.py 拆 6 个子路由, #85)
     api_auth = [Depends(verify_api_key)]
     app.include_router(data_routes.router, prefix="/api", dependencies=api_auth)
@@ -207,3 +211,8 @@ def create_app() -> FastAPI:
     app.include_router(monitoring.router, prefix="/api")  # ADR-0012 #83: 监控 API
 
     return app
+
+
+# 模块级 app 实例 (2026-06-28 #86 修复 — 让 `python -m uvicorn src.web.app:app` 也能直接启动)
+# 工厂模式 (`--factory` 或 `create_app()`) 也仍然可用
+app = create_app()

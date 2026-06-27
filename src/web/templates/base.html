@@ -7,7 +7,7 @@
     <!-- 抑制 favicon.ico 404 -->
     <link rel="icon" href="data:,">
     <!-- Bootstrap 5 CSS -->
-    <link href="{{ cdn.bootstrap }}/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     {# Web QA #3 (2026-06-27): sandbox 无外网, jsdelivr CDN 跨域加载 icons.css 失败导致 /data /backtest /strategies 报 CORS
        降级方案: 暂时不加载 bootstrap-icons.css, 改用 unicode / emoji fallback
        (生产环境保留 cdn.icons 即可, 沙盒 QA 跳过) #}
@@ -393,7 +393,7 @@
         </span>
     </footer>
 
-    <script src="{{ cdn.bootstrap }}/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
     <!-- 2026-06-25 (Phase C4): 删 base.html 内嵌的 fetch 拦截, 改用 common.js 统一拦截 -->
     <!-- 注入 api_key meta 标签 (供 common.js 读) -->
     {{ _api_auth_snippet | safe }}

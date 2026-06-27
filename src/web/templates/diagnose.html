@@ -246,20 +246,21 @@ document.getElementById('searchInput').addEventListener('input', function() {
   searchTimer = setTimeout(async () => {
     try {
       const r = await fetch('/api/stock/search?q=' + encodeURIComponent(q));
-      const d = await r.json();
-      const items = d.results || d.data || [];
-      if (!items.length) {
-        sug.innerHTML = '<div style="color:var(--dim);padding:10px 16px;font-size:0.8rem;">无匹配结果</div>';
-        sug.style.display = 'block'; return;
-      }
-      sug.innerHTML = items.slice(0,10).map(s =>
-        `<div onclick="selectStock('${s.code}','${s.name||''}')">
-          <span class="code">${s.code}</span>
-          <span class="name">${escHtml(s.name||'')}</span>
-          ${s.match ? '<span style="color:var(--dim);font-size:0.75rem;margin-left:8px;">['+s.match+']</span>' : ''}
-        </div>`
-      ).join('');
-      sug.style.display = 'block';
+            const d = await r.json();
+            // 解包 {success, data} 嵌套响应
+            const items = d.results || d.data || [];
+            if (!items.length) {
+              sug.innerHTML = '<div style="color:var(--dim);padding:10px 16px;font-size:0.8rem;">无匹配结果</div>';
+              sug.style.display = 'block'; return;
+            }
+            sug.innerHTML = items.slice(0,10).map(s =>
+              `<div onclick="selectStock('${s.code}','${s.name||''}')">
+                <span class="code">${s.code}</span>
+                <span class="name">${escHtml(s.name||'')}</span>
+                ${s.match ? '<span style="color:var(--dim);font-size:0.75rem;margin-left:8px;">['+s.match+']</span>' : ''}
+              </div>`
+            ).join('');
+            sug.style.display = 'block';
     } catch(e) {}
   }, 200);
 });
@@ -288,22 +289,24 @@ async function diagnose() {
   let code = match ? match[1] : '';
   
   // 非6位数字 → 走模糊搜索
-  if (!code) {
-    try {
-      const sr = await fetch('/api/stock/search?q=' + encodeURIComponent(input));
-      if (!sr.ok) throw new Error('搜索失败');
-      const sd = await sr.json();
-      if (!sd.results || sd.results.length === 0) {
-        alert('未找到股票: ' + input);
+    if (!code) {
+      try {
+        const sr = await fetch('/api/stock/search?q=' + encodeURIComponent(input));
+        if (!sr.ok) throw new Error('搜索失败');
+        const sd = await sr.json();
+        // 解包 {success, data} 嵌套响应
+        const items = sd.results || sd.data || [];
+        if (items.length === 0) {
+          alert('未找到股票: ' + input);
+          return;
+        }
+        code = items[0].code;
+        document.getElementById('searchInput').value = code + ' ' + items[0].name;
+      } catch(e) {
+        alert('搜索失败: ' + e.message);
         return;
       }
-      code = sd.results[0].code;
-      document.getElementById('searchInput').value = code + ' ' + sd.results[0].name;
-    } catch(e) {
-      alert('搜索失败: ' + e.message);
-      return;
     }
-  }
   currentCode = code;
   document.getElementById('emptyState').style.display = 'none';
   document.getElementById('diagContent').style.display = 'block';
@@ -595,26 +598,31 @@ function renderKlineChart(dates, closes, opens, highs, lows, volumes, mas) {
           }
         }
       },
-      scales: {
-        x: {
-          ticks: {
-            color: '#666', font: { size: 9 },
-            maxTicksLimit: 12,
-            callback: function(v) { const d = this.getLabelForValue(v); return d ? d.slice(0,7) : ''; }
-          },
-          grid: { color: 'rgba(255,255,255,0.03)' },
-        },
-        y: {
-          position: 'left',
-          ticks: { color: '#666', font: { size: 9 }, callback: v => '¥' + v.toFixed(2) },
-          grid: { color: 'rgba(255,255,255,0.05)' },
-        },
-        y1: showVolume ? {
-          position: 'right',
-          ticks: { color: '#666', font: { size: 9 }, callback: v => formatVol(v) },
-          grid: { display: false },
-        } : undefined,
-      },
+      scales: (() => {
+              const base = {
+                x: {
+                  ticks: {
+                    color: '#666', font: { size: 9 },
+                    maxTicksLimit: 12,
+                    callback: function(v) { const d = this.getLabelForValue(v); return d ? d.slice(0,7) : ''; }
+                  },
+                  grid: { color: 'rgba(255,255,255,0.03)' },
+                },
+                y: {
+                  position: 'left',
+                  ticks: { color: '#666', font: { size: 9 }, callback: v => '¥' + v.toFixed(2) },
+                  grid: { color: 'rgba(255,255,255,0.05)' },
+                },
+              };
+              if (showVolume) {
+                base.y1 = {
+                  position: 'right',
+                  ticks: { color: '#666', font: { size: 9 }, callback: v => formatVol(v) },
+                  grid: { display: false },
+                };
+              }
+              return base;
+            })(),
       elements: {
         point: { radius: 0 },
         line: { tension: 0.2 },
