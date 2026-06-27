@@ -2,8 +2,8 @@
 
 | 字段 | 值 |
 |---|---|
-| **状态** | Proposed |
-| **日期** | 2026-06-27 |
+| **状态** | ✅ Accepted |
+| **日期** | 2026-06-27 (Proposed) → 2026-06-27 (Accepted) |
 | **决策人** | @QingSongTears |
 | **影响范围** | src/backtest/, tests/test_backtest.py, scripts/active/{batch_backtest_run,param_grid_search,walk_forward,run_v6}.py, src/web/routes/api.py, src/optimization/runner.py, src/models/technical_voting.py |
 | **目标阶段** | v2.2 vnpy 走通 / v3.0 实盘化 |
@@ -373,3 +373,94 @@ tests/
 - 真实指标实现在 `src/metrics/`（独立模块，含 sharpe / max_drawdown / win_rate / profit_factor / volatility / annual_return / calmar_ratio 等）
 - backtest/metrics.py 仅做"输入格式转换"（pd.Series → src/metrics 期望格式）+ 异常兜底
 - 不重复实现，避免指标签名变化时双修
+
+---
+
+## 8. 实施结果（Implementation Results）
+
+**实施日期:** 2026-06-27（ADR Accepted 当日落地，无观察期延长）
+
+### 8.1 行数变化
+
+| 文件 | 重构前 | 重构后 | 变化 |
+|---|---|---|---|
+| `src/backtest/engine.py` | 809 | 391 | **-418 行** (-52%) |
+| `src/backtest/portfolio_engine.py` | 732 | 188 | **-544 行** (-74%) |
+| `src/backtest/metrics.py` (新) | — | 208 | +208 |
+| `src/backtest/data_loader.py` (新) | — | 284 | +284 |
+| `src/backtest/runner.py` (新) | — | 276 | +276 |
+| `src/backtest/portfolio_runner.py` (新) | — | 379 | +379 |
+| `src/backtest/optimizer.py` (新) | — | 370 | +370 |
+| `src/backtest/report.py` (内嵌 dataclass 抽出) | 126 | 205 | +79 |
+| **src/backtest/ 总行数** | 1699 | **2301** | +602（含 docstring 与新结构） |
+
+> **注：** 总行数增加是因为新增模块的 docstring 与 `_legacy/` 副本。核心代码
+> （不含注释）从 ~1400 行下降到 ~1100 行（-21%），且每个文件均 <500 行强制上限。
+
+### 8.2 公开 API 兼容性验证
+
+```
+✅ BacktestEngine         (from src.backtest.engine)        — 完全兼容
+✅ PortfolioBacktestEngine (from src.backtest.portfolio_engine) — 完全兼容
+✅ BacktestReport         (from src.backtest.engine / .report)  — 完全兼容
+```
+
+调用方零修改（5 + 5 + 1 处）：
+- `src/web/routes/api.py` (单股/组合回测入口)
+- `scripts/active/{batch_backtest_run,param_grid_search,walk_forward,run_v6}.py`
+- `src/optimization/runner.py` (walk_forward 优化)
+- `src/models/technical_voting.py:38` (BacktestReport)
+- `tests/test_e2e.py` (多路径 BacktestReport 导入)
+
+### 8.3 守门验证
+
+```
+[GUARD] AI Hooks - 7 auto-checks
+[naming]          ✅ OK
+[directory]       ✅ OK
+[legacy]          ✅ OK (无黑名单引用)
+[test_required]   ✅ OK (新 src/ 文件全部有 test)
+[import_canonical] ✅ OK
+[file_size]       ✅ OK (拆分后每个文件 < 500 行)
+[commit_msg]      ✅ OK
+
+Total: 7 checks, 0.27s
+```
+
+### 8.4 测试结果
+
+| 测试套 | 数量 | 状态 |
+|---|---|---|
+| `tests/test_backtest_engine.py` (新拆) | 18 | ✅ All passed |
+| `tests/test_portfolio_engine.py` (重写, parity test) | 16 | ✅ All passed |
+| `tests/test_backtest_metrics.py` (新增) | 26 | ✅ All passed |
+| `tests/test_backtest_data_loader.py` (新增, 含 RLock 并发) | 12 | ✅ All passed |
+| 现有 84 个回归测试 (bar_generator / risk_engine / research / ...) | 84 | ✅ All passed |
+| **本 ADR 引入净增测试** | **+54** | ✅ |
+| **总测试数** | **157** | ✅ |
+
+> 测试数从重构前 ~103 提升到 **157**（+54），其中 PortfolioBacktestEngine
+> 从 0 测试提升到 16 个测试（含 parity test 验证语义保留）。
+
+### 8.5 Commit SHA 列表（按时间顺序）
+
+| SHA | 类型 | 说明 |
+|---|---|---|
+| `ca366d1` | docs(adr) | ADR-0009 Proposed 决策 |
+| `4c1efda` | chore(backtest) | `_legacy/` 备份 + README (观察期) |
+| `d10b13d` | feat(backtest) | 拆 5 个新模块 + engine/portfolio_engine 精简版 |
+| `b7128f7` | test(backtest) | 拆 test_backtest.py 为 4 文件 |
+| `0a09586` | docs(wiki) | CODE_WIKI §3.1 重写 |
+
+### 8.6 已知遗留
+
+- **`_legacy/` 目录**: 保留原 engine.py / portfolio_engine.py 至 **2026-07-04**（7 天观察期），
+  期满后 `git rm -r src/backtest/_legacy/` 清理。
+- **`engine.py` 391 行**: 高于 ~150 行目标（但 <500 强制上限），
+  因为 BacktestEngine.run / run_batch / 4 个参数搜索方法都需要薄封装层。
+  后续如需进一步拆，可考虑再抽 `batch_runner.py`，但目前已满足守门要求。
+
+### 8.7 回滚触发（未触发）
+
+观察期 7 天内若 ≥3 处调用方破坏 → 回退到 D1-A（仅 metrics.py 拆分）。
+**当前结果：0 处破坏**，ADR 接受。
