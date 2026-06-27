@@ -7,7 +7,7 @@
 | **决策人** | @QingSongTears |
 | **影响范围** | src/research/dataset.py, src/research/features/leader_features.py, tests/test_research_dataset.py |
 | **目标阶段** | v2.2 vnpy 走通 / v3.0 实盘化 |
-| **实施 commit** | (待 Step 7 commit 后回填) |
+| **实施 commit** | `4e61ec4` (feat: AStockDataset 真接 LeaderFeatureBuilder) |
 
 ## 0. 实施记录
 
