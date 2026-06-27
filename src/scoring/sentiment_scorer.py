@@ -260,10 +260,14 @@ class SentimentScorer(BaseScorer):
 
         # 用近5日量价关系推断：放量下跌=恐慌，缩量止跌=企稳
         recent = price_df.tail(5)
-        returns = recent["pct_change"].values
-        volumes = recent["volume"].values
+        # 2026-06-27 修复: pct_change 为 NaN/None 时 np.mean 抛 TypeError, 先清洗
+        returns = recent["pct_change"].dropna().values if "pct_change" in recent.columns else np.array([])
+        volumes = recent["volume"].dropna().values if "volume" in recent.columns else np.array([])
 
-        avg_ret = np.mean(returns)
+        # 2026-06-27 修复: 空数组时 np.mean 报 warning, 显式给默认值
+        if returns is None or len(returns) == 0:
+            return 1
+        avg_ret = float(np.mean(returns))
         # 量价背离检测
         if len(volumes) >= 3:
             vol_trend = (volumes[-1] - volumes[0]) / volumes[0] if volumes[0] > 0 else 0
