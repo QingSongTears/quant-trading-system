@@ -117,16 +117,102 @@
 
 **目录:** `src/backtest/`
 
-| 文件 | 职责 |
-|------|------|
-| `engine.py` | 核心事件驱动回测循环；管理策略生命周期、K 线遍历、结果收集 |
-| `portfolio_engine.py` | 组合构建、仓位分配、风险预算、净值跟踪 |
-| `base_strategy.py` | 所有策略的抽象基类；定义 `on_bar()`、`on_start()`、`on_end()` 钩子 |
-| `base_selection_strategy.py` | 选股策略基类（基于排名而非信号） |
-| `astock_strategy.py` | A 股专用策略基类（处理 T+1、印花税、涨跌停） |
-| `report.py` | 生成回测绩效报告（夏普比率、最大回撤、胜率、HTML 输出） |
+> **ADR-0009 (Accepted 2026-06-27):** 原 `engine.py` (809 行) + `portfolio_engine.py` (732 行)
+> 水平拆分为 5 个新模块。原文件备份至 `_legacy/` 观察期 7 天。
+> 公开 API (`BacktestEngine` / `PortfolioBacktestEngine` / `BacktestReport`) 路径零变化。
 
-**设计模式:** 模板方法模式 — `BaseStrategy` 定义骨架，子类覆盖具体信号逻辑。
+| 文件 | 职责 | 行数 |
+|------|------|------|
+| `engine.py` | `BacktestEngine` 薄封装 (~400 行) — 委托给 runner + optimizer | <500 |
+| `portfolio_engine.py` | `PortfolioBacktestEngine` 薄封装 (~190 行) — 委托给 portfolio_runner | <500 |
+| `data_loader.py` | `BacktestDataLoader` — DataRepository + K 线 + LRU 缓存 + RLock | <300 |
+| `metrics.py` | 指标薄封装 (sharpe / max_drawdown / win_rate / profit_factor) | <210 |
+| `runner.py` | `BacktestRunner` — 单股回测循环，**第三方 backtesting.py 边界隔离** | <280 |
+| `portfolio_runner.py` | `PortfolioRunner` — 组合回测循环（纯 Pandas/NumPy）+ 调仓模拟 + 行业约束 | <380 |
+| `optimizer.py` | `GridSearchOptimizer` / `RandomSearchOptimizer` / `BayesianSearchOptimizer` / `multi_metric_optimize` | <370 |
+| `report.py` | `BacktestReport` dataclass + ECharts 转换 + HTML 报告生成 | <210 |
+| `base_strategy.py` | 所有单股策略的抽象基类；继承自 backtesting.Strategy | <130 |
+| `base_selection_strategy.py` | 选股策略基类（基于排名而非信号） | <170 |
+| `astock_strategy.py` | A 股专用策略基类（处理 T+1、印花税、涨跌停） | <160 |
+| `strategy_engine.py` | 策略运行封装（vnpy 风格） | <230 |
+| `_legacy/` | ADR-0009 观察期备份（2026-07-04 后 `git rm`） | — |
+
+**模块依赖图:**
+
+```
+                     ┌─────────────────────────┐
+                     │     engine.py           │  ← BacktestEngine (公开 API)
+                     │  (BacktestEngine)       │
+                     └────────┬────────────────┘
+                              │
+                  ┌───────────┴───────────┐
+                  ▼                       ▼
+        ┌──────────────────┐    ┌──────────────────┐
+        │   runner.py      │    │  optimizer.py    │
+        │ (BacktestRunner) │    │  (3 SearchOpt +  │
+        │                  │    │   multi_metric)  │
+        └────────┬─────────┘    └─────────┬────────┘
+                 │                        │
+                 │ 第三方 backtesting.py  │
+                 │ (仅 runner.py 引用)    │
+                 ▼                        ▼
+        ┌──────────────────┐    ┌──────────────────┐
+        │  data_loader.py  │◄───┤   metrics.py     │
+        │ (BacktestData    │    │  (薄封装 src/    │
+        │  Loader + LRU)   │    │   metrics/)      │
+        └──────────────────┘    └──────────────────┘
+                 ▲
+                 │
+                 │
+        ┌─────────────────────────┐
+        │  portfolio_engine.py    │  ← PortfolioBacktestEngine (公开 API)
+        │  (PortfolioBacktestEngine)
+        └──────────┬──────────────┘
+                   ▼
+        ┌──────────────────┐
+        │ portfolio_runner │
+        │   .py            │
+        │ (PortfolioRunner)│
+        └──────────────────┘
+```
+
+**关键设计原则:**
+
+1. **第三方边界隔离** — `from backtesting import Backtest` 仅在 `runner.py` 出现一次,
+   engine.py 委托给 runner.BacktestRunner, 不直接依赖第三方。
+2. **指标单点维护** — `metrics.py` 薄封装 `src/metrics/performance.py`,
+   BacktestEngine 和 PortfolioBacktestEngine 共用, 避免重复 import。
+3. **数据缓存** — `data_loader.py` 提供 LRU + RLock 双检锁缓存,
+   walk_forward 多 worker 并发场景下防止 race（已通过并发单测覆盖）。
+4. **公开 API 零变化** — `from src.backtest.engine import BacktestReport` 仍可用,
+   `BacktestReport` 现位于 `report.py` 但通过 engine.py re-export 向后兼容。
+
+**使用示例:**
+
+```python
+# 单股回测
+from src.backtest.engine import BacktestEngine, BacktestReport
+engine = BacktestEngine()
+report = engine.run(
+    strategy_class=MACrossStrategy,
+    stock_code="000001",
+    start_date=date(2024, 1, 1),
+    end_date=date(2024, 6, 1),
+)
+print(f"夏普: {report.sharpe_ratio}, 最大回撤: {report.max_drawdown}%")
+
+# 组合回测
+from src.backtest.portfolio_engine import PortfolioBacktestEngine
+engine = PortfolioBacktestEngine()
+report = engine.run(
+    strategy=SmallCapStrategy(),
+    start_date=date(2024, 1, 1),
+    end_date=date(2024, 12, 31),
+    initial_capital=1_000_000,
+)
+```
+
+**关联 ADR:** [ADR-0009](../adr/0009-backtest-engine-refactor.md) (Accepted 2026-06-27)
 
 ---
 
