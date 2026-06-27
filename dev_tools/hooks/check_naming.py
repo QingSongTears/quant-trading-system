@@ -81,6 +81,9 @@ VNPY_SHORTHAND_EXEMPTIONS = {
     "PnlSnapshot": "vnpy-event-data",      # ADR-0012 #83 — PnL 事件载荷
     "PositionSnapshot": "vnpy-event-data", # ADR-0012 #83 — 持仓事件载荷
     "AnomalyEvent": "vnpy-event-data",     # ADR-0012 #83 — 异常事件载荷
+    "MetricStore": "vnpy-store-base",      # ADR-0012 #83 — 监控指标抽象 store
+    "InMemoryBuffer": "vnpy-store-impl",   # ADR-0012 #83 — 内存 ring buffer 实现
+    "SqliteStore": "vnpy-store-impl",      # ADR-0012 #83 — SQLite store 实现
 }
 
 # Forbidden filename patterns
