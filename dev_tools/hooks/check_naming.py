@@ -84,6 +84,10 @@ VNPY_SHORTHAND_EXEMPTIONS = {
     "MetricStore": "vnpy-store-base",      # ADR-0012 #83 — 监控指标抽象 store
     "InMemoryBuffer": "vnpy-store-impl",   # ADR-0012 #83 — 内存 ring buffer 实现
     "SqliteStore": "vnpy-store-impl",      # ADR-0012 #83 — SQLite store 实现
+    "AnomalyDetector": "vnpy-detector",    # ADR-0012 #83 — 异常检测器
+    "PnlCollector": "vnpy-collector",       # ADR-0012 #83 — PnL 事件订阅器
+    "PositionCollector": "vnpy-collector", # ADR-0012 #83 — 持仓事件订阅器
+    "RiskAlertCollector": "vnpy-collector", # ADR-0012 #83 — 风控告警事件订阅器
 }
 
 # Forbidden filename patterns
