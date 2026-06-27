@@ -15,6 +15,11 @@ vnpy 字段映射 (daily_price → BarData):
   volume        → volume (股)
   amount        → turnover (元) [DB amount = 成交额, 对应 vnpy turnover]
   turnover (DB) → 0 (A股自由流通换手率, 无CSV源, 用0占位)
+
+ADR-0010 (2026-06-27):
+  - 新增 get_industry_map (拉 stock_basic.industry)
+  - 新增 get_news_events (拉 research_report 表)
+  - DataRepository 保留 (data 层内部使用),datafeed 是基础数据入口
 """
 from __future__ import annotations
 
@@ -22,13 +27,14 @@ import logging
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from ...db.engine import get_engine
 from ...gateway import BarData, ContractData
 from .base import (
     BaseDatafeed,
     Interval,
+    NewsEvent,
     code_to_market,
     code_to_vt_symbol,
     vt_symbol_to_code,
@@ -318,3 +324,105 @@ class LocalDatafeed(BaseDatafeed):
                 d = d.date()
             cal.append(d)
         return cal
+
+    # ── 基础数据抽象 (ADR-0010 新增) ──────────────
+
+    def get_industry_map(self, codes: List[str]) -> Dict[str, str]:
+        """取股票-行业映射 (从 stock_basic.industry 表)
+
+        Args:
+            codes: 股票代码列表 (6 位不带 .SH/.SZ,空列表 → 空 dict)
+
+        Returns:
+            {code: industry}, 缺失为 ""
+        """
+        if not codes:
+            return {}
+
+        if not self.inited:
+            self.init()
+
+        sql = (
+            "SELECT code, industry FROM stock_basic "
+            "WHERE code IN :codes"
+        )
+        try:
+            with self._engine.connect() as conn:
+                stmt = text(sql).bindparams(bindparam("codes", expanding=True))
+                rows = conn.execute(stmt, {"codes": list(codes)}).fetchall()
+        except Exception as e:
+            logger.warning(f"LocalDatafeed.get_industry_map 失败: {e}")
+            return {}
+
+        result: Dict[str, str] = {}
+        for r in rows:
+            code, industry = r[0], r[1]
+            result[str(code)] = str(industry or "")
+        return result
+
+    def get_news_events(
+        self,
+        codes: List[str],
+        start: date,
+        end: date,
+    ) -> List[NewsEvent]:
+        """取研报 / 新闻事件 (从 research_report 表)
+
+        Args:
+            codes: 股票代码列表 (空 = 全市场)
+            start: 起始日期 (含)
+            end: 结束日期 (含)
+
+        Returns:
+            List[NewsEvent] (按 date DESC)
+        """
+        if not self.inited:
+            self.init()
+
+        params: Dict[str, object] = {"start": start, "end": end}
+
+        if codes:
+            sql = (
+                "SELECT code, date, title, rating, rating_change, author, institution, url "
+                "FROM research_report "
+                "WHERE code IN :codes "
+                "AND date BETWEEN :start AND :end "
+                "ORDER BY date DESC"
+            )
+            stmt = text(sql).bindparams(bindparam("codes", expanding=True))
+            params["codes"] = list(codes)
+        else:
+            sql = (
+                "SELECT code, date, title, rating, rating_change, author, institution, url "
+                "FROM research_report "
+                "WHERE date BETWEEN :start AND :end "
+                "ORDER BY date DESC"
+            )
+            stmt = text(sql)
+
+        try:
+            with self._engine.connect() as conn:
+                rows = conn.execute(stmt, params).fetchall()
+        except Exception as e:
+            logger.warning(f"LocalDatafeed.get_news_events 失败: {e}")
+            return []
+
+        events: List[NewsEvent] = []
+        for r in rows:
+            code, d, title, rating, rating_change, author, institution, url = r
+            if isinstance(d, str):
+                d = datetime.strptime(d, "%Y-%m-%d").date()
+            elif isinstance(d, datetime):
+                d = d.date()
+            events.append(NewsEvent(
+                code=str(code),
+                date=d,
+                title=str(title or ""),
+                rating=str(rating) if rating else None,
+                rating_change=str(rating_change) if rating_change else None,
+                author=str(author) if author else None,
+                institution=str(institution) if institution else None,
+                url=str(url) if url else None,
+                source="research_report",
+            ))
+        return events
