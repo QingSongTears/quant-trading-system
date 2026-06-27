@@ -14,6 +14,9 @@ backtest 组合回测 runner — ADR-0009
   1) 调仓决策循环: 仅遍历调仓日 (~24 次) 而非全市场日
   2) 日收益矩阵: pivot 一次性生成 [date x code] 收益率矩阵
   3) 日均收益: 一次 .loc 抽取 + numpy.mean, 避免 Python 内层 for 循环
+
+ADR-0010 (2026-06-27):
+  - industry fallback 走 datafeed.get_industry_map (替代 DataRepository 直连)
 """
 from __future__ import annotations
 
@@ -124,17 +127,14 @@ class PortfolioRunner:
         missing = code_set - set(ind_map.keys())
         if missing:
             try:
-                engine = getattr(self.data_loader, "repo", None)
-                engine = engine.engine if engine and hasattr(engine, "engine") else engine
-                if engine is None:
-                    from ..models.repository import DataRepository
-                    engine = DataRepository()
-                db_map = load_industry_map(engine, list(missing))
+                # ADR-0010 (2026-06-27): 改走 datafeed.get_industry_map (替代 DataRepository 直连)
+                from src.data import data_mgr
+                db_map = load_industry_map(data_mgr.datafeed, list(missing))
                 ind_map.update(db_map)
                 if any(v != "未知" for v in db_map.values()):
                     has_real_industry = True
             except Exception as e:
-                logger.warning(f"apply_sector_constraint: DB 加载 industry 失败: {e}")
+                logger.warning(f"apply_sector_constraint: datafeed 加载 industry 失败: {e}")
 
         for c in selected_codes:
             ind_map.setdefault(c, "未知")
@@ -158,12 +158,9 @@ class PortfolioRunner:
             if "industry" not in pool.columns:
                 pool_codes = pool["code"].astype(str).tolist()
                 try:
-                    engine = getattr(self.data_loader, "repo", None)
-                    engine = engine.engine if engine and hasattr(engine, "engine") else engine
-                    if engine is None:
-                        from ..models.repository import DataRepository
-                        engine = DataRepository()
-                    db_map = load_industry_map(engine, pool_codes)
+                    # ADR-0010 (2026-06-27): 改走 datafeed.get_industry_map
+                    from src.data import data_mgr
+                    db_map = load_industry_map(data_mgr.datafeed, pool_codes)
                 except Exception:
                     db_map = {}
                 pool["industry"] = pool["code"].astype(str).map(db_map).fillna("未知")
