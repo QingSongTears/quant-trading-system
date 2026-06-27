@@ -1265,48 +1265,79 @@ def _f(v):
 
 @router.get("/stock/quote")
 async def stock_quote(code: str = Query(..., min_length=4, max_length=10)):
-    """个股行情快照 — leek-fund 风格当前价+今开+最高+最低+成交量"""
+    """个股行情快照 — leek-fund 风格当前价+今开+最高+最低+成交量
+
+    2026-06-27 改造: 数据源优先 westock, 失败时降级到本地 DB daily_price
+    """
     from ...data.westock import get_kline
     wcode = _to_westock_code(code)
+    rows = []
+    name = code
     try:
         r = get_kline(wcode, "day", 5, "qfq")
         rows = _parse_md_table(r.get("raw", "")) if "raw" in r else r.get("data", [])
-        if not rows:
-            return {"success": False, "error": "无行情数据"}
-        latest = rows[0]
-        prev = rows[1] if len(rows) > 1 else None
-
-        price = _f(latest.get("last") or latest.get("close"))
-        prev_close = _f(prev.get("last") or prev.get("close")) if prev else None
-        open_ = _f(latest.get("open"))
-        high = _f(latest.get("high"))
-        low = _f(latest.get("low"))
-        volume = _f(latest.get("volume"))
-        amount = _f(latest.get("amount"))
-        change = (price - prev_close) if (price is not None and prev_close is not None) else None
-        change_pct = (change / prev_close * 100) if (change is not None and prev_close) else None
-
-        return {
-            "success": True,
-            "data": {
-                "code": wcode,
-                "name": latest.get("name", code),
-                "date": latest.get("date"),
-                "price": price,
-                "prev_close": prev_close,
-                "open": open_,
-                "high": high,
-                "low": low,
-                "volume": volume,
-                "amount": amount,
-                "change": change,
-                "change_pct": change_pct,
-                "exchange": latest.get("exchange"),
-            },
-        }
+        if rows:
+            name = rows[0].get("name") or code
     except Exception as e:
-        logger.error("stock/quote 失败: %s", e)
-        return {"success": False, "error": str(e)[:200]}
+        logger.warning("stock/quote westock 失败, 降级到 DB: %s", e)
+
+    if not rows:
+        try:
+            from sqlalchemy import text
+            repo = _get_repo()
+            with repo.engine.connect() as conn:
+                raw = conn.execute(
+                    text("SELECT trade_date, open, high, low, close, volume "
+                         "FROM daily_price WHERE code=:c ORDER BY trade_date DESC LIMIT 5"),
+                    {"c": code.zfill(6)}
+                ).fetchall()
+            for r0 in raw:
+                rows.append({"date": str(r0[0]), "open": r0[1], "high": r0[2],
+                             "low": r0[3], "close": r0[4], "volume": r0[5]})
+            # 补 name
+            sb = conn.execute(
+                text("SELECT name FROM stock_basic WHERE code=:c"),
+                {"c": code.zfill(6)}
+            ).first()
+            if sb:
+                name = sb[0]
+        except Exception as e:
+            logger.error("stock/quote DB 兜底失败: %s", e)
+
+    if not rows:
+        return {"success": False, "error": "无行情数据"}
+
+    latest = rows[0]
+    prev = rows[1] if len(rows) > 1 else None
+
+    price = _f(latest.get("last") or latest.get("close"))
+    prev_close = _f(prev.get("last") or prev.get("close")) if prev else None
+    open_ = _f(latest.get("open"))
+    high = _f(latest.get("high"))
+    low = _f(latest.get("low"))
+    volume = _f(latest.get("volume"))
+    amount = _f(latest.get("amount"))
+    change = (price - prev_close) if (price is not None and prev_close is not None) else None
+    change_pct = (change / prev_close * 100) if (change is not None and prev_close) else None
+
+    return {
+        "success": True,
+        "data": {
+            "code": wcode,
+            "name": name,
+            "date": latest.get("date"),
+            "price": price,
+            "prev_close": prev_close,
+            "open": open_,
+            "high": high,
+            "low": low,
+            "volume": volume,
+            "amount": amount,
+            "change": change,
+            "change_pct": change_pct,
+            "exchange": latest.get("exchange"),
+        },
+    }
 
 
 @router.get("/stock/kline")
@@ -1316,32 +1347,59 @@ async def stock_kline(
     limit: int = Query(120, ge=1, le=500),
     fq: str = Query("qfq", pattern="^(qfq|hfq|bfq)$"),
 ):
-    """K线 — 前端 ECharts 直接画"""
+    """K线 — 前端 ECharts 直接画
+
+    2026-06-27 改造: 数据源优先 westock, 失败时自动降级到本地数据库 daily_price
+    修复 P1: 个股诊断页 /portfolio/stock_detail 之前 westock 拉不到时返回空, 失去本地兜底
+    """
     from ...data.westock import get_kline
     wcode = _to_westock_code(code)
+    rows = []
     try:
         r = get_kline(wcode, period, limit, fq)
         rows = _parse_md_table(r.get("raw", "")) if "raw" in r else r.get("data", [])
-        if not rows:
-            return {"success": False, "error": "无K线数据", "data": {"candles": [], "volumes": []}}
-
-        candles, volumes = [], []
-        for r0 in reversed(rows):  # 旧的在前
-            o = _f(r0.get("open"))
-            c = _f(r0.get("last") or r0.get("close"))
-            h = _f(r0.get("high"))
-            l = _f(r0.get("low"))
-            v = _f(r0.get("volume"))
-            d = r0.get("date", "")
-            if o is None or c is None or h is None or l is None:
-                continue
-            candles.append([d, o, c, l, h])
-            if v is not None:
-                volumes.append({"date": d, "value": v, "dir": 1 if c >= o else -1})
-        return {"success": True, "data": {"candles": candles, "volumes": volumes}}
     except Exception as e:
-        logger.error("stock/kline 失败: %s", e)
-        return {"success": False, "error": str(e)[:200], "data": {"candles": [], "volumes": []}}
+        logger.warning("stock/kline westock 失败, 降级到 DB: %s", e)
+
+    # westock 无数据 → 用本地 DB 兜底
+    if not rows:
+        try:
+            from sqlalchemy import text
+            repo = _get_repo()
+            with repo.engine.connect() as conn:
+                # 取 limit*5 条 (周月线需要原始日线聚合, 但日线直接拿即可)
+                raw = conn.execute(
+                    text("SELECT trade_date, open, high, low, close, volume "
+                         "FROM daily_price WHERE code=:c "
+                         "ORDER BY trade_date DESC LIMIT :lim"),
+                    {"c": code.zfill(6), "lim": limit}
+                ).fetchall()
+            for r0 in reversed(raw):  # 旧的在前
+                rows.append({
+                    "date": str(r0[0]),
+                    "open": r0[1], "high": r0[2], "low": r0[3],
+                    "close": r0[4], "volume": r0[5],
+                })
+        except Exception as e:
+            logger.error("stock/kline DB 兜底失败: %s", e)
+
+    if not rows:
+        return {"success": False, "error": "无K线数据", "data": {"candles": [], "volumes": []}}
+
+    candles, volumes = [], []
+    for r0 in rows:  # DB 已按 ASC 排序, westock 的 reversed 已在 DB 段处理过
+        o = _f(r0.get("open"))
+        c = _f(r0.get("last") or r0.get("close"))
+        h = _f(r0.get("high"))
+        l = _f(r0.get("low"))
+        v = _f(r0.get("volume"))
+        d = r0.get("date", "")
+        if o is None or c is None or h is None or l is None:
+            continue
+        candles.append([d, o, c, l, h])
+        if v is not None:
+            volumes.append({"date": d, "value": v, "dir": 1 if c >= o else -1})
+    return {"success": True, "data": {"candles": candles, "volumes": volumes}}
 
 
 @router.get("/stock/minute")

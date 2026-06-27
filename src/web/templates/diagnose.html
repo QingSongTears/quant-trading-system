@@ -308,36 +308,42 @@ async function diagnose() {
   ]);
 }
 
+// ===== 工具: 解包后端 {success,data} 嵌套响应 =====
+function unwrap(envelope) {
+  if (!envelope) return null;
+  if (envelope.success === undefined && envelope.data === undefined) return envelope;  // 已扁平
+  if (envelope.success === false) return null;
+  return envelope.data || envelope;
+}
+
 // ===== 股票信息 =====
 async function loadStockInfo(code) {
   try {
-    const r = await fetch('/api/stock/' + code);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const txt = await r.text();
-    let d;
-    try { d = JSON.parse(txt); } catch(e) { throw new Error('服务器返回无效数据'); }
-    if (d.error) throw new Error(d.error);
+    const [br, qr] = await Promise.all([
+      fetch('/api/stock/' + code),
+      fetch('/api/stock/quote?code=' + code),
+    ]);
+    const basic = unwrap(await br.json());
+    const quote = unwrap(await qr.json()) || {};
 
-    // K线拿最新收盘价
-    const kr = await fetch('/api/stock/' + code + '/kline/day');
-    const kd = await kr.json();
-    let price = '--', change = '--';
-    if (kd && kd.close && kd.close.length > 0) {
-      const closes = kd.close;
-      price = '¥' + closes[closes.length-1].toFixed(2);
-      if (closes.length >= 2) {
-        const chg = (closes[closes.length-1] - closes[closes.length-2]) / closes[closes.length-2] * 100;
-        change = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
-        document.getElementById('sChange').className = 'stock-change ' + (chg >= 0 ? 'up' : 'down');
-      }
+    let price = '--', change = '--', changePct = 0;
+    if (quote.price != null) {
+      price = '¥' + Number(quote.price).toFixed(2);
     }
-    document.getElementById('sCode').textContent = code;
-    document.getElementById('sName').textContent = d.code === code ? '' : d.code;
+    if (quote.change_pct != null) {
+      changePct = Number(quote.change_pct);
+      change = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%';
+      document.getElementById('sChange').className = 'stock-change ' + (changePct >= 0 ? 'up' : 'down');
+    }
+
+    document.getElementById('sCode').textContent = quote.code || code;
+    document.getElementById('sName').textContent = (basic && basic.name) || (quote && quote.name) || '';
     document.getElementById('sPrice').textContent = price;
     document.getElementById('sChange').textContent = change;
 
-    const dates = d.dates || [];
-    document.getElementById('sMeta').textContent = '数据区间: ' + (dates[0]||'') + ' ~ ' + (dates[dates.length-1]||'') + '  ·  ' + dates.length + ' 条记录';
+    const industry = (basic && basic.industry) || '';
+    const meta = (industry ? `行业: ${industry} · ` : '') + (quote.date ? `数据日期: ${quote.date}` : '');
+    document.getElementById('sMeta').textContent = meta || '—';
   } catch(e) {
     document.getElementById('sCode').textContent = code;
     document.getElementById('sName').textContent = '(数据加载失败)';
@@ -385,19 +391,26 @@ async function loadPrediction(code) {
   }
 }
 
-// ===== 评分 & 雷达图 =====
+// ===== 评分 & 雷达图 (2026-06-27 改: 数据源由 /api/stock/{code} 改为 /api/predict/{code}) =====
 async function loadScores(code) {
   try {
-    const r = await fetch('/api/stock/' + code);
+    const r = await fetch('/api/predict/' + code);
     const d = await r.json();
-    if (d.error || !d.scores) throw new Error(d.error || 'no data');
+    if (d.error) throw new Error(d.error);
 
-    // 最新一组评分
-    const scores = d.scores;
-    const latestValues = dimNames.map(dim => {
-      const arr = scores[dimLabels[dimNames.indexOf(dim)]] || [];
-      return arr.length > 0 ? (arr[arr.length-1] || 0) : 0;
-    });
+    // predict 接口返回 dim_scores: {tech, fundam, fund, institutional, sentiment, news_event, chip, lh_institutional}
+    // 前端 dimLabels 顺序: 技术/资金/情绪/板块/估值/新闻/筹码/机构
+    const dimMap = {
+      '技术':  d.dim_scores?.tech ?? 0,
+      '资金':  d.dim_scores?.fund ?? 0,
+      '情绪':  d.dim_scores?.sentiment ?? 0,
+      '板块':  0,  // 当前 predict 没单独板块维
+      '估值':  d.dim_scores?.fundam ?? 0,
+      '新闻':  d.dim_scores?.news_event ?? 0,
+      '筹码':  d.dim_scores?.chip ?? 0,
+      '机构':  d.dim_scores?.lh_institutional ?? d.dim_scores?.institutional ?? 0,
+    };
+    const latestValues = dimNames.map(name => dimMap[name] ?? 0);
 
     // 维度评分明细表
     const dimBody = document.getElementById('dimBody');
@@ -448,29 +461,40 @@ async function loadScores(code) {
 
     return latestValues;
   } catch(e) {
+    console.warn('loadScores failed:', e);
     return null;
   }
 }
 
-// ===== K线 + 技术指标 =====
+// ===== K线 + 技术指标 (2026-06-27 改: URL 由 /api/stock/{code}/kline/{period} 改为 /api/stock/kline?code=&period=) =====
 async function loadKline(code, period) {
   try {
-    const r1 = await fetch('/api/stock/' + code + '/kline/' + period);
-    const d = await r1.json();
-    if (!d || !d.dates) { throw new Error('no kline data'); }
-    klineData = d;
+    const r1 = await fetch('/api/stock/kline?code=' + code + '&period=' + period + '&limit=180&fq=qfq');
+    const env = await r1.json();
+    if (!env.success || !env.data || !env.data.candles) { throw new Error('no kline data'); }
+
+    // 后端 candles 格式: [date, open, close, low, high] (旧在前)
+    // volumes 格式: [{date, value, dir}]
+    const candles = env.data.candles;
+    const volumes = env.data.volumes || [];
+    const dates = candles.map(c => c[0]);
+    const opens = candles.map(c => c[1]);
+    const closes = candles.map(c => c[2]);
+    const lows = candles.map(c => c[3]);
+    const highs = candles.map(c => c[4]);
+    const volArr = volumes.map(v => v.value);
+
+    klineData = { dates, open: opens, close: closes, high: highs, low: lows, volume: volArr };
 
     // 计算技术指标 (后端只返回OHLC, 前端计算MA)
-    const closes = d.close;
-    const dates = d.dates;
     const ma5 = calcMA(closes, 5);
     const ma10 = calcMA(closes, 10);
     const ma20 = calcMA(closes, 20);
     const ma60 = calcMA(closes, 60);
 
-    renderKlineChart(dates, closes, d.open, d.high, d.low, d.volume, { ma5, ma10, ma20, ma60 });
+    renderKlineChart(dates, closes, opens, highs, lows, volArr, { ma5, ma10, ma20, ma60 });
   } catch(e) {
-    // 静默失败
+    console.warn('loadKline failed:', e);
   }
 }
 
@@ -635,9 +659,20 @@ async function loadSignals(code) {
   // 获取kline数据来判断当前信号 (复用已加载的klineData)
   if (!klineData || klineData.close.length < 60) {
     try {
-      const r = await fetch('/api/stock/' + code + '/kline/day');
-      const d = await r.json();
-      if (d && d.dates) klineData = d;
+      const r = await fetch('/api/stock/kline?code=' + code + '&period=day&limit=180&fq=qfq');
+      const env = await r.json();
+      if (env.success && env.data && env.data.candles) {
+        const candles = env.data.candles;
+        const volumes = env.data.volumes || [];
+        klineData = {
+          dates: candles.map(c => c[0]),
+          open: candles.map(c => c[1]),
+          close: candles.map(c => c[2]),
+          high: candles.map(c => c[4]),
+          low: candles.map(c => c[3]),
+          volume: volumes.map(v => v.value),
+        };
+      }
     } catch(e) {}
   }
 
@@ -664,13 +699,13 @@ async function loadSignals(code) {
   const rsi6 = calcRSI(closes, 6);
   const macd = calcMACD(closes);
 
-  // 评分信号 (需要最新评分)
+  // 评分信号 (需要最新评分) — 2026-06-27 改: 取 /api/predict/{code} 的综合概率 * 15
   let scoreVal = 0;
   try {
-    const r = await fetch('/api/stock/' + code);
+    const r = await fetch('/api/predict/' + code);
     const d = await r.json();
-    if (d.combined && d.combined.length > 0) {
-      scoreVal = d.combined[d.combined.length-1] || 0;
+    if (d && d.pred_proba_up != null) {
+      scoreVal = Number(d.pred_proba_up) * 15;  // 0~1 → 0~15 (雷达图量纲)
     }
   } catch(e) {}
 
