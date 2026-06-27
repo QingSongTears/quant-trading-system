@@ -4,6 +4,7 @@
 |---|---|
 | **状态** | ✅ Accepted |
 | **日期** | 2026-06-27 |
+| **接受日期** | 2026-06-27 (Step 6 完成) |
 | **决策人** | @QingSongTears |
 | **影响范围** | src/strategies/simulator.py（拆分后 4 个文件）、src/strategies/trading/、tests/test_simulator_*.py、src/risk/engine.py（仅消费者，不改实现） |
 | **目标阶段** | v3.0 实盘化前置 — 模拟盘稳定 |
