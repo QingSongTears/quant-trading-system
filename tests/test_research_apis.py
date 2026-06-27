@@ -92,10 +92,12 @@ def seeded_db(monkeypatch):
     tmp.close()
 
     conn = sqlite3.connect(str(tmp_path))
-    # daily_price
+    # daily_price (ADR-0010 datafeed.get_bars 需要完整 OHLCV 列)
     conn.execute("""
     CREATE TABLE daily_price (
-        code TEXT, trade_date TEXT, close REAL,
+        code TEXT, trade_date TEXT,
+        open REAL, high REAL, low REAL, close REAL,
+        volume REAL, amount REAL,
         PRIMARY KEY (code, trade_date)
     )""")
     # technical_indicators
@@ -105,6 +107,12 @@ def seeded_db(monkeypatch):
         rsi14 REAL, macd_hist REAL, kdj_k REAL, kdj_j REAL, boll_lower REAL,
         PRIMARY KEY (code, trade_date)
     )""")
+    # ADR-0010 (2026-06-27): datafeed.get_stock_list 需要 stock_basic 表 (含 market + delist_date)
+    conn.execute("""
+    CREATE TABLE stock_basic (
+        code TEXT PRIMARY KEY, name TEXT, market TEXT, industry TEXT,
+        list_date TEXT, delist_date TEXT
+    )""")
 
     # 3 只股票 × 30 天
     dates = pd.date_range("2024-06-01", periods=30, freq="D").strftime("%Y-%m-%d")
@@ -113,7 +121,8 @@ def seeded_db(monkeypatch):
         prices = [base + i * 0.1 + (hash(code + str(i)) % 5) / 10 for i in range(30)]
         for d, p in zip(dates, prices):
             conn.execute(
-                "INSERT INTO daily_price VALUES (?, ?, ?)", (code, d, p)
+                "INSERT INTO daily_price VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (code, d, p, p+1, p-0.5, p, 1000, 10000)
             )
             # 制造 RSI 与未来收益正相关 (RSi 越高, 未来收益越大)
             rsi = 50 + (p - base) * 20
@@ -121,12 +130,28 @@ def seeded_db(monkeypatch):
                 "INSERT INTO technical_indicators (code, trade_date, rsi14, macd_hist, kdj_k, kdj_j, boll_lower) VALUES (?,?,?,?,?,?,?)",
                 (code, d, rsi, p * 0.01, rsi, rsi - 5, p - 1.0),
             )
+    # 插入 stock_basic 数据 (ADR-0010 datafeed.get_stock_list 需要 market 字段)
+    for code in ["000001", "000002", "000003"]:
+        market = "SZ" if code.startswith("0") else "SH"
+        conn.execute(
+            "INSERT INTO stock_basic (code, name, industry, market) VALUES (?, ?, ?, ?)",
+            (code, f"测试_{code}", "银行", market),
+        )
     conn.commit()
     conn.close()
 
-    # monkeypatch get_engine 返这个临时 DB
+    # monkeypatch datafeed 返这个临时 DB (ADR-0010: research.py 改走 datafeed 替代 get_engine)
     engine = create_engine(f"sqlite:///{tmp_path}")
-    monkeypatch.setattr("src.web.routes.research.get_engine", lambda: engine)
+    # Patch get_engine so LocalDatafeed.init() picks up our test DB (避免 init() 用全局单例)
+    monkeypatch.setattr("src.data.datafeed.local.get_engine", lambda: engine)
+    from src.data.datafeed import LocalDatafeed
+    df = LocalDatafeed()
+    df._engine = engine
+    df.init()
+    monkeypatch.setattr("src.data.manager.DataManager.datafeed", property(lambda self: df))
+    # business 也需要 mock (虽然 research 不用,但 import chain 会触发)
+    from unittest.mock import MagicMock
+    monkeypatch.setattr("src.data.manager.DataManager.business", property(lambda self: MagicMock()))
 
     yield tmp_path
 

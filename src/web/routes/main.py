@@ -11,7 +11,6 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from ...config import get_config
-from ...models.repository import DataRepository
 from ...data import get_data_manager
 from ..app import TEMPLATES_DIR, get_templates
 from pathlib import Path as _Path
@@ -23,8 +22,12 @@ templates = get_templates()
 
 
 def _get_repo():
-    """统一从 data 层获取数据库访问入口。"""
-    return get_data_manager().repository
+    """统一从 data 层获取业务宽表访问入口 (ADR-0010 §D3)
+
+    通过 DataManager.business 门面访问,避免 web 直接 import DataRepository
+    (check_legacy.py 黑名单:strategies/scoring/selection/web 禁 import DataRepository)。
+    """
+    return get_data_manager().business
 
 # 注入全局配置到模板
 def _get_global_context() -> dict:
