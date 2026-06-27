@@ -16,6 +16,7 @@ endpoint:
 from __future__ import annotations
 import logging
 from fastapi import APIRouter, Query
+from sqlalchemy import text
 from ._helpers import _f, _parse_md_table, _to_westock_code, get_repo
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -281,13 +282,23 @@ async def stock_backtest_alias(
 
 @router.get("/stock/{code}")
 async def stock_basic(code: str):
-    """单股基本信息 — diagnose.html / portfolio.html / predict.html 用"""
+    """单股基本信息 — diagnose.html / portfolio.html / predict.html 用
+
+    兼容 code 格式:
+    - "000001" / "600000" (纯数字)
+    - "sz000001" / "sh600000" (带前缀)
+    - "000001.SZ" / "600000.SH" (带后缀)
+    """
     repo = get_repo()
+    # 标准化 code: 移除前缀(sz/sh/bj) + 后缀(.SZ/.SH/.BJ)
+    import re
+    norm = re.sub(r"^(sz|sh|bj)", "", code, flags=re.IGNORECASE)
+    norm = re.sub(r"\.(sz|sh|bj)$", "", norm, flags=re.IGNORECASE)
     try:
         with repo.engine.connect() as conn:
             row = conn.execute(
-                text("SELECT code, name, market, industry, list_date FROM stock_basic WHERE code = :c"),
-                {"c": code}
+                text("SELECT code, name, market, industry, list_date FROM stock_basic WHERE code = :c OR code = :c_prefix"),
+                {"c": norm, "c_prefix": ("sh" + norm if norm.startswith("6") else "sz" + norm)}
             ).first()
         if row:
             return {
