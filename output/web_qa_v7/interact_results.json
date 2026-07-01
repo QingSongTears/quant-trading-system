@@ -1,0 +1,119 @@
+[
+  {
+    "name": "dashboard_refresh",
+    "url": "/dashboard",
+    "status": 200,
+    "elapsed_ms": 5166,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "actions": [
+      "wait 3000ms"
+    ],
+    "screenshot": "output/web_qa_v7/interact_dashboard_refresh.png"
+  },
+  {
+    "name": "data_download_status",
+    "url": "/data",
+    "status": 200,
+    "elapsed_ms": 6209,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "actions": [
+      "wait 4000ms"
+    ],
+    "screenshot": "output/web_qa_v7/interact_data_download_status.png"
+  },
+  {
+    "name": "portfolio_analyze",
+    "url": "/portfolio",
+    "status": 200,
+    "elapsed_ms": 10106,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "actions": [
+      "wait 2000ms",
+      "click \"button:has-text('分析持仓')\" -> OK",
+      "wait 6000ms"
+    ],
+    "screenshot": "output/web_qa_v7/interact_portfolio_analyze.png"
+  },
+  {
+    "name": "workbench_form",
+    "url": "/workbench",
+    "status": 200,
+    "elapsed_ms": 4053,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "actions": [
+      "wait 2000ms",
+      "fill \"input[type='text']:first-of-type\"='000001'"
+    ],
+    "screenshot": "output/web_qa_v7/interact_workbench_form.png"
+  },
+  {
+    "name": "diagnose_run",
+    "url": "/diagnose",
+    "status": 200,
+    "elapsed_ms": 7080,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "actions": [
+      "wait 2000ms",
+      "click 'button' -> OK",
+      "wait 3000ms"
+    ],
+    "screenshot": "output/web_qa_v7/interact_diagnose_run.png"
+  },
+  {
+    "name": "predict_dashboard",
+    "url": "/predict",
+    "status": 200,
+    "elapsed_ms": 5023,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "actions": [
+      "wait 3000ms"
+    ],
+    "screenshot": "output/web_qa_v7/interact_predict_dashboard.png"
+  },
+  {
+    "name": "screener_filter",
+    "url": "/screener",
+    "status": 200,
+    "elapsed_ms": 5017,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "actions": [
+      "wait 3000ms"
+    ],
+    "screenshot": "output/web_qa_v7/interact_screener_filter.png"
+  },
+  {
+    "name": "console_load",
+    "url": "/console",
+    "status": 200,
+    "elapsed_ms": 7017,
+    "console_errors": [],
+    "network_404s": [],
+    "server_errors": [],
+    "page_error": null,
+    "actions": [
+      "wait 5000ms"
+    ],
+    "screenshot": "output/web_qa_v7/interact_console_load.png"
+  }
+]

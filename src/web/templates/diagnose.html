@@ -285,9 +285,15 @@ function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'
 // ===== 诊断入口（支持模糊搜索） =====
 async function diagnose() {
   const input = document.getElementById('searchInput').value.trim();
+  // 空输入 → 友好提示, 不打 /api/stock/search?q= (会 422)
+  if (!input) {
+    alert('请输入股票代码、名称或拼音首字母');
+    document.getElementById('searchInput').focus();
+    return;
+  }
   let match = input.match(/^(\d{6})/);
   let code = match ? match[1] : '';
-  
+
   // 非6位数字 → 走模糊搜索
     if (!code) {
       try {
