@@ -1148,13 +1148,19 @@ function renderBtResults(data) {
   }
   document.getElementById('btTradeBody').innerHTML = thtml;
 
-  // 逐笔累计盈亏
-  let cumHtml = '<div class="signal-row" style="background:transparent;font-size:0.7rem;color:var(--dim);justify-content:space-between"><span>初始资金</span><span>¥'+s.initialCapital.toLocaleString()+'</span></div>';
+  // 逐笔累计盈亏 — 口径修正: 首行改为 "收益率基准 0%" 与逐笔累计百分比保持口径一致
+  // 旧实现首行显示初始资金金额(¥), 逐笔累加却是百分比, 两套口径混在一起, 用户视觉上"对不上"
+  // 新实现: 首行 = 0% (基准), 每笔累计 = Σ(returnPct_i), 累计 = 策略累计收益率(与 s.totalReturn 一致)
+  let cumHtml = '<div class="signal-row" style="background:transparent;font-size:0.7rem;color:var(--dim);justify-content:space-between"><span>基准</span><span>0.0%</span></div>';
   if (data.trades) {
     let cum = 0;
     data.trades.forEach(t => {
-      cum += t.returnPct;
-      let c = cum>=0?'buy':'sell';
+      // 跳过 returnPct 为 null/undefined 的异常记录, 但累加器继续累加
+      const pct = Number(t.returnPct);
+      if (Number.isFinite(pct)) {
+        cum += pct;
+      }
+      let c = cum >= 0 ? 'buy' : 'sell';
       cumHtml += `<div class="signal-row ${c}" style="justify-content:space-between">
         <span>#${t.id} ${t.exitDate} ${t.returnPct>=0?'+':''}${t.returnPct}%</span>
         <span style="font-weight:600">累计 ${cum>=0?'+':''}${cum.toFixed(1)}%</span>
