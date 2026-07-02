@@ -1148,22 +1148,28 @@ function renderBtResults(data) {
   }
   document.getElementById('btTradeBody').innerHTML = thtml;
 
-  // 逐笔累计盈亏 — 口径修正: 首行改为 "收益率基准 0%" 与逐笔累计百分比保持口径一致
-  // 旧实现首行显示初始资金金额(¥), 逐笔累加却是百分比, 两套口径混在一起, 用户视觉上"对不上"
-  // 新实现: 首行 = 0% (基准), 每笔累计 = Σ(returnPct_i), 累计 = 策略累计收益率(与 s.totalReturn 一致)
-  let cumHtml = '<div class="signal-row" style="background:transparent;font-size:0.7rem;color:var(--dim);justify-content:space-between"><span>基准</span><span>0.0%</span></div>';
+  // 逐笔累计盈亏 — 用户期望: 累计 = 总持仓金额 = 初始资金 + Σ(每笔盈亏金额)
+  // 每笔盈亏金额 = 当笔本金 × returnPct (单股等仓位 = 初始资金 / trades.length 近似)
+  // 实际数学: 末态金额 = 初始资金 × Π(1 + returnPct_i/100)  (复利累计)
+  //          等价于: 累计盈亏金额 = 初始资金 × (Π(1+r_i/100) - 1)
+  // 首行显示: 初始资金金额 (¥)
+  // 之后每行: 当前账户总值 = 初始资金 × Π(1 + r_i/100) (与 s.finalEquity 一致)
+  const initialCapital = Number(s.initialCapital) || 100000;
+  let cumHtml = '<div class="signal-row" style="background:transparent;font-size:0.7rem;color:var(--dim);justify-content:space-between"><span>初始资金</span><span>¥' + initialCapital.toLocaleString() + '</span></div>';
   if (data.trades) {
-    let cum = 0;
+    // 复利累计: account = initialCapital * prod(1 + returnPct_i/100)
+    let accountFactor = 1.0;  // 累积因子
     data.trades.forEach(t => {
-      // 跳过 returnPct 为 null/undefined 的异常记录, 但累加器继续累加
       const pct = Number(t.returnPct);
       if (Number.isFinite(pct)) {
-        cum += pct;
+        accountFactor *= (1 + pct / 100);
       }
-      let c = cum >= 0 ? 'buy' : 'sell';
+      const accountValue = initialCapital * accountFactor;
+      const pnl = accountValue - initialCapital;  // 累计盈亏金额
+      let c = pnl >= 0 ? 'buy' : 'sell';
       cumHtml += `<div class="signal-row ${c}" style="justify-content:space-between">
         <span>#${t.id} ${t.exitDate} ${t.returnPct>=0?'+':''}${t.returnPct}%</span>
-        <span style="font-weight:600">累计 ${cum>=0?'+':''}${cum.toFixed(1)}%</span>
+        <span style="font-weight:600">¥${Math.round(accountValue).toLocaleString()} (${pnl>=0?'+':''}${Math.round(pnl).toLocaleString()})</span>
       </div>`;
     });
   }
